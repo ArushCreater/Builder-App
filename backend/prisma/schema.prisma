@@ -1,0 +1,671 @@
+// Prisma schema for BuilderTrend Clone
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USER MANAGEMENT ====================
+
+enum UserRole {
+  ADMIN
+  PROJECT_MANAGER
+  CLIENT
+  SUBCONTRACTOR
+  FIELD_WORKER
+  ACCOUNTANT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id            String      @id @default(uuid())
+  email         String      @unique
+  password      String
+  firstName     String
+  lastName      String
+  phone         String?
+  role          UserRole
+  status        UserStatus  @default(ACTIVE)
+  avatar        String?
+  company       String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  ownedProjects      Project[]       @relation("ProjectOwner")
+  assignedProjects   ProjectMember[]
+  leads              Lead[]
+  proposals          Proposal[]
+  tasks              Task[]          @relation("TaskAssignee")
+  createdTasks       Task[]          @relation("TaskCreator")
+  sentMessages       Message[]       @relation("MessageSender")
+  receivedMessages   Message[]       @relation("MessageReceiver")
+  comments           Comment[]
+  dailyLogs          DailyLog[]
+  timeEntries        TimeEntry[]
+  createdBids        Bid[]
+  notifications      Notification[]
+  documents          Document[]
+  inspections        Inspection[]
+
+  @@map("users")
+}
+
+// ==================== LEADS & SALES ====================
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  NEGOTIATING
+  WON
+  LOST
+}
+
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  SOCIAL_MEDIA
+  ADVERTISEMENT
+  COLD_CALL
+  OTHER
+}
+
+model Lead {
+  id              String      @id @default(uuid())
+  firstName       String
+  lastName        String
+  email           String
+  phone           String
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+  status          LeadStatus  @default(NEW)
+  source          LeadSource
+  estimatedValue  Float?
+  notes           String?
+  assignedToId    String
+  assignedTo      User        @relation(fields: [assignedToId], references: [id])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  proposals       Proposal[]
+  project         Project?
+
+  @@map("leads")
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Proposal {
+  id              String          @id @default(uuid())
+  leadId          String
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title           String
+  description     String
+  totalAmount     Float
+  validUntil      DateTime
+  status          ProposalStatus  @default(DRAFT)
+  createdById     String
+  createdBy       User            @relation(fields: [createdById], references: [id])
+  sentAt          DateTime?
+  viewedAt        DateTime?
+  acceptedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  items           ProposalItem[]
+
+  @@map("proposals")
+}
+
+model ProposalItem {
+  id              String      @id @default(uuid())
+  proposalId      String
+  proposal        Proposal    @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  description     String
+  quantity        Float
+  unitPrice       Float
+  total           Float
+  order           Int
+  createdAt       DateTime    @default(now())
+
+  @@map("proposal_items")
+}
+
+// ==================== PROJECT MANAGEMENT ====================
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectType {
+  NEW_CONSTRUCTION
+  RENOVATION
+  ADDITION
+  REPAIR
+  COMMERCIAL
+  RESIDENTIAL
+}
+
+model Project {
+  id              String        @id @default(uuid())
+  name            String
+  description     String?
+  type            ProjectType
+  status          ProjectStatus @default(PLANNING)
+  address         String
+  city            String
+  state           String
+  zipCode         String
+  startDate       DateTime?
+  endDate         DateTime?
+  estimatedBudget Float
+  actualCost      Float         @default(0)
+  ownerId         String
+  owner           User          @relation("ProjectOwner", fields: [ownerId], references: [id])
+  leadId          String?       @unique
+  lead            Lead?         @relation(fields: [leadId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  members         ProjectMember[]
+  tasks           Task[]
+  budgetLines     BudgetLine[]
+  materials       Material[]
+  selections      Selection[]
+  dailyLogs       DailyLog[]
+  documents       Document[]
+  photos          Photo[]
+  messages        Message[]
+  comments        Comment[]
+  changeOrders    ChangeOrder[]
+  purchaseOrders  PurchaseOrder[]
+  inspections     Inspection[]
+  bids            Bid[]
+  equipment       Equipment[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  role        String
+  addedAt     DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+// ==================== TASK & SCHEDULING ====================
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id              String        @id @default(uuid())
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  status          TaskStatus    @default(TODO)
+  priority        TaskPriority  @default(MEDIUM)
+  assignedToId    String?
+  assignedTo      User?         @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdById     String
+  createdBy       User          @relation("TaskCreator", fields: [createdById], references: [id])
+  startDate       DateTime?
+  dueDate         DateTime?
+  completedAt     DateTime?
+  estimatedHours  Float?
+  actualHours     Float?
+  order           Int           @default(0)
+  parentTaskId    String?
+  parentTask      Task?         @relation("TaskDependencies", fields: [parentTaskId], references: [id])
+  dependentTasks  Task[]        @relation("TaskDependencies")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  timeEntries     TimeEntry[]
+  comments        Comment[]
+  checklists      Checklist[]
+
+  @@map("tasks")
+}
+
+model TimeEntry {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  hours       Float
+  date        DateTime
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@map("time_entries")
+}
+
+model Checklist {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title       String
+  completed   Boolean  @default(false)
+  order       Int
+  createdAt   DateTime @default(now())
+
+  @@map("checklists")
+}
+
+// ==================== FINANCIAL MANAGEMENT ====================
+
+enum BudgetLineCategory {
+  LABOR
+  MATERIALS
+  EQUIPMENT
+  PERMITS
+  SUBCONTRACTOR
+  OVERHEAD
+  OTHER
+}
+
+model BudgetLine {
+  id              String              @id @default(uuid())
+  projectId       String
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category        BudgetLineCategory
+  description     String
+  estimatedCost   Float
+  actualCost      Float               @default(0)
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@map("budget_lines")
+}
+
+enum ChangeOrderStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ChangeOrder {
+  id              String              @id @default(uuid())
+  projectId       String
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title           String
+  description     String
+  amount          Float
+  status          ChangeOrderStatus   @default(PENDING)
+  requestedAt     DateTime            @default(now())
+  approvedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@map("change_orders")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id              String              @id @default(uuid())
+  projectId       String
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  poNumber        String              @unique
+  vendor          String
+  totalAmount     Float
+  status          PurchaseOrderStatus @default(DRAFT)
+  orderedAt       DateTime?
+  receivedAt      DateTime?
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relations
+  items           PurchaseOrderItem[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String          @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  description     String
+  quantity        Float
+  unitPrice       Float
+  total           Float
+  createdAt       DateTime        @default(now())
+
+  @@map("purchase_order_items")
+}
+
+// ==================== MATERIALS & SELECTIONS ====================
+
+enum MaterialStatus {
+  PENDING
+  ORDERED
+  DELIVERED
+  INSTALLED
+}
+
+model Material {
+  id              String          @id @default(uuid())
+  projectId       String
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  quantity        Float
+  unit            String
+  unitCost        Float
+  totalCost       Float
+  status          MaterialStatus  @default(PENDING)
+  supplier        String?
+  orderedAt       DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("materials")
+}
+
+enum SelectionStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  ORDERED
+}
+
+model Selection {
+  id              String          @id @default(uuid())
+  projectId       String
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category        String
+  item            String
+  description     String?
+  cost            Float?
+  status          SelectionStatus @default(PENDING)
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("selections")
+}
+
+// ==================== DAILY LOGS & FIELD UPDATES ====================
+
+model DailyLog {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdById     String
+  createdBy       User     @relation(fields: [createdById], references: [id])
+  date            DateTime
+  weather         String?
+  temperature     String?
+  workPerformed   String
+  issues          String?
+  notes           String?
+  crewCount       Int?
+  hoursWorked     Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("daily_logs")
+}
+
+// ==================== COMMUNICATION ====================
+
+model Message {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          User     @relation("MessageSender", fields: [senderId], references: [id])
+  receiverId      String?
+  receiver        User?    @relation("MessageReceiver", fields: [receiverId], references: [id])
+  subject         String?
+  content         String
+  isRead          Boolean  @default(false)
+  readAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  @@map("messages")
+}
+
+model Comment {
+  id              String   @id @default(uuid())
+  content         String
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  projectId       String?
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId          String?
+  task            Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("comments")
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_COMPLETED
+  MESSAGE_RECEIVED
+  BUDGET_ALERT
+  SCHEDULE_CHANGE
+  DOCUMENT_UPLOADED
+  APPROVAL_NEEDED
+  OTHER
+}
+
+model Notification {
+  id          String            @id @default(uuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  message     String
+  link        String?
+  isRead      Boolean           @default(false)
+  readAt      DateTime?
+  createdAt   DateTime          @default(now())
+
+  @@map("notifications")
+}
+
+// ==================== DOCUMENTS & PHOTOS ====================
+
+enum DocumentType {
+  CONTRACT
+  PERMIT
+  PLAN
+  INVOICE
+  RECEIPT
+  WARRANTY
+  REPORT
+  OTHER
+}
+
+model Document {
+  id              String        @id @default(uuid())
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedById    String
+  uploadedBy      User          @relation(fields: [uploadedById], references: [id])
+  name            String
+  type            DocumentType
+  fileUrl         String
+  fileSize        Int
+  mimeType        String
+  description     String?
+  createdAt       DateTime      @default(now())
+
+  @@map("documents")
+}
+
+model Photo {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url             String
+  caption         String?
+  latitude        Float?
+  longitude       Float?
+  takenAt         DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@map("photos")
+}
+
+// ==================== QUALITY CONTROL ====================
+
+enum InspectionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  PASSED
+  FAILED
+  RECHECK
+}
+
+model Inspection {
+  id              String            @id @default(uuid())
+  projectId       String
+  project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  inspectorId     String
+  inspector       User              @relation(fields: [inspectorId], references: [id])
+  type            String
+  status          InspectionStatus  @default(SCHEDULED)
+  scheduledDate   DateTime
+  completedDate   DateTime?
+  notes           String?
+  passedItems     Int               @default(0)
+  failedItems     Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relations
+  items           InspectionItem[]
+
+  @@map("inspections")
+}
+
+model InspectionItem {
+  id              String      @id @default(uuid())
+  inspectionId    String
+  inspection      Inspection  @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  description     String
+  passed          Boolean
+  notes           String?
+  order           Int
+
+  @@map("inspection_items")
+}
+
+// ==================== BID MANAGEMENT ====================
+
+enum BidStatus {
+  REQUESTED
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model Bid {
+  id              String    @id @default(uuid())
+  projectId       String
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractorId    String
+  contractor      User      @relation(fields: [contractorId], references: [id])
+  description     String
+  amount          Float
+  status          BidStatus @default(REQUESTED)
+  validUntil      DateTime
+  notes           String?
+  submittedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("bids")
+}
+
+// ==================== EQUIPMENT & INVENTORY ====================
+
+enum EquipmentStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  RETIRED
+}
+
+model Equipment {
+  id              String          @id @default(uuid())
+  projectId       String?
+  project         Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  name            String
+  description     String?
+  serialNumber    String?
+  status          EquipmentStatus @default(AVAILABLE)
+  purchaseDate    DateTime?
+  purchaseCost    Float?
+  currentValue    Float?
+  assignedTo      String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("equipment")
+}

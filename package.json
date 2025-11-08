@@ -1,0 +1,28 @@
+{
+  "name": "buildertrend-clone",
+  "version": "1.0.0",
+  "description": "Comprehensive construction management platform for builders",
+  "private": true,
+  "workspaces": [
+    "web",
+    "backend",
+    "mobile",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:backend\"",
+    "dev:web": "npm run dev --workspace=web",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:mobile": "npm run dev --workspace=mobile",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
