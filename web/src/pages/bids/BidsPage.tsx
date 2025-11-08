@@ -114,3 +114,5 @@ export function BidsPage() {
     </div>
   );
 }
+
+export default BidsPage;

@@ -303,3 +303,5 @@ export function SelectionsPage() {
     </div>
   );
 }
+
+export default SelectionsPage;

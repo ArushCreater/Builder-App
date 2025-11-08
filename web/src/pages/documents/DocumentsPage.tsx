@@ -235,3 +235,5 @@ export function DocumentsPage() {
     </div>
   );
 }
+
+export default DocumentsPage;

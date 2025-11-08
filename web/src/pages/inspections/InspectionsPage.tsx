@@ -268,3 +268,5 @@ export function InspectionsPage() {
     </div>
   );
 }
+
+export default InspectionsPage;

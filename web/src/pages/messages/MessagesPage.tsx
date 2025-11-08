@@ -208,3 +208,5 @@ export function MessagesPage() {
     </div>
   );
 }
+
+export default MessagesPage;

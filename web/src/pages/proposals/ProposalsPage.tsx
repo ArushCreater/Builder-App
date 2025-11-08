@@ -268,3 +268,5 @@ export function ProposalsPage() {
     </div>
   );
 }
+
+export default ProposalsPage;

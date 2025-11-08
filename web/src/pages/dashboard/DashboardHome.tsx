@@ -280,3 +280,5 @@ export function DashboardHome() {
     </div>
   );
 }
+
+export default DashboardHome;

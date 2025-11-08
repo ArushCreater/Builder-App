@@ -207,3 +207,5 @@ export function RegisterPage() {
     </Card>
   );
 }
+
+export default RegisterPage;

@@ -127,3 +127,5 @@ export function EquipmentPage() {
     </div>
   );
 }
+
+export default EquipmentPage;

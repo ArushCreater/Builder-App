@@ -363,3 +363,5 @@ export function ProjectDetailPage() {
     </div>
   );
 }
+
+export default ProjectDetailPage;

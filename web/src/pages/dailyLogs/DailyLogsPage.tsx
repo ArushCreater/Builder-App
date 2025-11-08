@@ -327,3 +327,5 @@ export function DailyLogsPage() {
     </div>
   );
 }
+
+export default DailyLogsPage;

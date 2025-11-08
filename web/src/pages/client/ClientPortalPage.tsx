@@ -260,3 +260,5 @@ export function ClientPortalPage() {
     </div>
   );
 }
+
+export default ClientPortalPage;

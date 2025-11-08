@@ -298,3 +298,5 @@ export function MaterialsPage() {
     </div>
   );
 }
+
+export default MaterialsPage;

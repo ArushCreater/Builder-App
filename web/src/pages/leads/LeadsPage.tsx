@@ -331,3 +331,5 @@ export function LeadsPage() {
     </div>
   );
 }
+
+export default LeadsPage;

@@ -223,3 +223,5 @@ export function BudgetPage() {
     </div>
   );
 }
+
+export default BudgetPage;
