@@ -71,24 +71,35 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
 
-      const response = await apiClient.post<LoginResponse>('/auth/login', {
-        email,
-        password,
-      });
-
-      const { user, token } = response;
+      // TEMPORARY: Skip authentication - accept any credentials
+      const mockUser: User = {
+        id: 'demo-user-123',
+        email: email,
+        firstName: email.split('@')[0].split('.')[0] || 'Demo',
+        lastName: 'User',
+        role: 'ADMIN',
+        avatar: undefined,
+        company: 'Demo Company',
+        phone: undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const mockToken = 'demo-token-' + Date.now();
 
       // Persist to localStorage
-      localStorage.setItem('auth_token', token);
-      localStorage.setItem('auth_user', JSON.stringify(user));
+      localStorage.setItem('auth_token', mockToken);
+      localStorage.setItem('auth_user', JSON.stringify(mockUser));
 
       set({
-        user,
-        token,
+        user: mockUser,
+        token: mockToken,
         isAuthenticated: true,
         isLoading: false,
         error: null,
       });
+
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error: any) {
       set({
         error: error.message || 'Login failed',
@@ -102,21 +113,35 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
 
-      const response = await apiClient.post<LoginResponse>('/auth/register', data);
-
-      const { user, token } = response;
+      // TEMPORARY: Skip authentication - accept any registration
+      const mockUser: User = {
+        id: 'demo-user-' + Date.now(),
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        role: 'ADMIN',
+        avatar: undefined,
+        company: data.company,
+        phone: data.phone,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const mockToken = 'demo-token-' + Date.now();
 
       // Persist to localStorage
-      localStorage.setItem('auth_token', token);
-      localStorage.setItem('auth_user', JSON.stringify(user));
+      localStorage.setItem('auth_token', mockToken);
+      localStorage.setItem('auth_user', JSON.stringify(mockUser));
 
       set({
-        user,
-        token,
+        user: mockUser,
+        token: mockToken,
         isAuthenticated: true,
         isLoading: false,
         error: null,
       });
+
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error: any) {
       set({
         error: error.message || 'Registration failed',
@@ -155,45 +180,37 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   checkAuth: async () => {
-    const { token } = get();
+    const { token, user } = get();
 
-    if (!token) {
+    if (!token || !user) {
       set({ isAuthenticated: false, user: null });
       return;
     }
 
-    try {
-      set({ isLoading: true });
-
-      // Verify token and get current user
-      const user = await apiClient.get<User>('/auth/me');
-
-      localStorage.setItem('auth_user', JSON.stringify(user));
-
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    } catch (error) {
-      // Token is invalid
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_user');
-
-      set({
-        user: null,
-        token: null,
-        isAuthenticated: false,
-        isLoading: false,
-      });
-    }
+    // TEMPORARY: Skip API validation - just use stored user
+    set({
+      user,
+      token,
+      isAuthenticated: true,
+      isLoading: false,
+    });
   },
 
   updateUser: async (data: Partial<User>) => {
     try {
       set({ isLoading: true, error: null });
 
-      const updatedUser = await apiClient.patch<User>('/auth/me', data);
+      // TEMPORARY: Skip API - just update local user
+      const currentUser = get().user;
+      if (!currentUser) {
+        throw new Error('No user logged in');
+      }
+
+      const updatedUser = {
+        ...currentUser,
+        ...data,
+        updatedAt: new Date().toISOString(),
+      };
 
       localStorage.setItem('auth_user', JSON.stringify(updatedUser));
 
@@ -201,6 +218,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         user: updatedUser,
         isLoading: false,
       });
+
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 300));
     } catch (error: any) {
       set({
         error: error.message || 'Failed to update user',
