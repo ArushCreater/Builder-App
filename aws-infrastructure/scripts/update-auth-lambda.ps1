@@ -51,8 +51,12 @@ if (Test-Path $ZipFile) {
     Remove-Item $ZipFile -Force
 }
 
-# Create zip file
-Compress-Archive -Path * -DestinationPath $ZipFile -Force
+# Create zip file - Get all items explicitly to ensure correct structure
+$itemsToZip = Get-ChildItem -Path $AuthDir -Exclude @('*.git*', '*.zip') | Select-Object -ExpandProperty FullName
+Compress-Archive -Path $itemsToZip -DestinationPath $ZipFile -Force
+
+Write-Host "   Zip file created: $ZipFile" -ForegroundColor Green
+Write-Host "   Zip file size: $([math]::Round((Get-Item $ZipFile).Length / 1MB, 2)) MB" -ForegroundColor Green
 
 Write-Host "Step 3: Uploading to S3..." -ForegroundColor Green
 aws s3 cp $ZipFile "s3://$DeploymentBucket/functions/auth.zip"
