@@ -35,8 +35,14 @@ try {
 $StackName = "buildertrend-$Environment"
 $DeploymentBucket = "buildertrend-deployment-$Environment-$AccountId"
 
+# Get absolute paths
+$ScriptDir = $PSScriptRoot
+$InfraDir = Split-Path -Parent $ScriptDir
+$RootDir = Split-Path -Parent $InfraDir
+$BuildDir = Join-Path $RootDir "build"
+$LambdaDir = Join-Path $InfraDir "lambda"
+
 # Create build directory if it doesn't exist
-$BuildDir = "..\..\build"
 if (-not (Test-Path $BuildDir)) {
     New-Item -ItemType Directory -Path $BuildDir | Out-Null
 }
@@ -59,29 +65,30 @@ Write-Host ""
 # Package Lambda functions
 Write-Host "Step 2: Packaging Lambda functions..." -ForegroundColor Green
 
-Push-Location ..\lambda
-
 # Helper function to package Lambda
 function Package-Lambda {
     param($FunctionName)
 
     Write-Host "Packaging $FunctionName function..."
-    Push-Location $FunctionName
+
+    $FunctionDir = Join-Path $LambdaDir $FunctionName
+    $ZipFile = Join-Path $BuildDir "$FunctionName.zip"
+
+    # Navigate to function directory
+    Push-Location $FunctionDir
 
     # Install dependencies
     if (Test-Path "package.json") {
         npm install --production --silent
     }
 
-    # Create zip file
-    $ZipFile = "..\..\build\$FunctionName.zip"
+    # Remove old zip if exists
     if (Test-Path $ZipFile) {
-        Remove-Item $ZipFile
+        Remove-Item $ZipFile -Force
     }
 
-    # Use PowerShell's Compress-Archive
-    Get-ChildItem -Path . -Recurse -Exclude @("*.git*", "node_modules\.cache*") |
-        Compress-Archive -DestinationPath $ZipFile -Force
+    # Create zip file - compress all files in current directory
+    Compress-Archive -Path * -DestinationPath $ZipFile -Force
 
     # Upload to S3
     aws s3 cp $ZipFile "s3://$DeploymentBucket/functions/$FunctionName.zip"
@@ -95,34 +102,38 @@ Package-Lambda "auth"
 Package-Lambda "projects"
 Package-Lambda "file-upload"
 
-Pop-Location
-
 Write-Host "Lambda functions packaged and uploaded!" -ForegroundColor Green
 Write-Host ""
 
 # Create Lambda layer
 Write-Host "Step 3: Creating Lambda layer..." -ForegroundColor Green
 
-$LayerDir = "$BuildDir\layers\nodejs"
+$LayersDir = Join-Path $BuildDir "layers"
+$LayerDir = Join-Path $LayersDir "nodejs"
+$LayerZip = Join-Path $BuildDir "node-modules.zip"
+
 if (Test-Path $LayerDir) {
     Remove-Item -Recurse -Force $LayerDir
 }
 New-Item -ItemType Directory -Path $LayerDir -Force | Out-Null
 
 # Copy package.json and install dependencies
-Copy-Item "..\lambda\auth\package.json" $LayerDir
+$AuthPackageJson = Join-Path $LambdaDir "auth\package.json"
+Copy-Item $AuthPackageJson $LayerDir
 Push-Location $LayerDir
 npm install --production --silent
 Pop-Location
 
 # Create layer zip
-Push-Location "$BuildDir\layers"
-if (Test-Path "..\node-modules.zip") {
-    Remove-Item "..\node-modules.zip"
+if (Test-Path $LayerZip) {
+    Remove-Item $LayerZip -Force
 }
-Compress-Archive -Path "nodejs" -DestinationPath "..\node-modules.zip" -Force
-aws s3 cp "..\node-modules.zip" "s3://$DeploymentBucket/layers/node-modules.zip"
+Push-Location $LayersDir
+Compress-Archive -Path "nodejs" -DestinationPath $LayerZip -Force
 Pop-Location
+
+# Upload layer to S3
+aws s3 cp $LayerZip "s3://$DeploymentBucket/layers/node-modules.zip"
 
 Write-Host "Lambda layer created!" -ForegroundColor Green
 Write-Host ""
@@ -132,10 +143,11 @@ Write-Host "Step 4: Deploying CloudFormation stack..." -ForegroundColor Green
 Write-Host "This may take 5-10 minutes..." -ForegroundColor Yellow
 Write-Host ""
 
-Push-Location ..\cloudformation
+$CloudFormationDir = Join-Path $InfraDir "cloudformation"
+$TemplateFile = Join-Path $CloudFormationDir "main-stack.yaml"
 
 aws cloudformation deploy `
-    --template-file main-stack.yaml `
+    --template-file $TemplateFile `
     --stack-name $StackName `
     --parameter-overrides Environment=$Environment `
     --capabilities CAPABILITY_NAMED_IAM `
@@ -146,11 +158,8 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "CloudFormation stack deployed successfully!" -ForegroundColor Green
 } else {
     Write-Host "CloudFormation deployment failed!" -ForegroundColor Red
-    Pop-Location
     exit 1
 }
-
-Pop-Location
 Write-Host ""
 
 # Get stack outputs
