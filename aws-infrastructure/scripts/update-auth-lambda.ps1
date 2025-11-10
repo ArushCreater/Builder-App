@@ -64,12 +64,25 @@ if ($zipCommand) {
     # Get all items except git and zip files
     $filesToZip = @()
 
-    # Add individual files
-    Get-ChildItem -Path $AuthDir -File | Where-Object {
-        $_.Name -notlike '*.git*' -and $_.Name -notlike '*.zip'
-    } | ForEach-Object { $filesToZip += $_.FullName }
+    # Add index.js (required)
+    $indexJs = Join-Path $AuthDir "index.js"
+    if (Test-Path $indexJs) {
+        $filesToZip += $indexJs
+    }
 
-    # Add node_modules directory explicitly
+    # Add package.json (required)
+    $packageJson = Join-Path $AuthDir "package.json"
+    if (Test-Path $packageJson) {
+        $filesToZip += $packageJson
+    }
+
+    # Add package-lock.json if exists
+    $packageLock = Join-Path $AuthDir "package-lock.json"
+    if (Test-Path $packageLock) {
+        $filesToZip += $packageLock
+    }
+
+    # Add node_modules directory (required)
     $nodeModulesPath = Join-Path $AuthDir "node_modules"
     if (Test-Path $nodeModulesPath) {
         $filesToZip += $nodeModulesPath
@@ -79,17 +92,6 @@ if ($zipCommand) {
         Write-Host "   Run 'npm install --production' in the auth directory first" -ForegroundColor Red
         Pop-Location
         exit 1
-    }
-
-    # Add package.json and package-lock.json
-    $packageJson = Join-Path $AuthDir "package.json"
-    if (Test-Path $packageJson) {
-        $filesToZip += $packageJson
-    }
-
-    $packageLock = Join-Path $AuthDir "package-lock.json"
-    if (Test-Path $packageLock) {
-        $filesToZip += $packageLock
     }
 
     Write-Host "   Files to zip: $($filesToZip.Count) items" -ForegroundColor Cyan
