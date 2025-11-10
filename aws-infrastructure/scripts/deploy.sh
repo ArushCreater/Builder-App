@@ -100,6 +100,30 @@ zip -r ../../../build/leads.zip . -x "*.git*" -x "*node_modules/.cache*"
 aws s3 cp ../../../build/leads.zip "s3://${DEPLOYMENT_BUCKET}/functions/leads.zip"
 cd ..
 
+# Package Tasks
+echo "Packaging tasks function..."
+cd tasks
+npm install --production
+zip -r ../../../build/tasks.zip . -x "*.git*" -x "*node_modules/.cache*"
+aws s3 cp ../../../build/tasks.zip "s3://${DEPLOYMENT_BUCKET}/functions/tasks.zip"
+cd ..
+
+# Package Budget
+echo "Packaging budget function..."
+cd budget
+npm install --production
+zip -r ../../../build/budget.zip . -x "*.git*" -x "*node_modules/.cache*"
+aws s3 cp ../../../build/budget.zip "s3://${DEPLOYMENT_BUCKET}/functions/budget.zip"
+cd ..
+
+# Package Documents
+echo "Packaging documents function..."
+cd documents
+npm install --production
+zip -r ../../../build/documents.zip . -x "*.git*" -x "*node_modules/.cache*"
+aws s3 cp ../../../build/documents.zip "s3://${DEPLOYMENT_BUCKET}/functions/documents.zip"
+cd ..
+
 cd ../scripts
 
 echo -e "${GREEN}Lambda functions packaged and uploaded!${NC}"

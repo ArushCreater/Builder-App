@@ -63,32 +63,29 @@ const revenueChartData = [
 ];
 
 export function DashboardHome() {
-  // Fetch projects from localStorage (demo mode)
-  const { data: allProjects, isLoading: projectsLoading } = useQuery({
+  // Fetch projects from AWS API
+  const { data: projectsData, isLoading: projectsLoading } = useQuery({
     queryKey: ['dashboard-projects'],
-    queryFn: () => {
-      const stored = localStorage.getItem('demo_projects');
-      return Promise.resolve(stored ? JSON.parse(stored) : []);
-    },
+    queryFn: () => apiClient.get<{ projects: any[] }>('/projects'),
   });
 
-  // Fetch leads from API
-  const { data: allLeads, isLoading: leadsLoading } = useQuery({
+  // Fetch leads from AWS API
+  const { data: leadsData, isLoading: leadsLoading } = useQuery({
     queryKey: ['dashboard-leads'],
-    queryFn: () => apiClient.get<any[]>('/leads'),
+    queryFn: () => apiClient.get<{ leads: any[] }>('/leads'),
   });
 
   const statsLoading = projectsLoading || leadsLoading;
 
   // Calculate stats from actual data
-  const projects = allProjects || [];
-  const leads = allLeads || [];
+  const projects = projectsData?.projects || [];
+  const leads = leadsData?.leads || [];
 
   const stats: DashboardStats = {
     totalProjects: projects.length,
-    activeProjects: projects.filter((p: any) => p.status === 'active').length,
+    activeProjects: projects.filter((p: any) => p.status === 'IN_PROGRESS').length,
     totalLeads: leads.length,
-    totalRevenue: projects.reduce((sum: number, p: any) => sum + (p.spent || 0), 0),
+    totalRevenue: projects.reduce((sum: number, p: any) => sum + (p.actualCost || 0), 0),
     revenueGrowth: 12.5, // TODO: Calculate from historical data
     completedTasks: 0, // TODO: Fetch from tasks endpoint when available
     pendingTasks: 0, // TODO: Fetch from tasks endpoint when available

@@ -102,6 +102,9 @@ Package-Lambda "auth"
 Package-Lambda "projects"
 Package-Lambda "file-upload"
 Package-Lambda "leads"
+Package-Lambda "tasks"
+Package-Lambda "budget"
+Package-Lambda "documents"
 
 Write-Host "Lambda functions packaged and uploaded!" -ForegroundColor Green
 Write-Host ""

@@ -31,24 +31,28 @@ import { formatDate, formatCurrency } from '../../lib/utils';
 interface Project {
   id: string;
   name: string;
-  description: string;
-  status: 'planning' | 'active' | 'on-hold' | 'completed' | 'cancelled';
-  progress: number;
-  budget: number;
-  spent: number;
-  startDate: string;
-  endDate: string;
-  clientName: string;
-  teamMembers: number;
+  description?: string;
+  type: string;
+  status: 'PLANNING' | 'IN_PROGRESS' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  startDate?: string;
+  endDate?: string;
+  estimatedBudget: number;
+  actualCost: number;
+  ownerId: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 const statusColors = {
-  planning: 'secondary',
-  active: 'default',
-  'on-hold': 'warning',
-  completed: 'success',
-  cancelled: 'destructive',
+  PLANNING: 'secondary',
+  IN_PROGRESS: 'default',
+  ON_HOLD: 'warning',
+  COMPLETED: 'success',
+  CANCELLED: 'destructive',
 } as const;
 
 export function ProjectsPage() {
@@ -62,97 +66,43 @@ export function ProjectsPage() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    clientName: '',
-    budget: '',
+    type: 'residential',
+    address: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    estimatedBudget: '',
     startDate: '',
     endDate: '',
   });
 
-  // TODO: Replace with real API calls when backend is ready
-  // Using localStorage for demo mode
-  const { data: projects, isLoading } = useQuery({
+  const { data: projectsData, isLoading } = useQuery({
     queryKey: ['projects', searchTerm, statusFilter],
     queryFn: () => {
-      const stored = localStorage.getItem('demo_projects');
-      let allProjects: Project[] = stored ? JSON.parse(stored) : [
-        {
-          id: '1',
-          name: 'Residential Complex A',
-          description: 'Modern residential building with 50 units',
-          status: 'active',
-          progress: 65,
-          budget: 500000,
-          spent: 325000,
-          startDate: '2024-01-15',
-          endDate: '2024-12-31',
-          clientName: 'ABC Developers',
-          teamMembers: 15,
-          createdAt: '2024-01-01',
-        },
-        {
-          id: '2',
-          name: 'Commercial Building Renovation',
-          description: 'Office space renovation and modernization',
-          status: 'active',
-          progress: 40,
-          budget: 750000,
-          spent: 300000,
-          startDate: '2024-03-01',
-          endDate: '2025-02-28',
-          clientName: 'XYZ Corp',
-          teamMembers: 20,
-          createdAt: '2024-02-15',
-        },
-      ];
-
-      // Filter by search term
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase();
-        allProjects = allProjects.filter(p =>
-          p.name.toLowerCase().includes(search) ||
-          p.description.toLowerCase().includes(search) ||
-          p.clientName.toLowerCase().includes(search)
-        );
-      }
-
-      // Filter by status
-      if (statusFilter !== 'all') {
-        allProjects = allProjects.filter(p => p.status === statusFilter);
-      }
-
-      return Promise.resolve(allProjects);
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      return apiClient.get<{ projects: Project[] }>(`/projects?${params}`);
     },
   });
 
+  const projects = projectsData?.projects || [];
+
   const createMutation = useMutation({
-    mutationFn: (data: Partial<Project>) => {
-      const stored = localStorage.getItem('demo_projects');
-      const existing: Project[] = stored ? JSON.parse(stored) : [];
-      const newProject: Project = {
-        id: Date.now().toString(),
-        name: data.name || '',
-        description: data.description || '',
-        status: 'planning',
-        progress: 0,
-        budget: data.budget || 0,
-        spent: 0,
-        startDate: data.startDate || '',
-        endDate: data.endDate || '',
-        clientName: data.clientName || '',
-        teamMembers: 1,
-        createdAt: new Date().toISOString(),
-      };
-      localStorage.setItem('demo_projects', JSON.stringify([...existing, newProject]));
-      return Promise.resolve(newProject);
-    },
+    mutationFn: (data: any) => apiClient.post<{ project: Project }>('/projects', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-projects'] });
       setIsCreateDialogOpen(false);
       setFormData({
         name: '',
         description: '',
-        clientName: '',
-        budget: '',
+        type: 'residential',
+        address: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        estimatedBudget: '',
         startDate: '',
         endDate: '',
       });
@@ -173,8 +123,16 @@ export function ProjectsPage() {
   const handleCreateProject = (e: React.FormEvent) => {
     e.preventDefault();
     createMutation.mutate({
-      ...formData,
-      budget: formData.budget ? parseFloat(formData.budget) : 0,
+      name: formData.name,
+      description: formData.description,
+      type: formData.type,
+      address: formData.address,
+      city: formData.city,
+      state: formData.state,
+      zipCode: formData.zipCode,
+      estimatedBudget: formData.estimatedBudget ? parseFloat(formData.estimatedBudget) : 0,
+      startDate: formData.startDate || undefined,
+      endDate: formData.endDate || undefined,
     });
   };
 
@@ -223,27 +181,73 @@ export function ProjectsPage() {
                     name="description"
                     value={formData.description}
                     onChange={handleChange}
-                    required
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="clientName">Client Name</Label>
+                    <Label htmlFor="type">Project Type</Label>
+                    <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="residential">Residential</SelectItem>
+                        <SelectItem value="commercial">Commercial</SelectItem>
+                        <SelectItem value="industrial">Industrial</SelectItem>
+                        <SelectItem value="renovation">Renovation</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="estimatedBudget">Estimated Budget</Label>
                     <Input
-                      id="clientName"
-                      name="clientName"
-                      value={formData.clientName}
+                      id="estimatedBudget"
+                      name="estimatedBudget"
+                      type="number"
+                      value={formData.estimatedBudget}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Address</Label>
+                  <Input
+                    id="address"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      name="city"
+                      value={formData.city}
                       onChange={handleChange}
                       required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="budget">Budget</Label>
+                    <Label htmlFor="state">State</Label>
                     <Input
-                      id="budget"
-                      name="budget"
-                      type="number"
-                      value={formData.budget}
+                      id="state"
+                      name="state"
+                      value={formData.state}
+                      onChange={handleChange}
+                      required
+                      maxLength={2}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="zipCode">Zip Code</Label>
+                    <Input
+                      id="zipCode"
+                      name="zipCode"
+                      value={formData.zipCode}
                       onChange={handleChange}
                       required
                     />
@@ -258,7 +262,6 @@ export function ProjectsPage() {
                       type="date"
                       value={formData.startDate}
                       onChange={handleChange}
-                      required
                     />
                   </div>
                   <div className="space-y-2">
@@ -269,7 +272,6 @@ export function ProjectsPage() {
                       type="date"
                       value={formData.endDate}
                       onChange={handleChange}
-                      required
                     />
                   </div>
                 </div>
@@ -305,11 +307,11 @@ export function ProjectsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="planning">Planning</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="on-hold">On Hold</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="PLANNING">Planning</SelectItem>
+                <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                <SelectItem value="ON_HOLD">On Hold</SelectItem>
+                <SelectItem value="COMPLETED">Completed</SelectItem>
+                <SelectItem value="CANCELLED">Cancelled</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -341,10 +343,18 @@ export function ProjectsPage() {
                   <CardContent className="space-y-4">
                     <div>
                       <div className="flex items-center justify-between text-sm mb-2">
-                        <span className="text-gray-600">Progress</span>
-                        <span className="font-medium">{project.progress}%</span>
+                        <span className="text-gray-600">Budget Used</span>
+                        <span className="font-medium">
+                          {project.estimatedBudget > 0
+                            ? Math.round((project.actualCost / project.estimatedBudget) * 100)
+                            : 0}%
+                        </span>
                       </div>
-                      <Progress value={project.progress} />
+                      <Progress
+                        value={project.estimatedBudget > 0
+                          ? (project.actualCost / project.estimatedBudget) * 100
+                          : 0}
+                      />
                     </div>
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center justify-between">
@@ -353,23 +363,25 @@ export function ProjectsPage() {
                           Budget
                         </div>
                         <span className="font-medium">
-                          {formatCurrency(project.spent)} / {formatCurrency(project.budget)}
+                          {formatCurrency(project.actualCost)} / {formatCurrency(project.estimatedBudget)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center text-gray-600">
                           <Calendar className="h-4 w-4 mr-1" />
-                          Deadline
+                          Location
                         </div>
-                        <span className="font-medium">{formatDate(project.endDate)}</span>
+                        <span className="font-medium text-right">{project.city}, {project.state}</span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center text-gray-600">
-                          <Users className="h-4 w-4 mr-1" />
-                          Team
+                      {project.endDate && (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center text-gray-600">
+                            <Calendar className="h-4 w-4 mr-1" />
+                            Deadline
+                          </div>
+                          <span className="font-medium">{formatDate(project.endDate)}</span>
                         </div>
-                        <span className="font-medium">{project.teamMembers} members</span>
-                      </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
