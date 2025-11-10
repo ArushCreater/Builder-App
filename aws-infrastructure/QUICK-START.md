@@ -20,6 +20,17 @@ Enter your AWS credentials when prompted.
 
 ## Step 2: Deploy Infrastructure
 
+### 🪟 Windows (PowerShell)
+
+```powershell
+cd aws-infrastructure\scripts
+.\deploy.ps1
+```
+
+**See [WINDOWS-DEPLOY.md](WINDOWS-DEPLOY.md) for detailed Windows guide**
+
+### 🐧 Mac/Linux (Bash)
+
 ```bash
 cd aws-infrastructure/scripts
 chmod +x deploy.sh
