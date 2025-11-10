@@ -4,6 +4,7 @@
   "description": "File Upload Lambda function",
   "main": "index.js",
   "dependencies": {
+    "aws-sdk": "^2.1691.0",
     "uuid": "^9.0.1"
   }
 }
