@@ -74,15 +74,17 @@ export function LeadsPage() {
     notes: '',
   });
 
-  const { data: leads, isLoading } = useQuery({
+  const { data: leadsData, isLoading } = useQuery({
     queryKey: ['leads', searchTerm, statusFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
-      return apiClient.get<Lead[]>(`/leads?${params}`);
+      return apiClient.get<{ leads: Lead[] }>(`/leads?${params}`);
     },
   });
+
+  const leads = leadsData?.leads || [];
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Lead>) => apiClient.post('/leads', data),
@@ -287,7 +289,14 @@ export function LeadsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leads?.map((lead) => (
+                {leads.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                      No leads found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  leads.map((lead) => (
                   <TableRow key={lead.id}>
                     <TableCell className="font-medium">
                       {lead.firstName} {lead.lastName}
@@ -322,7 +331,8 @@ export function LeadsPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  ))
+                )}
               </TableBody>
             </Table>
           )}
