@@ -141,16 +141,17 @@ function Update-LambdaFunction {
 
     # Update Lambda function code
     Write-Host "   5. Updating Lambda function..." -ForegroundColor Yellow
-    aws lambda update-function-code `
+    $updateOutput = aws lambda update-function-code `
         --function-name $PhysicalFunctionName `
         --s3-bucket $DeploymentBucket `
         --s3-key "functions/$FunctionName.zip" `
-        --region $Region 2>&1 | Out-Null
+        --region $Region 2>&1
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "   [SUCCESS] $FunctionName updated!" -ForegroundColor Green
     } else {
-        Write-Host "   [ERROR] Lambda update failed" -ForegroundColor Red
+        Write-Host "   [ERROR] Lambda update failed:" -ForegroundColor Red
+        Write-Host "   $updateOutput" -ForegroundColor Red
     }
 }
 
