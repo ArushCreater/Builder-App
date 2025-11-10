@@ -46,6 +46,36 @@ async function login(body) {
     return response(400, { error: 'Email and password required' });
   }
 
+  // Demo mode: Allow login with demo credentials without database check
+  if (email === 'demo@buildertrend.com' && password === 'demo123') {
+    const demoUser = {
+      id: 'demo-user-id',
+      email: 'demo@buildertrend.com',
+      firstName: 'Demo',
+      lastName: 'User',
+      role: 'ADMIN',
+      phone: '555-0100',
+      company: 'BuilderTrend Demo',
+      status: 'ACTIVE',
+      avatar: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const token = jwt.sign(
+      { id: demoUser.id, email: demoUser.email, role: demoUser.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    console.log('Demo user logged in successfully');
+
+    return response(200, {
+      user: demoUser,
+      token,
+    });
+  }
+
   // Find user by email
   const result = await dynamodb
     .query({
