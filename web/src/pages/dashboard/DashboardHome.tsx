@@ -63,20 +63,58 @@ const revenueChartData = [
 ];
 
 export function DashboardHome() {
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: () => apiClient.get<DashboardStats>('/dashboard/stats'),
-  });
+  // TODO: Replace with real API calls when backend endpoints are ready
+  // Using mock data for now
+  const stats: DashboardStats = {
+    totalProjects: 24,
+    activeProjects: 12,
+    totalLeads: 45,
+    totalRevenue: 328000,
+    revenueGrowth: 12.5,
+    completedTasks: 156,
+    pendingTasks: 43,
+  };
+  const statsLoading = false;
 
-  const { data: recentActivity } = useQuery({
-    queryKey: ['recent-activity'],
-    queryFn: () => apiClient.get<RecentActivity[]>('/dashboard/activity'),
-  });
+  const recentActivity: RecentActivity[] = [
+    {
+      id: '1',
+      type: 'project',
+      title: 'New project started',
+      description: 'Downtown Office Renovation',
+      timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+      user: 'John Doe',
+    },
+    {
+      id: '2',
+      type: 'task',
+      title: 'Task completed',
+      description: 'Foundation inspection approved',
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+      user: 'Jane Smith',
+    },
+  ];
 
-  const { data: activeProjects } = useQuery({
-    queryKey: ['active-projects'],
-    queryFn: () => apiClient.get<Project[]>('/projects?status=active&limit=5'),
-  });
+  const activeProjects: Project[] = [
+    {
+      id: '1',
+      name: 'Residential Complex A',
+      status: 'IN_PROGRESS',
+      progress: 65,
+      budget: 500000,
+      spent: 325000,
+      dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
+    },
+    {
+      id: '2',
+      name: 'Commercial Building Renovation',
+      status: 'IN_PROGRESS',
+      progress: 40,
+      budget: 750000,
+      spent: 300000,
+      dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 45).toISOString(),
+    },
+  ];
 
   if (statsLoading) {
     return (

@@ -68,18 +68,83 @@ export function ProjectsPage() {
     endDate: '',
   });
 
+  // TODO: Replace with real API calls when backend is ready
+  // Using localStorage for demo mode
   const { data: projects, isLoading } = useQuery({
     queryKey: ['projects', searchTerm, statusFilter],
     queryFn: () => {
-      const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (statusFilter !== 'all') params.append('status', statusFilter);
-      return apiClient.get<Project[]>(`/projects?${params}`);
+      const stored = localStorage.getItem('demo_projects');
+      let allProjects: Project[] = stored ? JSON.parse(stored) : [
+        {
+          id: '1',
+          name: 'Residential Complex A',
+          description: 'Modern residential building with 50 units',
+          status: 'active',
+          progress: 65,
+          budget: 500000,
+          spent: 325000,
+          startDate: '2024-01-15',
+          endDate: '2024-12-31',
+          clientName: 'ABC Developers',
+          teamMembers: 15,
+          createdAt: '2024-01-01',
+        },
+        {
+          id: '2',
+          name: 'Commercial Building Renovation',
+          description: 'Office space renovation and modernization',
+          status: 'active',
+          progress: 40,
+          budget: 750000,
+          spent: 300000,
+          startDate: '2024-03-01',
+          endDate: '2025-02-28',
+          clientName: 'XYZ Corp',
+          teamMembers: 20,
+          createdAt: '2024-02-15',
+        },
+      ];
+
+      // Filter by search term
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        allProjects = allProjects.filter(p =>
+          p.name.toLowerCase().includes(search) ||
+          p.description.toLowerCase().includes(search) ||
+          p.clientName.toLowerCase().includes(search)
+        );
+      }
+
+      // Filter by status
+      if (statusFilter !== 'all') {
+        allProjects = allProjects.filter(p => p.status === statusFilter);
+      }
+
+      return Promise.resolve(allProjects);
     },
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Partial<Project>) => apiClient.post('/projects', data),
+    mutationFn: (data: Partial<Project>) => {
+      const stored = localStorage.getItem('demo_projects');
+      const existing: Project[] = stored ? JSON.parse(stored) : [];
+      const newProject: Project = {
+        id: Date.now().toString(),
+        name: data.name || '',
+        description: data.description || '',
+        status: 'planning',
+        progress: 0,
+        budget: data.budget || 0,
+        spent: 0,
+        startDate: data.startDate || '',
+        endDate: data.endDate || '',
+        clientName: data.clientName || '',
+        teamMembers: 1,
+        createdAt: new Date().toISOString(),
+      };
+      localStorage.setItem('demo_projects', JSON.stringify([...existing, newProject]));
+      return Promise.resolve(newProject);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       setIsCreateDialogOpen(false);
