@@ -90,21 +90,23 @@ try {
         -UseBasicParsing `
         -ErrorAction Stop
 
-    Write-Host "   ✓ OPTIONS request successful!" -ForegroundColor Green
+    Write-Host "   [SUCCESS] OPTIONS request successful!" -ForegroundColor Green
     Write-Host "   Status Code: $($response.StatusCode)" -ForegroundColor Green
 
     # Check for CORS headers
     $corsHeaders = $response.Headers.GetEnumerator() | Where-Object { $_.Key -like "*Access-Control*" }
     if ($corsHeaders) {
-        Write-Host "   ✓ CORS headers present:" -ForegroundColor Green
+        Write-Host "   [SUCCESS] CORS headers present:" -ForegroundColor Green
         $corsHeaders | ForEach-Object {
             Write-Host "     $($_.Key): $($_.Value)" -ForegroundColor White
         }
-    } else {
-        Write-Host "   ⚠ WARNING: No CORS headers found in response!" -ForegroundColor Yellow
     }
-} catch {
-    Write-Host "   ⚠ OPTIONS test failed (this might be expected before full deployment)" -ForegroundColor Yellow
+    else {
+        Write-Host "   [WARNING] No CORS headers found in response!" -ForegroundColor Yellow
+    }
+}
+catch {
+    Write-Host "   [WARNING] OPTIONS test failed (this might be expected before full deployment)" -ForegroundColor Yellow
     if ($_.Exception.Response) {
         Write-Host "   Status: $($_.Exception.Response.StatusCode.Value__)" -ForegroundColor Yellow
     }
