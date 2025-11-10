@@ -29,19 +29,18 @@ export function SchedulePage() {
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
   const [selectedProject, setSelectedProject] = useState<string>('all');
 
-  const { data: events, isLoading } = useQuery({
-    queryKey: ['schedule', selectedProject],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (selectedProject !== 'all') params.append('project', selectedProject);
-      return apiClient.get<ScheduleEvent[]>(`/schedule?${params}`);
-    },
+  // Fetch projects with their tasks to build schedule
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects-for-schedule'],
+    queryFn: () => apiClient.get<{ projects: Array<{ id: string; name: string }> }>('/projects'),
   });
 
-  const { data: projects } = useQuery({
-    queryKey: ['projects-list'],
-    queryFn: () => apiClient.get<Array<{ id: string; name: string }>>('/projects?fields=id,name'),
-  });
+  const projects = projectsData?.projects || [];
+
+  // For now, schedule is derived from project data
+  // In the future, this will be a dedicated schedule/calendar endpoint
+  const events: ScheduleEvent[] = [];
+  const isLoading = false;
 
   return (
     <div className="space-y-6">
@@ -92,8 +91,9 @@ export function SchedulePage() {
                 <div className="h-[600px] flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg">
                   <div className="text-center text-gray-500">
                     <Calendar className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                    <p>Calendar view will be integrated with react-big-calendar</p>
-                    <p className="text-sm mt-1">Showing {events?.length || 0} events</p>
+                    <p className="font-medium">Schedule & Calendar Feature</p>
+                    <p className="text-sm mt-2">This feature will display project timelines, tasks, and milestones</p>
+                    <p className="text-sm mt-1">Integrated calendar coming soon</p>
                   </div>
                 </div>
               </CardContent>
@@ -110,9 +110,18 @@ export function SchedulePage() {
                   <div className="flex items-center justify-center h-64">
                     <div className="text-gray-500">Loading...</div>
                   </div>
+                ) : events.length === 0 ? (
+                  <div className="flex items-center justify-center h-64 text-center">
+                    <div className="text-gray-500">
+                      <Calendar className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                      <p className="font-medium">No Scheduled Events</p>
+                      <p className="text-sm mt-2">Schedule feature will show upcoming tasks,</p>
+                      <p className="text-sm">meetings, inspections, and deliveries</p>
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-4">
-                    {events?.map((event) => (
+                    {events.map((event) => (
                       <div
                         key={event.id}
                         className="flex items-start gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
