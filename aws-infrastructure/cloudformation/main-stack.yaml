@@ -412,10 +412,14 @@ Resources:
       - ProjectDocumentIdPutMethod
       - ProjectDocumentIdDeleteMethod
       - ProjectDocumentIdOptionsMethod
+      - GatewayResponse4xx
+      - GatewayResponse5xx
+      - GatewayResponseUnauthorized
+      - GatewayResponseAccessDenied
     Properties:
       RestApiId: !Ref RestApi
       StageName: !Ref Environment
-      Description: !Sub 'Full AWS backend deployment with CORS and Gateway Responses - ${AWS::StackName} - v3'
+      Description: !Sub 'Full AWS backend deployment with CORS and Gateway Responses - ${AWS::StackName} - v4'
 
   # ==================== LAMBDA FUNCTIONS ====================
 
