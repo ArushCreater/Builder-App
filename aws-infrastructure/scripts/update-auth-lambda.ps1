@@ -59,22 +59,41 @@ if ($zipCommand) {
     & zip -r $ZipFile . -x "*.git*" "*.zip" 2>&1 | Out-Null
 } else {
     Write-Host "   Using PowerShell Compress-Archive..." -ForegroundColor Cyan
-    # Fallback to PowerShell - create temp directory to ensure correct structure
-    $tempDir = Join-Path $BuildDir "temp_auth"
-    if (Test-Path $tempDir) {
-        Remove-Item $tempDir -Recurse -Force
+
+    # PowerShell Compress-Archive from current directory
+    # Get all items except git and zip files
+    $filesToZip = @()
+
+    # Add individual files
+    Get-ChildItem -Path $AuthDir -File | Where-Object {
+        $_.Name -notlike '*.git*' -and $_.Name -notlike '*.zip'
+    } | ForEach-Object { $filesToZip += $_.FullName }
+
+    # Add node_modules directory explicitly
+    $nodeModulesPath = Join-Path $AuthDir "node_modules"
+    if (Test-Path $nodeModulesPath) {
+        $filesToZip += $nodeModulesPath
+        Write-Host "   Found node_modules folder" -ForegroundColor Cyan
+    } else {
+        Write-Host "   [ERROR] node_modules folder not found!" -ForegroundColor Red
+        Write-Host "   Run 'npm install --production' in the auth directory first" -ForegroundColor Red
+        Pop-Location
+        exit 1
     }
-    New-Item -ItemType Directory -Path $tempDir | Out-Null
 
-    # Copy files to temp directory
-    Copy-Item -Path "$AuthDir\*" -Destination $tempDir -Recurse -Exclude @('*.git*', '*.zip')
+    # Add package.json and package-lock.json
+    $packageJson = Join-Path $AuthDir "package.json"
+    if (Test-Path $packageJson) {
+        $filesToZip += $packageJson
+    }
 
-    # Zip from temp directory
-    $items = Get-ChildItem -Path $tempDir -Recurse | ForEach-Object { $_.FullName }
-    Compress-Archive -Path "$tempDir\*" -DestinationPath $ZipFile -Force
+    $packageLock = Join-Path $AuthDir "package-lock.json"
+    if (Test-Path $packageLock) {
+        $filesToZip += $packageLock
+    }
 
-    # Clean up temp directory
-    Remove-Item $tempDir -Recurse -Force
+    Write-Host "   Files to zip: $($filesToZip.Count) items" -ForegroundColor Cyan
+    Compress-Archive -Path $filesToZip -DestinationPath $ZipFile -Force
 }
 
 Write-Host "   Zip file created: $ZipFile" -ForegroundColor Green
