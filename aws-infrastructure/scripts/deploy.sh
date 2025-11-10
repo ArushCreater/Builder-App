@@ -119,6 +119,7 @@ aws cloudformation deploy \
     --stack-name ${STACK_NAME} \
     --parameter-overrides \
         Environment=${ENVIRONMENT} \
+        DeploymentBucketName=${DEPLOYMENT_BUCKET} \
     --capabilities CAPABILITY_NAMED_IAM \
     --region ${AWS_REGION} \
     --no-fail-on-empty-changeset

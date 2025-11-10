@@ -149,7 +149,7 @@ $TemplateFile = Join-Path $CloudFormationDir "main-stack.yaml"
 aws cloudformation deploy `
     --template-file $TemplateFile `
     --stack-name $StackName `
-    --parameter-overrides Environment=$Environment `
+    --parameter-overrides Environment=$Environment DeploymentBucketName=$DeploymentBucket `
     --capabilities CAPABILITY_NAMED_IAM `
     --region $Region `
     --no-fail-on-empty-changeset

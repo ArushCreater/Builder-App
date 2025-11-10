@@ -16,6 +16,10 @@ Parameters:
     Default: ''
     Description: Optional custom domain name for API
 
+  DeploymentBucketName:
+    Type: String
+    Description: Name of the S3 bucket containing Lambda deployment packages
+
 Resources:
   # ==================== S3 BUCKETS ====================
 
@@ -293,19 +297,10 @@ Resources:
       LayerName: !Sub buildertrend-node-modules-${Environment}
       Description: Node.js dependencies for Lambda functions
       Content:
-        S3Bucket: !Ref DeploymentBucket
+        S3Bucket: !Ref DeploymentBucketName
         S3Key: layers/node-modules.zip
       CompatibleRuntimes:
         - nodejs18.x
-
-  # Deployment Bucket for Lambda code
-  DeploymentBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub buildertrend-deployment-${Environment}-${AWS::AccountId}
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
 
   # ==================== API GATEWAY ====================
 
@@ -338,7 +333,7 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref DeploymentBucket
+        S3Bucket: !Ref DeploymentBucketName
         S3Key: functions/authorizer.zip
       Environment:
         Variables:
@@ -374,7 +369,7 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref DeploymentBucket
+        S3Bucket: !Ref DeploymentBucketName
         S3Key: functions/auth.zip
       Environment:
         Variables:
@@ -393,7 +388,7 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref DeploymentBucket
+        S3Bucket: !Ref DeploymentBucketName
         S3Key: functions/projects.zip
       Environment:
         Variables:
@@ -411,7 +406,7 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref DeploymentBucket
+        S3Bucket: !Ref DeploymentBucketName
         S3Key: functions/file-upload.zip
       Environment:
         Variables:
