@@ -1,0 +1,9 @@
+{
+  "name": "buildertrend-projects-lambda",
+  "version": "1.0.0",
+  "description": "Projects Lambda function",
+  "main": "index.js",
+  "dependencies": {
+    "uuid": "^9.0.1"
+  }
+}

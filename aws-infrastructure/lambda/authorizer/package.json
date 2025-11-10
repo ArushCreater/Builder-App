@@ -1,0 +1,9 @@
+{
+  "name": "buildertrend-authorizer-lambda",
+  "version": "1.0.0",
+  "description": "JWT Authorizer Lambda function",
+  "main": "index.js",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "buildertrend-auth-lambda",
+  "version": "1.0.0",
+  "description": "Authentication Lambda function",
+  "main": "index.js",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1"
+  }
+}

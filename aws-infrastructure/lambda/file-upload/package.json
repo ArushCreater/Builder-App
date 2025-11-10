@@ -1,0 +1,9 @@
+{
+  "name": "buildertrend-file-upload-lambda",
+  "version": "1.0.0",
+  "description": "File Upload Lambda function",
+  "main": "index.js",
+  "dependencies": {
+    "uuid": "^9.0.1"
+  }
+}
