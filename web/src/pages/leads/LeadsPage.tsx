@@ -74,78 +74,18 @@ export function LeadsPage() {
     notes: '',
   });
 
-  // TODO: Replace with real API calls when backend is ready
-  // Using localStorage for demo mode
   const { data: leads, isLoading } = useQuery({
     queryKey: ['leads', searchTerm, statusFilter],
     queryFn: () => {
-      const stored = localStorage.getItem('demo_leads');
-      let allLeads: Lead[] = stored ? JSON.parse(stored) : [
-        {
-          id: '1',
-          firstName: 'John',
-          lastName: 'Smith',
-          email: 'john.smith@example.com',
-          phone: '555-0123',
-          status: 'new',
-          source: 'Website',
-          estimatedValue: 250000,
-          createdAt: new Date().toISOString(),
-          notes: 'Interested in residential construction',
-        },
-        {
-          id: '2',
-          firstName: 'Sarah',
-          lastName: 'Johnson',
-          email: 'sarah.j@example.com',
-          phone: '555-0456',
-          status: 'contacted',
-          source: 'Referral',
-          estimatedValue: 500000,
-          createdAt: new Date().toISOString(),
-          notes: 'Looking for commercial renovation',
-        },
-      ];
-
-      // Filter by search term
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase();
-        allLeads = allLeads.filter(l =>
-          l.firstName.toLowerCase().includes(search) ||
-          l.lastName.toLowerCase().includes(search) ||
-          l.email.toLowerCase().includes(search) ||
-          l.phone.includes(search)
-        );
-      }
-
-      // Filter by status
-      if (statusFilter !== 'all') {
-        allLeads = allLeads.filter(l => l.status === statusFilter);
-      }
-
-      return Promise.resolve(allLeads);
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      return apiClient.get<Lead[]>(`/leads?${params}`);
     },
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Partial<Lead>) => {
-      const stored = localStorage.getItem('demo_leads');
-      const existing: Lead[] = stored ? JSON.parse(stored) : [];
-      const newLead: Lead = {
-        id: Date.now().toString(),
-        firstName: data.firstName || '',
-        lastName: data.lastName || '',
-        email: data.email || '',
-        phone: data.phone || '',
-        status: 'new',
-        source: data.source || '',
-        estimatedValue: data.estimatedValue || 0,
-        createdAt: new Date().toISOString(),
-        notes: data.notes,
-      };
-      localStorage.setItem('demo_leads', JSON.stringify([...existing, newLead]));
-      return Promise.resolve(newLead);
-    },
+    mutationFn: (data: Partial<Lead>) => apiClient.post('/leads', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       setIsCreateDialogOpen(false);

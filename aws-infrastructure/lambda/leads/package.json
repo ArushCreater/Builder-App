@@ -1,0 +1,10 @@
+{
+  "name": "leads-lambda",
+  "version": "1.0.0",
+  "description": "Lambda function for leads management",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1400.0",
+    "uuid": "^9.0.0"
+  }
+}

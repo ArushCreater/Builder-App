@@ -101,6 +101,7 @@ Package-Lambda "authorizer"
 Package-Lambda "auth"
 Package-Lambda "projects"
 Package-Lambda "file-upload"
+Package-Lambda "leads"
 
 Write-Host "Lambda functions packaged and uploaded!" -ForegroundColor Green
 Write-Host ""

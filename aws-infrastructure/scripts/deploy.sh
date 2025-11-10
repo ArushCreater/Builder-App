@@ -92,6 +92,14 @@ zip -r ../../../build/file-upload.zip . -x "*.git*" -x "*node_modules/.cache*"
 aws s3 cp ../../../build/file-upload.zip "s3://${DEPLOYMENT_BUCKET}/functions/file-upload.zip"
 cd ..
 
+# Package Leads
+echo "Packaging leads function..."
+cd leads
+npm install --production
+zip -r ../../../build/leads.zip . -x "*.git*" -x "*node_modules/.cache*"
+aws s3 cp ../../../build/leads.zip "s3://${DEPLOYMENT_BUCKET}/functions/leads.zip"
+cd ..
+
 cd ../scripts
 
 echo -e "${GREEN}Lambda functions packaged and uploaded!${NC}"

@@ -63,58 +63,70 @@ const revenueChartData = [
 ];
 
 export function DashboardHome() {
-  // TODO: Replace with real API calls when backend endpoints are ready
-  // Using mock data for now
+  // Fetch projects from localStorage (demo mode)
+  const { data: allProjects, isLoading: projectsLoading } = useQuery({
+    queryKey: ['dashboard-projects'],
+    queryFn: () => {
+      const stored = localStorage.getItem('demo_projects');
+      return Promise.resolve(stored ? JSON.parse(stored) : []);
+    },
+  });
+
+  // Fetch leads from API
+  const { data: allLeads, isLoading: leadsLoading } = useQuery({
+    queryKey: ['dashboard-leads'],
+    queryFn: () => apiClient.get<any[]>('/leads'),
+  });
+
+  const statsLoading = projectsLoading || leadsLoading;
+
+  // Calculate stats from actual data
+  const projects = allProjects || [];
+  const leads = allLeads || [];
+
   const stats: DashboardStats = {
-    totalProjects: 24,
-    activeProjects: 12,
-    totalLeads: 45,
-    totalRevenue: 328000,
-    revenueGrowth: 12.5,
-    completedTasks: 156,
-    pendingTasks: 43,
+    totalProjects: projects.length,
+    activeProjects: projects.filter((p: any) => p.status === 'active').length,
+    totalLeads: leads.length,
+    totalRevenue: projects.reduce((sum: number, p: any) => sum + (p.spent || 0), 0),
+    revenueGrowth: 12.5, // TODO: Calculate from historical data
+    completedTasks: 0, // TODO: Fetch from tasks endpoint when available
+    pendingTasks: 0, // TODO: Fetch from tasks endpoint when available
   };
-  const statsLoading = false;
 
+  // Generate recent activity from projects and leads
   const recentActivity: RecentActivity[] = [
-    {
-      id: '1',
+    ...projects.slice(0, 3).map((p: any) => ({
+      id: p.id,
       type: 'project',
-      title: 'New project started',
-      description: 'Downtown Office Renovation',
-      timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      user: 'John Doe',
-    },
-    {
-      id: '2',
-      type: 'task',
-      title: 'Task completed',
-      description: 'Foundation inspection approved',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-      user: 'Jane Smith',
-    },
-  ];
+      title: 'Project updated',
+      description: p.name,
+      timestamp: p.updatedAt || p.createdAt,
+      user: 'System',
+    })),
+    ...leads.slice(0, 2).map((l: any) => ({
+      id: l.id,
+      type: 'lead',
+      title: 'New lead',
+      description: `${l.firstName} ${l.lastName}`,
+      timestamp: l.createdAt,
+      user: 'System',
+    })),
+  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
 
-  const activeProjects: Project[] = [
-    {
-      id: '1',
-      name: 'Residential Complex A',
-      status: 'IN_PROGRESS',
-      progress: 65,
-      budget: 500000,
-      spent: 325000,
-      dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
-    },
-    {
-      id: '2',
-      name: 'Commercial Building Renovation',
-      status: 'IN_PROGRESS',
-      progress: 40,
-      budget: 750000,
-      spent: 300000,
-      dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 45).toISOString(),
-    },
-  ];
+  // Get active projects
+  const activeProjects: Project[] = projects
+    .filter((p: any) => p.status === 'active')
+    .slice(0, 5)
+    .map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      status: p.status.toUpperCase(),
+      progress: p.progress || 0,
+      budget: p.budget || 0,
+      spent: p.spent || 0,
+      dueDate: p.endDate,
+    }));
 
   if (statsLoading) {
     return (
