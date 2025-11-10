@@ -360,6 +360,7 @@ Resources:
     Properties:
       RestApiId: !Ref RestApi
       StageName: !Ref Environment
+      Description: !Sub 'Deployment with CORS and /api prefix - ${AWS::StackName}'
 
   # ==================== LAMBDA FUNCTIONS ====================
 
@@ -583,8 +584,8 @@ Resources:
 
 Outputs:
   ApiUrl:
-    Description: API Gateway endpoint URL
-    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Description: API Gateway endpoint URL (use this in your web/.env as VITE_API_URL)
+    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api
     Export:
       Name: !Sub ${AWS::StackName}-ApiUrl
 
