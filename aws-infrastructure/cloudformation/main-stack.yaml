@@ -415,7 +415,7 @@ Resources:
     Properties:
       RestApiId: !Ref RestApi
       StageName: !Ref Environment
-      Description: !Sub 'Deployment with all project endpoints - ${AWS::StackName}'
+      Description: !Sub 'Full AWS backend deployment with CORS - ${AWS::StackName} - v2'
 
   # ==================== LAMBDA FUNCTIONS ====================
 
