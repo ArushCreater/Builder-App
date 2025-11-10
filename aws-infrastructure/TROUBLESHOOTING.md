@@ -6,6 +6,29 @@ This error means CloudFormation encountered an issue during deployment and rolle
 
 ---
 
+## Error: "Stack is in ROLLBACK_COMPLETE state and can not be updated"
+
+This means a previous deployment failed and left the stack in a failed state. You need to delete the old stack before deploying again.
+
+**Quick Fix (PowerShell):**
+```powershell
+cd aws-infrastructure\scripts
+.\delete-stack.ps1
+```
+
+Wait 2-5 minutes for deletion, then redeploy:
+```powershell
+.\deploy.ps1
+```
+
+**Manual Deletion (if script doesn't work):**
+```powershell
+aws cloudformation delete-stack --stack-name buildertrend-dev --region us-east-1
+aws cloudformation wait stack-delete-complete --stack-name buildertrend-dev --region us-east-1
+```
+
+---
+
 ## Step 1: Check What Went Wrong
 
 Run the diagnostic script:
