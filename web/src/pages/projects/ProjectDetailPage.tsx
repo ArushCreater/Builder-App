@@ -1,11 +1,25 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useState, useRef } from 'react';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../../components/ui/dialog';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { useToast } from '../../components/ui/use-toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table,
   TableBody,
@@ -14,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { ArrowLeft, Calendar, FileText, Edit } from 'lucide-react';
+import { ArrowLeft, Calendar, FileText, Edit, Plus } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
 interface Project {
@@ -41,7 +55,7 @@ interface Task {
   projectId: string;
   title: string;
   description?: string;
-  status: string;
+  status: 'todo' | 'in_progress' | 'done' | string;
   priority: string;
   assignedTo?: string;
   dueDate?: string;
@@ -79,6 +93,41 @@ interface Document {
 export function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
+  const [isDocDialogOpen, setIsDocDialogOpen] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    title: '',
+    description: '',
+    status: 'todo',
+    priority: 'medium',
+    assignedTo: '',
+    dueDate: '',
+  });
+  const [docForm, setDocForm] = useState({
+    name: '',
+    type: 'file',
+    category: 'other',
+    fileSize: '',
+    mimeType: '',
+  });
+  const docFileRef = useRef<HTMLInputElement | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    type: '',
+    status: '',
+    address: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    startDate: '',
+    endDate: '',
+    estimatedBudget: '',
+    actualCost: '',
+  });
 
   const { data: projectData, isLoading } = useQuery({
     queryKey: ['project', id],
@@ -105,6 +154,48 @@ export function ProjectDetailPage() {
   const budgetItems = budgetData?.items || [];
   const documents = documentsData?.documents || [];
 
+  const taskMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post<{ task: Task }>(`/projects/${id}/tasks`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-tasks', id] });
+      setIsTaskDialogOpen(false);
+      setTaskForm({ title: '', description: '', status: 'todo', priority: 'medium', assignedTo: '', dueDate: '' });
+      toast({ title: 'Task added' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not add task', variant: 'destructive' }),
+  });
+
+  const taskUpdateMutation = useMutation({
+    mutationFn: (data: any) =>
+      apiClient.put<{ task: Task }>(`/projects/${id}/tasks/${data.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-tasks', id] });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not update task', variant: 'destructive' }),
+  });
+
+  const docMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post<{ document: Document }>(`/projects/${id}/documents`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-documents', id] });
+      setIsDocDialogOpen(false);
+      setDocForm({ name: '', type: 'file', category: 'other', fileSize: '', mimeType: '' });
+      toast({ title: 'File added' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not upload file', variant: 'destructive' }),
+  });
+
+  const editMutation = useMutation({
+    mutationFn: (data: any) => apiClient.put<{ project: Project }>(`/projects/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setIsEditDialogOpen(false);
+      toast({ title: 'Project updated' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not update project', variant: 'destructive' }),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -125,6 +216,24 @@ export function ProjectDetailPage() {
     ? (project.actualCost / project.estimatedBudget) * 100
     : 0;
 
+  const openEdit = () => {
+    setEditForm({
+      name: project.name || '',
+      description: project.description || '',
+      type: project.type || '',
+      status: project.status || '',
+      address: project.address || '',
+      city: project.city || '',
+      state: project.state || '',
+      zipCode: project.zipCode || '',
+      startDate: project.startDate || '',
+      endDate: project.endDate || '',
+      estimatedBudget: project.estimatedBudget?.toString() || '',
+      actualCost: project.actualCost?.toString() || '',
+    });
+    setIsEditDialogOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -137,10 +246,143 @@ export function ProjectDetailPage() {
             <p className="text-gray-500 mt-1">{project.description}</p>
           </div>
         </div>
-        <Button>
-          <Edit className="mr-2 h-4 w-4" />
-          Edit Project
-        </Button>
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={openEdit}>
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Project
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                editMutation.mutate({
+                  ...editForm,
+                  estimatedBudget: editForm.estimatedBudget ? parseFloat(editForm.estimatedBudget) : 0,
+                  actualCost: editForm.actualCost ? parseFloat(editForm.actualCost) : 0,
+                });
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Edit Project</DialogTitle>
+                <DialogDescription>Update project details</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="p-name">Name</Label>
+                  <Input
+                    id="p-name"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-type">Type</Label>
+                  <Input
+                    id="p-type"
+                    value={editForm.type}
+                    onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-status">Status</Label>
+                  <Input
+                    id="p-status"
+                    value={editForm.status}
+                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-budget">Estimated Budget</Label>
+                  <Input
+                    id="p-budget"
+                    type="number"
+                    value={editForm.estimatedBudget}
+                    onChange={(e) => setEditForm({ ...editForm, estimatedBudget: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-actual">Actual Cost</Label>
+                  <Input
+                    id="p-actual"
+                    type="number"
+                    value={editForm.actualCost}
+                    onChange={(e) => setEditForm({ ...editForm, actualCost: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <Label htmlFor="p-desc">Description</Label>
+                  <textarea
+                    id="p-desc"
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-address">Address</Label>
+                  <Input
+                    id="p-address"
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-city">City</Label>
+                  <Input
+                    id="p-city"
+                    value={editForm.city}
+                    onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-state">State</Label>
+                  <Input
+                    id="p-state"
+                    value={editForm.state}
+                    onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-zip">Zip</Label>
+                  <Input
+                    id="p-zip"
+                    value={editForm.zipCode}
+                    onChange={(e) => setEditForm({ ...editForm, zipCode: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-start">Start Date</Label>
+                  <Input
+                    id="p-start"
+                    type="date"
+                    value={editForm.startDate}
+                    onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-end">End Date</Label>
+                  <Input
+                    id="p-end"
+                    type="date"
+                    value={editForm.endDate}
+                    onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={editMutation.isPending}>
+                  {editMutation.isPending ? 'Saving...' : 'Save'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Overview Cards */}
@@ -244,52 +486,146 @@ export function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="tasks" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Tasks</CardTitle>
-                <Button size="sm">Add Task</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Task</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Assignee</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Due Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tasks.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500">
-                        No tasks yet
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    tasks.map((task) => (
-                      <TableRow key={task.id}>
-                        <TableCell className="font-medium">{task.title}</TableCell>
-                        <TableCell>
-                          <Badge>{task.status}</Badge>
-                        </TableCell>
-                        <TableCell>{task.assignedTo || 'Unassigned'}</TableCell>
-                        <TableCell>
-                          <Badge variant={task.priority === 'HIGH' ? 'destructive' : 'secondary'}>
-                            {task.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{task.dueDate ? formatDate(task.dueDate) : 'No deadline'}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">Task Board</h3>
+            <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" onClick={() => setIsTaskDialogOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Task
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    taskMutation.mutate(taskForm);
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>Add Task</DialogTitle>
+                    <DialogDescription>Create a task for this project</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="t-title">Title</Label>
+                      <Input
+                        id="t-title"
+                        value={taskForm.title}
+                        onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="t-desc">Description</Label>
+                      <textarea
+                        id="t-desc"
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+                        value={taskForm.description}
+                        onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="t-status">Status</Label>
+                        <Input
+                          id="t-status"
+                          value={taskForm.status}
+                          onChange={(e) => setTaskForm({ ...taskForm, status: e.target.value as any })}
+                          placeholder="todo | in_progress | done"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="t-priority">Priority</Label>
+                        <Input
+                          id="t-priority"
+                          value={taskForm.priority}
+                          onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="t-assignee">Assignee</Label>
+                        <Input
+                          id="t-assignee"
+                          value={taskForm.assignedTo}
+                          onChange={(e) => setTaskForm({ ...taskForm, assignedTo: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="t-due">Due Date</Label>
+                        <Input
+                          id="t-due"
+                          type="date"
+                          value={taskForm.dueDate}
+                          onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsTaskDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={taskMutation.isPending}>
+                      {taskMutation.isPending ? 'Adding...' : 'Add Task'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            {['todo', 'in_progress', 'done'].map((column) => {
+              const columnTasks = tasks.filter((t) => t.status === column);
+              const title =
+                column === 'todo' ? 'To Do' : column === 'in_progress' ? 'In Progress' : 'Done';
+              return (
+                <div
+                  key={column}
+                  className="rounded-lg border border-gray-200 bg-white shadow-sm"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    const taskId = e.dataTransfer.getData('text/plain');
+                    if (taskId) {
+                      taskUpdateMutation.mutate({ id: taskId, status: column });
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <span className="font-semibold text-gray-800">{title}</span>
+                    <Badge variant="secondary">{columnTasks.length}</Badge>
+                  </div>
+                  <div className="space-y-3 p-3 min-h-[200px]">
+                    {columnTasks.length === 0 ? (
+                      <div className="text-sm text-gray-400 text-center py-6">No tasks</div>
+                    ) : (
+                      columnTasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm cursor-move"
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', task.id);
+                          }}
+                        >
+                          <div className="font-medium text-gray-900">{task.title}</div>
+                          <div className="text-sm text-gray-600 mt-1">{task.description}</div>
+                          <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+                            <span>{task.assignedTo || 'Unassigned'}</span>
+                            <Badge variant={task.priority === 'HIGH' ? 'destructive' : 'secondary'}>
+                              {task.priority}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </TabsContent>
 
         <TabsContent value="budget" className="space-y-4">
@@ -340,7 +676,117 @@ export function ProjectDetailPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Documents</CardTitle>
-                <Button size="sm">Upload File</Button>
+                <Dialog open={isDocDialogOpen} onOpenChange={setIsDocDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" onClick={() => setIsDocDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Upload File
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        docMutation.mutate({
+                          ...docForm,
+                          fileSize: docForm.fileSize ? parseFloat(docForm.fileSize) : 0,
+                        });
+                      }}
+                    >
+                      <DialogHeader>
+                        <DialogTitle>Upload File</DialogTitle>
+                        <DialogDescription>Add a document for this project</DialogDescription>
+                      </DialogHeader>
+                      <div className="grid gap-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="d-name">Name</Label>
+                          <Input
+                            id="d-name"
+                            value={docForm.name}
+                            onChange={(e) => setDocForm({ ...docForm, name: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="d-file">File</Label>
+                          <div className="flex items-center gap-3">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => docFileRef.current?.click()}
+                            >
+                              Choose File
+                            </Button>
+                            {docForm.name && <span className="text-sm text-gray-600">{docForm.name}</span>}
+                          </div>
+                          <input
+                            id="d-file"
+                            type="file"
+                            ref={docFileRef}
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setDocForm({
+                                  ...docForm,
+                                  name: file.name,
+                                  fileSize: file.size.toString(),
+                                  mimeType: file.type,
+                                });
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="d-type">Type</Label>
+                            <Input
+                              id="d-type"
+                              value={docForm.type}
+                              onChange={(e) => setDocForm({ ...docForm, type: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="d-category">Category</Label>
+                            <Input
+                              id="d-category"
+                              value={docForm.category}
+                              onChange={(e) => setDocForm({ ...docForm, category: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="d-size">File Size (bytes)</Label>
+                            <Input
+                              id="d-size"
+                              type="number"
+                              value={docForm.fileSize}
+                              onChange={(e) => setDocForm({ ...docForm, fileSize: e.target.value })}
+                              placeholder="bytes"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="d-mime">MIME Type</Label>
+                            <Input
+                              id="d-mime"
+                              value={docForm.mimeType}
+                              onChange={(e) => setDocForm({ ...docForm, mimeType: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsDocDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={docMutation.isPending}>
+                          {docMutation.isPending ? 'Uploading...' : 'Upload'}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardHeader>
             <CardContent>

@@ -12,6 +12,9 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  Calendar,
+  Target,
+  ShieldAlert,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { formatCurrency, formatRelativeTime } from '../../lib/utils';
@@ -24,6 +27,9 @@ interface DashboardStats {
   revenueGrowth: number;
   completedTasks: number;
   pendingTasks: number;
+  overdueProjects: number;
+  planningProjects: number;
+  atRiskBudget: number;
 }
 
 interface RecentActivity {
@@ -85,11 +91,18 @@ export function DashboardHome() {
   const stats: DashboardStats = {
     totalProjects: projects.length,
     activeProjects: projects.filter((p: any) => p.status === 'IN_PROGRESS').length,
+    planningProjects: projects.filter((p: any) => p.status === 'PLANNING').length,
     totalLeads: leads.length,
     totalRevenue: projects.reduce((sum: number, p: any) => sum + (p.actualCost || 0), 0),
     revenueGrowth: 12.5, // TODO: Calculate from historical data
     completedTasks: 0, // TODO: Fetch from tasks endpoint when available
     pendingTasks: 0, // TODO: Fetch from tasks endpoint when available
+    overdueProjects: projects.filter((p: any) => p.endDate && new Date(p.endDate) < new Date()).length,
+    atRiskBudget: projects.filter((p: any) => {
+      const est = Number(p.estimatedBudget || 0);
+      const act = Number(p.actualCost || 0);
+      return est > 0 && act / est >= 0.9;
+    }).length,
   };
 
   // Generate recent activity from projects and leads
@@ -116,7 +129,7 @@ export function DashboardHome() {
 
   // Get active projects
   const activeProjects: Project[] = projects
-    .filter((p: any) => p.status === 'active')
+    .filter((p: any) => p.status && p.status.toUpperCase() !== 'COMPLETED')
     .slice(0, 5)
     .map((p: any) => ({
       id: p.id,
@@ -152,6 +165,13 @@ export function DashboardHome() {
       bgColor: 'bg-green-50',
     },
     {
+      title: 'Planning Pipeline',
+      value: stats?.planningProjects || 0,
+      icon: Target,
+      color: 'text-indigo-600',
+      bgColor: 'bg-indigo-50',
+    },
+    {
       title: 'Total Leads',
       value: stats?.totalLeads || 0,
       icon: Users,
@@ -167,6 +187,27 @@ export function DashboardHome() {
       growth: stats?.revenueGrowth,
     },
   ];
+
+  const alerts = [
+    stats.overdueProjects > 0 && {
+      id: 'alert-overdue',
+      title: 'Overdue projects',
+      detail: `${stats.overdueProjects} project(s) past end date`,
+      severity: 'high',
+    },
+    stats.atRiskBudget > 0 && {
+      id: 'alert-budget',
+      title: 'Budget at risk',
+      detail: `${stats.atRiskBudget} project(s) >90% of budget`,
+      severity: 'medium',
+    },
+    stats.pendingTasks > 0 && {
+      id: 'alert-tasks',
+      title: 'Pending tasks',
+      detail: `${stats.pendingTasks} task(s) awaiting action`,
+      severity: 'low',
+    },
+  ].filter(Boolean) as Array<{ id: string; title: string; detail: string; severity: 'high' | 'medium' | 'low' }>;
 
   return (
     <div className="space-y-6">
@@ -270,9 +311,9 @@ export function DashboardHome() {
       </div>
 
       {/* Active Projects and Recent Activity */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         {/* Active Projects */}
-        <Card className="border border-slate-200 shadow-sm bg-white">
+        <Card className="border border-slate-200 shadow-sm bg-white lg:col-span-2">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Active Projects</CardTitle>
             <Badge className="bg-indigo-50 text-indigo-700 border-indigo-100">
@@ -296,6 +337,39 @@ export function DashboardHome() {
                   <p className="text-xs text-gray-500">
                     Due: {new Date(project.dueDate).toLocaleDateString()}
                   </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Alerts */}
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Alerts & Risks</CardTitle>
+            <Badge className="bg-red-50 text-red-700 border-red-100">{alerts.length} open</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {alerts.length === 0 && <p className="text-sm text-gray-500">No alerts right now.</p>}
+              {alerts.map((alert) => (
+                <div
+                  key={alert.id}
+                  className="flex items-start gap-3 rounded-xl border border-gray-100 p-3 bg-gray-50"
+                >
+                  <div className="mt-1">
+                    {alert.severity === 'high' ? (
+                      <ShieldAlert className="h-5 w-5 text-red-600" />
+                    ) : alert.severity === 'medium' ? (
+                      <AlertCircle className="h-5 w-5 text-amber-500" />
+                    ) : (
+                      <Clock className="h-5 w-5 text-blue-500" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-gray-900">{alert.title}</p>
+                    <p className="text-sm text-gray-600">{alert.detail}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -336,34 +410,89 @@ export function DashboardHome() {
       </div>
 
       {/* Tasks Summary */}
-      <Card className="border border-slate-200 shadow-sm bg-white">
-        <CardHeader className="flex items-center justify-between">
-          <CardTitle>Tasks Summary</CardTitle>
-          <Badge className="bg-purple-50 text-purple-700 border-purple-100">Team</Badge>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="flex items-center gap-4 rounded-2xl border border-gray-100 p-4">
-              <div className="p-3 bg-emerald-50 rounded-xl">
-                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Tasks Summary</CardTitle>
+            <Badge className="bg-purple-50 text-purple-700 border-purple-100">Team</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex items-center gap-4 rounded-2xl border border-gray-100 p-4">
+                <div className="p-3 bg-emerald-50 rounded-xl">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats?.completedTasks || 0}</p>
+                  <p className="text-sm text-gray-500">Completed Tasks</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-bold">{stats?.completedTasks || 0}</p>
-                <p className="text-sm text-gray-500">Completed Tasks</p>
+              <div className="flex items-center gap-4 rounded-2xl border border-gray-100 p-4">
+                <div className="p-3 bg-amber-50 rounded-xl">
+                  <Clock className="h-6 w-6 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats?.pendingTasks || 0}</p>
+                  <p className="text-sm text-gray-500">Pending Tasks</p>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-4 rounded-2xl border border-gray-100 p-4">
-              <div className="p-3 bg-amber-50 rounded-xl">
-                <Clock className="h-6 w-6 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats?.pendingTasks || 0}</p>
-                <p className="text-sm text-gray-500">Pending Tasks</p>
-              </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Pipeline & Conversions</CardTitle>
+            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">Sales</Badge>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">Leads</span>
+              <span className="font-semibold text-gray-900">{stats.totalLeads}</span>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">Projects (planning)</span>
+              <span className="font-semibold text-gray-900">{stats.planningProjects}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">At-risk budgets</span>
+              <span className="font-semibold text-red-600">{stats.atRiskBudget}</span>
+            </div>
+            <Progress value={Math.min(100, (stats.activeProjects / Math.max(stats.totalProjects, 1)) * 100)} />
+            <p className="text-xs text-gray-500">Active/total projects ratio</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Upcoming Deadlines</CardTitle>
+            <Badge className="bg-orange-50 text-orange-700 border-orange-100">Timeline</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {projects
+                .filter((p: any) => p.endDate)
+                .sort((a: any, b: any) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())
+                .slice(0, 4)
+                .map((p: any) => (
+                  <div key={p.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-3">
+                    <div>
+                      <p className="font-semibold text-sm text-gray-900">{p.name}</p>
+                      <p className="text-xs text-gray-500">{p.city}, {p.state}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-700">
+                      <Calendar className="h-4 w-4 text-gray-500" />
+                      {new Date(p.endDate).toLocaleDateString()}
+                    </div>
+                  </div>
+                ))}
+              {projects.filter((p: any) => p.endDate).length === 0 && (
+                <p className="text-sm text-gray-500">No deadlines scheduled.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

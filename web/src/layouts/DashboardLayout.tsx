@@ -95,7 +95,7 @@ export function DashboardLayout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 bg-slate-900/95 backdrop-blur border-r border-slate-800 transform transition-transform duration-200 ease-in-out lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 w-64 bg-slate-900/95 backdrop-blur border-r border-slate-800 transform transition-transform duration-200 ease-in-out lg:translate-x-0 rounded-r-3xl overflow-x-hidden',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -104,8 +104,7 @@ export function DashboardLayout() {
           <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 opacity-95" />
           <div className="relative flex items-center justify-between h-16 px-6 text-white">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] font-semibold opacity-80">Builder OS</p>
-              <h1 className="text-xl font-bold">BuilderTrend</h1>
+              <h1 className="text-xl font-bold">BuilderOS</h1>
             </div>
             <Badge className="bg-white/15 text-white border-white/20">v1.0.0</Badge>
             <button
@@ -118,7 +117,7 @@ export function DashboardLayout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4">
+        <nav className="flex-1 overflow-y-auto py-4 pr-1">
           <div className="px-3 space-y-1">
             {navigation.map((item) => {
               const Icon = item.icon;
@@ -151,15 +150,6 @@ export function DashboardLayout() {
           </div>
         </nav>
 
-        {/* Sidebar footer */}
-        <div className="border-t border-slate-800 p-4">
-          <div className="rounded-xl bg-slate-800 p-4">
-            <p className="text-sm font-semibold text-white">Project Pulse</p>
-            <p className="text-xs text-slate-300 mt-1">
-              Track schedules, budgets, and teams in one place.
-            </p>
-          </div>
-        </div>
       </aside>
 
       {/* Main content */}

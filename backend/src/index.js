@@ -203,6 +203,9 @@ const dailyLogs = [
   { id: 'd-2', projectName: 'Downtown Office', date: '2024-03-02', weather: 'Cloudy', temperature: '19C', workPerformed: 'Footings poured', crewSize: 10, hoursWorked: 7.5, equipmentUsed: 'Concrete pump', materialsReceived: 'Rebar', notes: 'No issues', photos: 0, createdBy: 'PM' },
 ];
 
+const projectTasks = {};
+const projectDocuments = {};
+
 const documents = [
   {
     id: 'doc-1',
@@ -394,8 +397,151 @@ app.get('/api/projects/:id', (req, res) => {
     .catch(() => res.status(404).json({ message: 'Not found' }));
 });
 
+app.put('/api/projects/:id', (req, res) => {
+  const body = req.body || {};
+  if (!pool) {
+    const project = projects.find(p => p.id === req.params.id);
+    if (!project) return res.status(404).json({ message: 'Not found' });
+    Object.assign(project, {
+      name: body.name ?? project.name,
+      description: body.description ?? project.description,
+      type: body.type ?? project.type,
+      status: body.status ?? project.status,
+      address: body.address ?? project.address,
+      city: body.city ?? project.city,
+      state: body.state ?? project.state,
+      zipCode: body.zipCode ?? project.zipCode,
+      startDate: body.startDate ?? project.startDate,
+      endDate: body.endDate ?? project.endDate,
+      estimatedBudget:
+        body.estimatedBudget !== undefined ? Number(body.estimatedBudget) || 0 : project.estimatedBudget,
+      actualCost: body.actualCost !== undefined ? Number(body.actualCost) || 0 : project.actualCost,
+      updatedAt: new Date().toISOString(),
+    });
+    return res.json({ project });
+  }
+  pool
+    .query(
+      `UPDATE projects SET
+        name=$1, description=$2, type=$3, status=$4, address=$5, city=$6, state=$7, zip_code=$8,
+        start_date=$9, end_date=$10, estimated_budget=$11, actual_cost=$12, updated_at=now()
+       WHERE id=$13 RETURNING *`,
+      [
+        body.name,
+        body.description,
+        body.type,
+        body.status,
+        body.address,
+        body.city,
+        body.state,
+        body.zipCode,
+        body.startDate,
+        body.endDate,
+        body.estimatedBudget !== undefined ? Number(body.estimatedBudget) || 0 : null,
+        body.actualCost !== undefined ? Number(body.actualCost) || 0 : null,
+        req.params.id,
+      ]
+    )
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({
+        project: {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          type: row.type,
+          status: row.status,
+          address: row.address,
+          city: row.city,
+          state: row.state,
+          zipCode: row.zip_code,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          estimatedBudget: Number(row.estimated_budget || 0),
+          actualCost: Number(row.actual_cost || 0),
+          ownerId: row.owner_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        },
+      });
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
+});
+
+app.post('/api/projects/:id/tasks', (req, res) => {
+  const body = req.body || {};
+  const task = {
+    id: randomUUID(),
+    projectId: req.params.id,
+    title: body.title || 'Task',
+    description: body.description || '',
+    status: body.status || 'todo',
+    priority: body.priority || 'medium',
+    assignedTo: body.assignedTo || '',
+    dueDate: body.dueDate || '',
+    createdBy: body.createdBy || 'System',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  projectTasks[req.params.id] = projectTasks[req.params.id] || [];
+  projectTasks[req.params.id].push(task);
+  res.json({ task });
+});
+
+app.put('/api/projects/:id/tasks/:taskId', (req, res) => {
+  const body = req.body || {};
+  const tasks = (projectTasks[req.params.id] = projectTasks[req.params.id] || []);
+  let task = tasks.find(t => t.id === req.params.taskId);
+  if (!task) {
+    task = {
+      id: req.params.taskId,
+      projectId: req.params.id,
+      title: body.title || 'Task',
+      description: body.description || '',
+      status: body.status || 'todo',
+      priority: body.priority || 'medium',
+      assignedTo: body.assignedTo || '',
+      dueDate: body.dueDate || '',
+      createdBy: body.createdBy || 'System',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    tasks.push(task);
+  } else {
+    task.title = body.title ?? task.title;
+    task.description = body.description ?? task.description;
+    task.status = body.status ?? task.status;
+    task.priority = body.priority ?? task.priority;
+    task.assignedTo = body.assignedTo ?? task.assignedTo;
+    task.dueDate = body.dueDate ?? task.dueDate;
+    task.updatedAt = new Date().toISOString();
+  }
+  res.json({ task });
+});
+
+app.post('/api/projects/:id/documents', (req, res) => {
+  const body = req.body || {};
+  const doc = {
+    id: randomUUID(),
+    projectId: req.params.id,
+    name: body.name || 'Document',
+    type: body.type || 'file',
+    category: body.category || 'other',
+    fileSize: body.fileSize || 0,
+    mimeType: body.mimeType || '',
+    uploadedBy: body.uploadedBy || 'System',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  projectDocuments[req.params.id] = projectDocuments[req.params.id] || [];
+  projectDocuments[req.params.id].push(doc);
+  res.json({ document: doc });
+});
+
 app.get('/api/projects/:id/tasks', (_req, res) => {
-  res.json({ tasks: [] });
+  const tasks = projectTasks[_req.params.id] || [];
+  res.json({ tasks });
 });
 
 app.get('/api/projects/:id/budget', (_req, res) => {
@@ -403,7 +549,8 @@ app.get('/api/projects/:id/budget', (_req, res) => {
 });
 
 app.get('/api/projects/:id/documents', (_req, res) => {
-  res.json({ documents: [] });
+  const docs = projectDocuments[_req.params.id] || [];
+  res.json({ documents: docs });
 });
 
 // Leads
