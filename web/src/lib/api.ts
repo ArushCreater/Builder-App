@@ -2,9 +2,7 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 
 // Create axios instance with default config
 const api: AxiosInstance = axios.create({
-  baseURL:
-    (import.meta as any)?.env?.VITE_API_URL ||
-    'http://awseb-e-7-AWSEBLoa-8SHHN7GS1RDA-389774250.ap-southeast-2.elb.amazonaws.com/api',
+  baseURL: (import.meta as any)?.env?.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
