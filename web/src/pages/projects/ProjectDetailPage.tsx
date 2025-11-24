@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { ArrowLeft, Calendar, DollarSign, Users, FileText, Edit } from 'lucide-react';
+import { ArrowLeft, Calendar, FileText, Edit } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
 interface Project {
@@ -188,11 +188,11 @@ export function ProjectDetailPage() {
           <CardContent className="space-y-1 text-sm">
             <div className="flex items-center text-gray-600">
               <Calendar className="h-4 w-4 mr-2" />
-              {formatDate(project.startDate)}
+              {project.startDate ? formatDate(project.startDate) : 'No start date'}
             </div>
             <div className="flex items-center text-gray-600">
               <Calendar className="h-4 w-4 mr-2" />
-              {formatDate(project.endDate)}
+              {project.endDate ? formatDate(project.endDate) : 'No end date'}
             </div>
           </CardContent>
         </Card>

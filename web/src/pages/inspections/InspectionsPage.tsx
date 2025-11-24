@@ -63,9 +63,10 @@ export function InspectionsPage() {
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
-      return apiClient.get<Inspection[]>(`/inspections?${params}`);
+      return apiClient.get<{ inspections: Inspection[] }>(`/inspections?${params}`);
     },
   });
+  const inspectionRows = inspections?.inspections || [];
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Inspection>) => apiClient.post('/inspections', data),
@@ -238,7 +239,7 @@ export function InspectionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {inspections?.map((inspection) => (
+                {inspectionRows.map((inspection) => (
                   <TableRow key={inspection.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">

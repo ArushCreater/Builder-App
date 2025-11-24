@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import {
   Table,
   TableBody,
@@ -32,7 +32,7 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Mail, Phone, Eye } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Eye, Pencil, Trash } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
 interface Lead {
@@ -63,7 +63,8 @@ export function LeadsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -90,7 +91,7 @@ export function LeadsPage() {
     mutationFn: (data: Partial<Lead>) => apiClient.post('/leads', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
-      setIsCreateDialogOpen(false);
+      setIsDialogOpen(false);
       setFormData({
         firstName: '',
         lastName: '',
@@ -114,12 +115,53 @@ export function LeadsPage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: (data: Partial<Lead> & { id: string }) =>
+      apiClient.put(`/leads/${data.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setIsDialogOpen(false);
+      setEditingLead(null);
+      toast({
+        title: 'Updated',
+        description: 'Lead updated successfully',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update lead',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/leads/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast({ title: 'Deleted', description: 'Lead removed' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete lead',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const handleCreateLead = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate({
+    const payload = {
       ...formData,
       estimatedValue: formData.estimatedValue ? parseFloat(formData.estimatedValue) : 0,
-    });
+    };
+    if (editingLead) {
+      updateMutation.mutate({ id: editingLead.id, ...payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,6 +171,40 @@ export function LeadsPage() {
     });
   };
 
+  const openCreate = () => {
+    setEditingLead(null);
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      source: '',
+      estimatedValue: '',
+      notes: '',
+    });
+    setIsDialogOpen(true);
+  };
+
+  const openEdit = (lead: Lead) => {
+    setEditingLead(lead);
+    setFormData({
+      firstName: lead.firstName,
+      lastName: lead.lastName,
+      email: lead.email,
+      phone: lead.phone,
+      source: lead.source,
+      estimatedValue: lead.estimatedValue?.toString() || '',
+      notes: lead.notes || '',
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Delete this lead?')) {
+      deleteMutation.mutate(id);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -136,9 +212,9 @@ export function LeadsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
           <p className="text-gray-500 mt-1">Manage your sales leads and prospects</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button onClick={openCreate}>
               <Plus className="mr-2 h-4 w-4" />
               Add Lead
             </Button>
@@ -146,8 +222,10 @@ export function LeadsPage() {
           <DialogContent className="max-w-2xl">
             <form onSubmit={handleCreateLead}>
               <DialogHeader>
-                <DialogTitle>Create New Lead</DialogTitle>
-                <DialogDescription>Add a new lead to your pipeline</DialogDescription>
+                <DialogTitle>{editingLead ? 'Edit Lead' : 'Create New Lead'}</DialogTitle>
+                <DialogDescription>
+                  {editingLead ? 'Update lead details' : 'Add a new lead to your pipeline'}
+                </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -230,11 +308,20 @@ export function LeadsPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Creating...' : 'Create Lead'}
+                <Button
+                  type="submit"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                >
+                  {editingLead
+                    ? updateMutation.isPending
+                      ? 'Saving...'
+                      : 'Save Changes'
+                    : createMutation.isPending
+                      ? 'Creating...'
+                      : 'Create Lead'}
                 </Button>
               </DialogFooter>
             </form>
@@ -322,13 +409,26 @@ export function LeadsPage() {
                     <TableCell>${lead.estimatedValue.toLocaleString()}</TableCell>
                     <TableCell>{formatDate(lead.createdAt)}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(`/leads/${lead.id}`)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/leads/${lead.id}`)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(lead)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(lead.id)}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                   ))

@@ -3,6 +3,7 @@ import { apiClient } from '../../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
+import { Button } from '../../components/ui/button';
 import {
   Users,
   FolderKanban,
@@ -109,7 +110,9 @@ export function DashboardHome() {
       timestamp: l.createdAt,
       user: 'System',
     })),
-  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
+  ]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 5);
 
   // Get active projects
   const activeProjects: Project[] = projects
@@ -167,28 +170,46 @@ export function DashboardHome() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1">Welcome back! Here's what's happening with your projects.</p>
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 border border-slate-700 rounded-3xl p-6 sm:p-8 shadow-sm relative overflow-hidden">
+        <div className="absolute -right-16 -top-12 h-36 w-36 bg-white/5 rounded-full blur-3xl" />
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 relative z-10">
+          <div>
+            <div className="inline-flex items-center px-3 py-1 rounded-full bg-white/10 text-white text-xs font-semibold border border-white/15 uppercase tracking-wide">
+              Live Control Center
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mt-3">Project Command Hub</h1>
+            <p className="text-slate-200 mt-2 max-w-2xl">
+              Track schedules, costs, and team momentum in one view. Inspired by ClickUp-style clarity with builder-grade depth.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button className="rounded-full bg-white text-slate-900 hover:bg-slate-100 px-5 border border-white/20 shadow">
+              Create milestone
+            </Button>
+            <Button variant="outline" className="rounded-full border-white/25 text-white bg-white/10 hover:bg-white/15">
+              Share status
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:gap-6 md:grid-cols-2 xl:grid-cols-4">
         {statCards.map((stat, index) => {
           const Icon = stat.icon;
           return (
-            <Card key={index}>
+            <Card key={index} className="border border-slate-200 shadow-sm bg-white">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">{stat.title}</CardTitle>
-                <div className={`p-2 rounded-lg ${stat.bgColor}`}>
+                <div className={`p-2 rounded-xl ${stat.bgColor}`}>
                   <Icon className={`h-5 w-5 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
+              <CardContent className="space-y-2">
+                <div className="text-3xl font-bold tracking-tight">{stat.value}</div>
                 {stat.growth && (
-                  <p className="text-xs text-green-600 mt-1">
-                    +{stat.growth}% from last month
+                  <p className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                    +{stat.growth}% vs last month
                   </p>
                 )}
               </CardContent>
@@ -198,36 +219,50 @@ export function DashboardHome() {
       </div>
 
       {/* Charts */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Projects Overview</CardTitle>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-indigo-500" />
+              Projects Velocity
+            </CardTitle>
+            <Badge className="bg-indigo-50 text-indigo-700 border-indigo-100">6 mo trend</Badge>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <BarChart data={projectChartData}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="projects" fill="#3b82f6" />
+                <Bar dataKey="projects" radius={[12, 12, 4, 4]} fill="url(#colorProjects)" />
+                <defs>
+                  <linearGradient id="colorProjects" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.9} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Revenue Trend</CardTitle>
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Revenue Momentum
+            </CardTitle>
+            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">Forecast</Badge>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <LineChart data={revenueChartData}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} />
+                <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -235,24 +270,27 @@ export function DashboardHome() {
       </div>
 
       {/* Active Projects and Recent Activity */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         {/* Active Projects */}
-        <Card>
-          <CardHeader>
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
             <CardTitle>Active Projects</CardTitle>
+            <Badge className="bg-indigo-50 text-indigo-700 border-indigo-100">
+              {activeProjects.length} in flight
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {activeProjects?.map((project) => (
-                <div key={project.id} className="space-y-2">
+                <div key={project.id} className="space-y-2 rounded-2xl border border-gray-100 p-4 hover:border-indigo-100 hover:shadow-sm transition">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">{project.name}</p>
+                      <p className="font-semibold text-gray-900">{project.name}</p>
                       <p className="text-sm text-gray-500">
                         {formatCurrency(project.spent)} / {formatCurrency(project.budget)}
                       </p>
                     </div>
-                    <Badge>{project.status}</Badge>
+                    <Badge className="bg-indigo-50 text-indigo-700 border-indigo-100">{project.status}</Badge>
                   </div>
                   <Progress value={project.progress} />
                   <p className="text-xs text-gray-500">
@@ -265,25 +303,26 @@ export function DashboardHome() {
         </Card>
 
         {/* Recent Activity */}
-        <Card>
-          <CardHeader>
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
             <CardTitle>Recent Activity</CardTitle>
+            <Badge className="bg-sky-50 text-sky-700 border-sky-100">Live</Badge>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {recentActivity?.map((activity) => (
-                <div key={activity.id} className="flex gap-3">
+                <div key={activity.id} className="flex gap-3 items-start rounded-xl border border-gray-100 p-3 hover:border-indigo-100 transition">
                   <div className="mt-1">
                     {activity.type === 'task_completed' ? (
                       <CheckCircle2 className="h-5 w-5 text-green-600" />
                     ) : activity.type === 'task_pending' ? (
                       <Clock className="h-5 w-5 text-yellow-600" />
                     ) : (
-                      <AlertCircle className="h-5 w-5 text-red-600" />
+                      <AlertCircle className="h-5 w-5 text-indigo-600" />
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-sm">{activity.title}</p>
+                    <p className="font-semibold text-sm text-gray-900">{activity.title}</p>
                     <p className="text-sm text-gray-500">{activity.description}</p>
                     <p className="text-xs text-gray-400 mt-1">
                       {activity.user} • {formatRelativeTime(activity.timestamp)}
@@ -297,24 +336,25 @@ export function DashboardHome() {
       </div>
 
       {/* Tasks Summary */}
-      <Card>
-        <CardHeader>
+      <Card className="border border-slate-200 shadow-sm bg-white">
+        <CardHeader className="flex items-center justify-between">
           <CardTitle>Tasks Summary</CardTitle>
+          <Badge className="bg-purple-50 text-purple-700 border-purple-100">Team</Badge>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-green-50 rounded-lg">
-                <CheckCircle2 className="h-6 w-6 text-green-600" />
+            <div className="flex items-center gap-4 rounded-2xl border border-gray-100 p-4">
+              <div className="p-3 bg-emerald-50 rounded-xl">
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats?.completedTasks || 0}</p>
                 <p className="text-sm text-gray-500">Completed Tasks</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-yellow-50 rounded-lg">
-                <Clock className="h-6 w-6 text-yellow-600" />
+            <div className="flex items-center gap-4 rounded-2xl border border-gray-100 p-4">
+              <div className="p-3 bg-amber-50 rounded-xl">
+                <Clock className="h-6 w-6 text-amber-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats?.pendingTasks || 0}</p>

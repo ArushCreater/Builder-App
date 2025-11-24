@@ -197,7 +197,7 @@ export function AnalyticsPage() {
                   fill="#8884d8"
                   dataKey="count"
                 >
-                  {analytics?.projects.data.map((entry, index) => (
+                  {analytics?.projects.data.map((_entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>

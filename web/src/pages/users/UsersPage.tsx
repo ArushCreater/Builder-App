@@ -59,7 +59,13 @@ export function UsersPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: User['role'];
+    phone: string;
+  }>({
     firstName: '',
     lastName: '',
     email: '',
@@ -104,7 +110,7 @@ export function UsersPage() {
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData);
+    createMutation.mutate(formData as Partial<User>);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,7 +179,7 @@ export function UsersPage() {
                     <Label htmlFor="role">Role</Label>
                     <Select
                       value={formData.role}
-                      onValueChange={(value) => setFormData({ ...formData, role: value })}
+                      onValueChange={(value: User['role']) => setFormData({ ...formData, role: value })}
                     >
                       <SelectTrigger>
                         <SelectValue />

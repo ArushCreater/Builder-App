@@ -62,14 +62,15 @@ export function MaterialsPage() {
     projectName: '',
   });
 
-  const { data: materials, isLoading } = useQuery({
+  const { data: materialsData, isLoading } = useQuery({
     queryKey: ['materials', searchTerm],
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
-      return apiClient.get<Material[]>(`/materials?${params}`);
+      return apiClient.get<{ materials: Material[] }>(`/materials?${params}`);
     },
   });
+  const materials = materialsData?.materials || [];
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Material>) => apiClient.post('/materials', data),

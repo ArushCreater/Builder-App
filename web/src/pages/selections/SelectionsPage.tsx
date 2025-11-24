@@ -63,14 +63,15 @@ export function SelectionsPage() {
     dueDate: '',
   });
 
-  const { data: selections, isLoading } = useQuery({
+  const { data: selectionsData, isLoading } = useQuery({
     queryKey: ['selections', searchTerm],
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
-      return apiClient.get<Selection[]>(`/selections?${params}`);
+      return apiClient.get<{ selections: Selection[] }>(`/selections?${params}`);
     },
   });
+  const selections = selectionsData?.selections || [];
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Selection>) => apiClient.post('/selections', data),

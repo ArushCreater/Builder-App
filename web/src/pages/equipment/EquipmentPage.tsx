@@ -44,9 +44,10 @@ export function EquipmentPage() {
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
-      return apiClient.get<Equipment[]>(`/equipment?${params}`);
+      return apiClient.get<{ equipment: Equipment[] }>(`/equipment?${params}`);
     },
   });
+  const equipmentRows = equipment?.equipment || [];
 
   return (
     <div className="space-y-6">
@@ -92,7 +93,7 @@ export function EquipmentPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {equipment?.map((item) => (
+                {equipmentRows.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">

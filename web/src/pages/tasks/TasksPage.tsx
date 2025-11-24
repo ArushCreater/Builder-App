@@ -32,7 +32,7 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Checkbox } from '../../components/ui/checkbox';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, CheckCircle2 } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
 interface Task {
@@ -66,7 +66,14 @@ export function TasksPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    title: string;
+    description: string;
+    priority: Task['priority'];
+    assignee: string;
+    projectName: string;
+    dueDate: string;
+  }>({
     title: '',
     description: '',
     priority: 'medium',
@@ -122,7 +129,7 @@ export function TasksPage() {
 
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData);
+    createMutation.mutate(formData as Partial<Task>);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,7 +207,7 @@ export function TasksPage() {
                     <Label htmlFor="priority">Priority</Label>
                     <Select
                       value={formData.priority}
-                      onValueChange={(value) => setFormData({ ...formData, priority: value })}
+                      onValueChange={(value: Task['priority']) => setFormData({ ...formData, priority: value })}
                     >
                       <SelectTrigger>
                         <SelectValue />

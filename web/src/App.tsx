@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from './components/ui/toaster'
-import { useAuthStore } from './stores/authStore'
 
 // Layouts
 import DashboardLayout from './layouts/DashboardLayout'
@@ -48,12 +47,7 @@ const queryClient = new QueryClient({
 })
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore()
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-
+  // Auth checks are disabled for now; allow all routes through
   return <>{children}</>
 }
 

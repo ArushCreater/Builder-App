@@ -43,18 +43,27 @@ export function MessagesPage() {
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
-      return apiClient.get<Conversation[]>(`/messages/conversations?${params}`);
+      return apiClient.get<Conversation[] | { conversations: Conversation[] }>(
+        `/messages/conversations?${params}`
+      );
     },
   });
+  const conversationRows: Conversation[] =
+    (conversations as any)?.conversations ||
+    (Array.isArray(conversations) ? (conversations as Conversation[]) : []);
 
   const { data: messages } = useQuery({
     queryKey: ['messages', selectedConversation],
     queryFn: () =>
       selectedConversation
-        ? apiClient.get<Message[]>(`/messages/conversation/${selectedConversation}`)
-        : Promise.resolve([]),
+        ? apiClient.get<Message[] | { messages: Message[] }>(
+            `/messages/conversation/${selectedConversation}`
+          )
+        : Promise.resolve([] as Message[]),
     enabled: !!selectedConversation,
   });
+  const messageRows: Message[] =
+    (messages as any)?.messages || (Array.isArray(messages) ? (messages as Message[]) : []);
 
   return (
     <div className="space-y-6">
@@ -79,7 +88,7 @@ export function MessagesPage() {
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
             <div className="space-y-2">
-              {conversations?.map((conversation) => (
+              {conversationRows.map((conversation) => (
                 <div
                   key={conversation.id}
                   onClick={() => setSelectedConversation(conversation.id)}
@@ -126,25 +135,27 @@ export function MessagesPage() {
                   <Avatar>
                     <AvatarImage
                       src={
-                        conversations?.find((c) => c.id === selectedConversation)?.participant
+                        conversationRows.find((c) => c.id === selectedConversation)?.participant
                           .avatar
                       }
                     />
                     <AvatarFallback>
                       {getInitials(
-                        conversations?.find((c) => c.id === selectedConversation)?.participant
+                        conversationRows.find((c) => c.id === selectedConversation)?.participant
                           .name || ''
                       )}
                     </AvatarFallback>
                   </Avatar>
                   <span>
-                    {conversations?.find((c) => c.id === selectedConversation)?.participant.name}
+                    {
+                      conversationRows.find((c) => c.id === selectedConversation)?.participant.name
+                    }
                   </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
-                  {messages?.map((message) => (
+                  {messageRows.map((message) => (
                     <div
                       key={message.id}
                       className={`flex items-start gap-3 ${

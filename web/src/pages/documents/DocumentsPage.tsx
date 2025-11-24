@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
@@ -30,8 +30,7 @@ import {
 } from '../../components/ui/select';
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
-import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, FileText, Download, Eye, Upload } from 'lucide-react';
+import { Search, FileText, Download, Eye, Upload } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
 interface Document {
@@ -57,42 +56,85 @@ const categoryColors = {
 
 export function DocumentsPage() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    category: '',
+    projectName: '',
+  });
+  const [fileMeta, setFileMeta] = useState<{ name: string; size: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const { data: documents, isLoading } = useQuery({
+  const { data: documentsData, isLoading } = useQuery({
     queryKey: ['documents', searchTerm, categoryFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (categoryFilter !== 'all') params.append('category', categoryFilter);
-      return apiClient.get<Document[]>(`/documents?${params}`);
+      return apiClient.get<{ documents: Document[] }>(`/documents?${params}`);
     },
   });
+  const documents = documentsData?.documents || [];
 
   const uploadMutation = useMutation({
-    mutationFn: (formData: FormData) =>
-      apiClient.post('/documents/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }),
+    mutationFn: (data: Partial<Document>) => apiClient.post('/documents', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setIsUploadDialogOpen(false);
-      toast({
-        title: 'Success',
-        description: 'Document uploaded successfully',
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to upload document',
-        variant: 'destructive',
-      });
+      setFormData({ name: '', category: '', projectName: '' });
+      setFileMeta(null);
     },
   });
+
+  const handleUpload = (e: React.FormEvent) => {
+    e.preventDefault();
+    uploadMutation.mutate({
+      name: formData.name || fileMeta?.name || 'Document',
+      category: (formData.category || 'other') as Document['category'],
+      projectName: formData.projectName,
+      type: 'pdf',
+      size: fileMeta?.size || 'N/A',
+      uploadedBy: 'You',
+      url: '#',
+    });
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const handleFile = (file?: File) => {
+    if (!file) return;
+    const sizeKb = file.size / 1024;
+    const prettySize =
+      sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${Math.max(sizeKb, 1).toFixed(0)} KB`;
+    setFileMeta({ name: file.name, size: prettySize });
+    if (!formData.name) {
+      setFormData((prev) => ({ ...prev, name: file.name }));
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    handleFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer.files?.[0];
+    handleFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   return (
     <div className="space-y-6">
@@ -109,42 +151,86 @@ export function DocumentsPage() {
             </Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Upload Document</DialogTitle>
-              <DialogDescription>Upload a new document to your project</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="file">Select File</Label>
-                <Input id="file" name="file" type="file" />
+            <form onSubmit={handleUpload}>
+              <DialogHeader>
+                <DialogTitle>Upload Document</DialogTitle>
+                <DialogDescription>Upload a new document to your project</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50/80 hover:border-blue-400 transition-all duration-200 p-4 cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner">
+                      <Upload className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">Drag & drop files here</p>
+                      <p className="text-sm text-gray-500">or click to browse from your computer</p>
+                      {fileMeta && (
+                        <p className="mt-1 text-sm text-gray-700">
+                          Selected: {fileMeta.name} ({fileMeta.size})
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileInputChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    placeholder="Document name"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
+                  <Select value={formData.category} onValueChange={(val) => setFormData({ ...formData, category: val })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="contract">Contract</SelectItem>
+                      <SelectItem value="plans">Plans</SelectItem>
+                      <SelectItem value="permit">Permit</SelectItem>
+                      <SelectItem value="invoice">Invoice</SelectItem>
+                      <SelectItem value="photo">Photo</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="projectName">Project</Label>
+                  <Input
+                    id="projectName"
+                    name="projectName"
+                    value={formData.projectName}
+                    onChange={handleChange}
+                    placeholder="Project name"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="contract">Contract</SelectItem>
-                    <SelectItem value="plans">Plans</SelectItem>
-                    <SelectItem value="permit">Permit</SelectItem>
-                    <SelectItem value="invoice">Invoice</SelectItem>
-                    <SelectItem value="photo">Photo</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="project">Project</Label>
-                <Input id="project" name="project" placeholder="Select project" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button>Upload</Button>
-            </DialogFooter>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={uploadMutation.isPending}>
+                  {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </div>

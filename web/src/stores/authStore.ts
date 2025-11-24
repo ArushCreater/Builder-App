@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { apiClient } from '../lib/api';
 
 export interface User {
   id: string;
@@ -42,11 +41,6 @@ interface RegisterData {
   phone?: string;
 }
 
-interface LoginResponse {
-  user: User;
-  token: string;
-}
-
 type AuthStore = AuthState & AuthActions;
 
 // Initialize state from localStorage
@@ -67,68 +61,57 @@ const getInitialState = (): AuthState => {
 export const useAuthStore = create<AuthStore>((set, get) => ({
   ...getInitialState(),
 
-  login: async (email: string, password: string) => {
-    try {
-      set({ isLoading: true, error: null });
+  login: async (email: string, _password: string) => {
+    set({ isLoading: true, error: null });
 
-      // Call the AWS API for authentication
-      const response = await apiClient.post<LoginResponse>('/auth/login', {
-        email,
-        password,
-      });
+    // Temporary: allow any credentials and create a local user
+    const fakeUser: User = {
+      id: crypto.randomUUID(),
+      email,
+      firstName: email.split('@')[0] || 'User',
+      lastName: 'User',
+      role: 'ADMIN',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-      const { user, token } = response;
+    localStorage.setItem('auth_token', 'demo-token');
+    localStorage.setItem('auth_user', JSON.stringify(fakeUser));
 
-      // Persist to localStorage
-      localStorage.setItem('auth_token', token);
-      localStorage.setItem('auth_user', JSON.stringify(user));
-
-      set({
-        user,
-        token,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
-    } catch (error: any) {
-      set({
-        error: error.message || 'Login failed',
-        isLoading: false,
-      });
-      throw error;
-    }
+    set({
+      user: fakeUser,
+      token: 'demo-token',
+      isAuthenticated: true,
+      isLoading: false,
+      error: null,
+    });
   },
 
   register: async (data: RegisterData) => {
-    try {
-      set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null });
 
-      // Call the AWS API for registration
-      const response = await apiClient.post<LoginResponse>('/auth/register', {
-        ...data,
-        role: 'USER', // Default role for new registrations
-      });
+    const fakeUser: User = {
+      id: crypto.randomUUID(),
+      email: data.email,
+      firstName: data.firstName || 'New',
+      lastName: data.lastName || 'User',
+      role: 'ADMIN',
+      company: data.company,
+      phone: data.phone,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-      const { user, token } = response;
+    localStorage.setItem('auth_token', 'demo-token');
+    localStorage.setItem('auth_user', JSON.stringify(fakeUser));
 
-      // Persist to localStorage
-      localStorage.setItem('auth_token', token);
-      localStorage.setItem('auth_user', JSON.stringify(user));
-
-      set({
-        user,
-        token,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      });
-    } catch (error: any) {
-      set({
-        error: error.message || 'Registration failed',
-        isLoading: false,
-      });
-      throw error;
-    }
+    set({
+      user: fakeUser,
+      token: 'demo-token',
+      isAuthenticated: true,
+      isLoading: false,
+      error: null,
+    });
   },
 
   logout: () => {
@@ -160,39 +143,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   checkAuth: async () => {
-    const { token } = get();
+    const { token, user } = get();
 
-    if (!token) {
-      set({ isAuthenticated: false, user: null });
+    // Backend is disabled; treat any stored token as valid
+    if (token && user) {
+      set({ isAuthenticated: true, isLoading: false });
       return;
     }
 
-    try {
-      // Validate token with API by fetching current user
-      const response = await apiClient.get<{ user: User }>('/auth/me');
-      const { user } = response;
-
-      // Update stored user data
-      localStorage.setItem('auth_user', JSON.stringify(user));
-
-      set({
-        user,
-        token,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    } catch (error) {
-      // Token is invalid, clear auth state
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_user');
-
-      set({
-        user: null,
-        token: null,
-        isAuthenticated: false,
-        isLoading: false,
-      });
-    }
+    // No stored session; remain logged out without redirect enforcement
+    set({ isAuthenticated: false, user: null, isLoading: false });
   },
 
   updateUser: async (data: Partial<User>) => {

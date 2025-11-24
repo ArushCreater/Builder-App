@@ -25,7 +25,7 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Calendar, DollarSign, Users } from 'lucide-react';
+import { Plus, Search, Calendar, DollarSign } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
 interface Project {
@@ -61,7 +61,6 @@ export function ProjectsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: '',

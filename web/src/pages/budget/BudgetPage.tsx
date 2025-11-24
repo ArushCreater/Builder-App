@@ -44,7 +44,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 export function BudgetPage() {
   const [selectedProject, setSelectedProject] = useState<string>('all');
 
-  const { data: summary, isLoading: summaryLoading } = useQuery({
+  const { data: summary } = useQuery({
     queryKey: ['budget-summary', selectedProject],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -62,10 +62,11 @@ export function BudgetPage() {
     },
   });
 
-  const { data: projects } = useQuery({
+  const { data: projectsData } = useQuery({
     queryKey: ['projects-list'],
-    queryFn: () => apiClient.get<Array<{ id: string; name: string }>>('/projects?fields=id,name'),
+    queryFn: () => apiClient.get<{ projects: Array<{ id: string; name: string }> }>('/projects?fields=id,name'),
   });
+  const projects = projectsData?.projects || [];
 
   const chartData = items?.map((item, index) => ({
     name: item.category,

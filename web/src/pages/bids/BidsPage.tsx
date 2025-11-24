@@ -43,9 +43,10 @@ export function BidsPage() {
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
-      return apiClient.get<Bid[]>(`/bids?${params}`);
+      return apiClient.get<{ bids: Bid[] }>(`/bids?${params}`);
     },
   });
+  const bidRows = bids?.bids || [];
 
   return (
     <div className="space-y-6">
@@ -91,7 +92,7 @@ export function BidsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bids?.map((bid) => (
+                {bidRows.map((bid) => (
                   <TableRow key={bid.id}>
                     <TableCell className="font-medium">{bid.projectName}</TableCell>
                     <TableCell>{bid.contractor}</TableCell>

@@ -38,7 +38,6 @@ import {
   Trash2,
   Eye,
   DollarSign,
-  Calendar,
   Image as ImageIcon,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';

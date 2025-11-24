@@ -15,7 +15,7 @@ import {
 } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, BookOpen, Users, Cloud, Camera } from 'lucide-react';
+import { Plus, Users, Cloud, Camera } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
 interface DailyLog {
@@ -51,10 +51,11 @@ export function DailyLogsPage() {
     notes: '',
   });
 
-  const { data: logs, isLoading } = useQuery({
+  const { data: logsData, isLoading } = useQuery({
     queryKey: ['daily-logs'],
-    queryFn: () => apiClient.get<DailyLog[]>('/daily-logs'),
+    queryFn: () => apiClient.get<{ logs: DailyLog[] }>('/daily-logs'),
   });
+  const logs = logsData?.logs || [];
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<DailyLog>) => apiClient.post('/daily-logs', data),

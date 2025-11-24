@@ -64,9 +64,10 @@ export function ProposalsPage() {
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
-      return apiClient.get<Proposal[]>(`/proposals?${params}`);
+      return apiClient.get<{ proposals: Proposal[] }>(`/proposals?${params}`);
     },
   });
+  const proposalRows = proposals?.proposals || [];
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Proposal>) => apiClient.post('/proposals', data),
@@ -231,7 +232,7 @@ export function ProposalsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {proposals?.map((proposal) => (
+                {proposalRows.map((proposal) => (
                   <TableRow key={proposal.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center">
