@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "http://awseb-e-7-AWSEBLoa-8SHHN7GS1RDA-389774250.ap-southeast-2.elb.amazonaws.com/api/$1"
+    }
+  ]
+}
