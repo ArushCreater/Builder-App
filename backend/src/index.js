@@ -3,7 +3,8 @@ const morgan = require('morgan');
 const cors = require('cors');
 const { randomUUID } = require('crypto');
 const { Pool } = require('pg');
-const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const multer = require('multer');
 
 const app = express();
@@ -1439,11 +1440,11 @@ app.post('/api/daily-logs', (req, res) => {
 });
 
 // Documents
-app.get('/api/documents', (req, res) => {
+const listDocuments = async (req, res) => {
   const { search, category, projectId, folder } = req.query;
-  const prefixProject = projectId ? String(projectId) : 'unassigned';
+  const prefixProject = projectId ? String(projectId) : '';
   const prefixFolder = folder ? String(folder).replace(/^\//, '') : '';
-  const prefix = `documents/${prefixProject}/${prefixFolder}`;
+  const prefix = prefixProject ? `documents/${prefixProject}/${prefixFolder}` : 'documents/';
 
   const extToCategory = (key = '') => {
     const ext = key.split('.').pop()?.toLowerCase() || '';
@@ -1453,67 +1454,90 @@ app.get('/api/documents', (req, res) => {
     return 'other';
   };
 
-  const toDoc = (obj, projName) => ({
-    id: obj.Key,
-    name: obj.Key?.split('/').pop() || 'File',
-    type: obj.Key?.split('.').pop() || 'file',
-    category: extToCategory(obj.Key),
-    size: `${Math.max(1, Math.round((obj.Size || 0) / 1024))} KB`,
-    projectId: projectId || undefined,
-    projectName: projName || '',
-    uploadedBy: 'S3',
-    uploadedAt: obj.LastModified || new Date().toISOString(),
-    url: `https://${FILES_BUCKET}.s3.${REGION}.amazonaws.com/${obj.Key}`,
-    key: obj.Key,
-  });
+  const signedUrlFor = (key) =>
+    getSignedUrl(
+      s3,
+      new GetObjectCommand({
+        Bucket: FILES_BUCKET,
+        Key: key,
+      }),
+      { expiresIn: 60 * 60 * 24 * 7 } // 7 days
+    );
 
-  const projectName = projectId ? (projects.find(p => p.id === projectId)?.name || '') : '';
+  const toDoc = (obj, signedUrl) => {
+    const parts = (obj.Key || '').split('/');
+    const projId = parts.length > 1 ? parts[1] : undefined;
+    const projName = projects.find(p => p.id === projId)?.name || '';
+    return {
+      id: obj.Key,
+      name: obj.Key?.split('/').pop() || 'File',
+      type: obj.Key?.split('.').pop() || 'file',
+      category: extToCategory(obj.Key),
+      size: `${Math.max(1, Math.round((obj.Size || 0) / 1024))} KB`,
+      projectId: projId,
+      projectName: projName,
+      uploadedBy: 'S3',
+      uploadedAt: obj.LastModified || new Date().toISOString(),
+      url: signedUrl || `https://${FILES_BUCKET}.s3.${REGION}.amazonaws.com/${obj.Key}`,
+      key: obj.Key,
+    };
+  };
 
-  s3
-    .send(
+  try {
+    const data = await s3.send(
       new ListObjectsV2Command({
         Bucket: FILES_BUCKET,
         Prefix: prefix,
       })
-    )
-    .then(data => {
-      let list = (data.Contents || [])
-        .filter(item => item.Key && !item.Key.endsWith('/'))
-        .map(obj => toDoc(obj, projectName));
-      if (category) list = list.filter(d => d.category === category);
-      if (search) {
-        const q = String(search).toLowerCase();
-        list = list.filter(
-          d =>
-            d.name.toLowerCase().includes(q) ||
-            (d.projectName || '').toLowerCase().includes(q) ||
-            d.category.toLowerCase().includes(q)
-        );
-      }
-      res.json({ documents: list });
-    })
-    .catch(() => {
-      // fallback to in-memory
-      let list = [...documents];
-      if (projectId) list = list.filter(d => d.projectId === projectId);
-      if (category) list = list.filter(d => d.category === category);
-      if (search) {
-        const q = String(search).toLowerCase();
-        list = list.filter(
-          d =>
-            d.name.toLowerCase().includes(q) ||
-            (d.projectName || '').toLowerCase().includes(q) ||
-            d.category.toLowerCase().includes(q)
-        );
-      }
-      res.json({ documents: list });
-    });
-});
+    );
 
-app.post('/api/documents', (req, res) => {
+    const objects = (data.Contents || []).filter(item => item.Key && !item.Key.endsWith('/'));
+    const signedMap = await Promise.all(
+      objects.map(async obj => [obj.Key, await signedUrlFor(obj.Key)])
+    );
+    const signedLookup = Object.fromEntries(signedMap);
+
+    let list = objects.map(obj => toDoc(obj, signedLookup[obj.Key]));
+
+    // Merge in-memory docs so seeded items still display
+    let memoryDocs = [...documents];
+    if (projectId) memoryDocs = memoryDocs.filter(d => d.projectId === projectId);
+    list = [...list, ...memoryDocs];
+
+    if (projectId) list = list.filter(d => d.projectId === projectId);
+    if (category) list = list.filter(d => d.category === category);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        d =>
+          (d.name || '').toLowerCase().includes(q) ||
+          (d.projectName || '').toLowerCase().includes(q) ||
+          (d.category || '').toLowerCase().includes(q)
+      );
+    }
+    res.json({ documents: list });
+  } catch (err) {
+    // fallback to in-memory only
+    let list = [...documents];
+    if (projectId) list = list.filter(d => d.projectId === projectId);
+    if (category) list = list.filter(d => d.category === category);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        d =>
+          d.name.toLowerCase().includes(q) ||
+          (d.projectName || '').toLowerCase().includes(q) ||
+          d.category.toLowerCase().includes(q)
+      );
+    }
+    res.json({ documents: list });
+  }
+};
+
+const createDocument = (req, res) => {
   const body = req.body || {};
   const doc = {
-    id: randomUUID(),
+    id: body.id || randomUUID(),
     name: body.name || 'Document',
     type: body.type || 'pdf',
     category: body.category || 'other',
@@ -1527,10 +1551,11 @@ app.post('/api/documents', (req, res) => {
   };
   documents.push(doc);
   res.json({ document: doc });
-});
+};
 
-app.delete('/api/documents/:id', (req, res) => {
-  const idx = documents.findIndex(d => d.id === req.params.id);
+const deleteDocument = (req, res) => {
+  const keyParam = req.query.key || (req.body && req.body.key) || req.params.id;
+  const idx = documents.findIndex(d => d.id === keyParam);
   if (idx !== -1) {
     const [removed] = documents.splice(idx, 1);
     if (removed.key) {
@@ -1541,15 +1566,24 @@ app.delete('/api/documents/:id', (req, res) => {
     return res.json({ document: removed });
   }
 
-  // If not in-memory, try direct S3 delete using id as key
-  const key = req.params.id;
-  s3
-    .send(new DeleteObjectCommand({ Bucket: FILES_BUCKET, Key: key }))
-    .then(() => res.json({ document: { id: key } }))
-    .catch(() => res.status(404).json({ message: 'Not found' }));
-});
+  if (!keyParam) return res.status(404).json({ message: 'Not found' });
 
-app.post('/api/documents/upload', upload.single('file'), async (req, res) => {
+  s3
+    .send(new DeleteObjectCommand({ Bucket: FILES_BUCKET, Key: keyParam }))
+    .then(() => res.json({ document: { id: keyParam } }))
+    .catch(() => res.status(404).json({ message: 'Not found' }));
+};
+
+app.get('/api/documents', listDocuments);
+app.get('/documents', listDocuments);
+
+app.post('/api/documents', createDocument);
+app.post('/documents', createDocument);
+
+app.delete('/api/documents/:id', deleteDocument);
+app.delete('/documents/:id', deleteDocument);
+
+const handleDocumentUpload = async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ message: 'No file uploaded' });
   const projectId = req.body.projectId || 'global';
@@ -1563,10 +1597,16 @@ app.post('/api/documents/upload', upload.single('file'), async (req, res) => {
         Key: key,
         Body: file.buffer,
         ContentType: file.mimetype,
-        ACL: 'public-read',
       })
     );
-    const url = `https://${FILES_BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
+    const url = await getSignedUrl(
+      s3,
+      new GetObjectCommand({
+        Bucket: FILES_BUCKET,
+        Key: key,
+      }),
+      { expiresIn: 60 * 60 * 24 * 7 }
+    );
     res.json({
       key,
       url,
@@ -1579,7 +1619,11 @@ app.post('/api/documents/upload', upload.single('file'), async (req, res) => {
     console.error('S3 upload failed', err);
     res.status(500).json({ message: 'Upload failed' });
   }
-});
+};
+
+app.post('/api/documents/upload', upload.single('file'), handleDocumentUpload);
+// Alias without /api in case baseURL already includes /api
+app.post('/documents/upload', upload.single('file'), handleDocumentUpload);
 
 // Project doc pages (lightweight wiki/notes per project)
 app.get('/api/projects/:id/doc-pages', (req, res) => {
