@@ -274,6 +274,35 @@ const proposals = [
   },
 ];
 
+const invoices = [
+  {
+    id: 'inv-1',
+    invoiceNumber: 'INV-2024-001',
+    projectId: 'p-1',
+    projectName: 'Sunrise Apartments',
+    clientName: 'John Smith',
+    amount: 45000,
+    status: 'paid',
+    dueDate: '2024-01-15',
+    issueDate: '2024-01-01',
+    description: 'Foundation and framing work',
+    createdAt: '2024-01-01T10:00:00Z',
+  },
+  {
+    id: 'inv-2',
+    invoiceNumber: 'INV-2024-002',
+    projectId: 'p-2',
+    projectName: 'Downtown Office',
+    clientName: 'ABC Corporation',
+    amount: 78500,
+    status: 'unpaid',
+    dueDate: '2024-02-28',
+    issueDate: '2024-02-01',
+    description: 'Electrical and plumbing installation',
+    createdAt: '2024-02-01T10:00:00Z',
+  },
+];
+
 const scheduleEvents = [
   {
     id: 'sch-1',
@@ -1424,6 +1453,82 @@ app.delete('/api/proposals/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ message: 'Not found' });
   const [removed] = proposals.splice(idx, 1);
   res.json({ proposal: removed });
+});
+
+// Invoices (in-memory)
+app.get('/api/invoices', (req, res) => {
+  const { search, status, projectId } = req.query;
+  let list = [...invoices];
+  if (projectId) list = list.filter(i => i.projectId === projectId);
+  if (status) list = list.filter(i => i.status === status);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      i =>
+        i.invoiceNumber.toLowerCase().includes(q) ||
+        (i.projectName || '').toLowerCase().includes(q) ||
+        i.clientName.toLowerCase().includes(q)
+    );
+  }
+  res.json({ invoices: list });
+});
+
+app.post('/api/invoices', (req, res) => {
+  const body = req.body || {};
+  const invoice = {
+    id: randomUUID(),
+    invoiceNumber: body.invoiceNumber || `INV-${Date.now()}`,
+    projectId: body.projectId,
+    projectName: body.projectName || '',
+    clientName: body.clientName || '',
+    amount: parseFloat(body.amount) || 0,
+    status: body.status || 'draft',
+    dueDate: body.dueDate || '',
+    issueDate: body.issueDate || '',
+    description: body.description || '',
+    fileUrl: body.fileUrl,
+    fileName: body.fileName,
+    fileType: body.fileType,
+    createdAt: new Date().toISOString(),
+  };
+  invoices.unshift(invoice);
+  res.json({ invoice });
+});
+
+app.put('/api/invoices/:id', (req, res) => {
+  const body = req.body || {};
+  const invoice = invoices.find(i => i.id === req.params.id);
+  if (!invoice) return res.status(404).json({ message: 'Not found' });
+  Object.assign(invoice, {
+    invoiceNumber: body.invoiceNumber ?? invoice.invoiceNumber,
+    projectId: body.projectId ?? invoice.projectId,
+    projectName: body.projectName ?? invoice.projectName,
+    clientName: body.clientName ?? invoice.clientName,
+    amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : invoice.amount,
+    status: body.status ?? invoice.status,
+    dueDate: body.dueDate ?? invoice.dueDate,
+    issueDate: body.issueDate ?? invoice.issueDate,
+    description: body.description ?? invoice.description,
+    fileUrl: body.fileUrl ?? invoice.fileUrl,
+    fileName: body.fileName ?? invoice.fileName,
+    fileType: body.fileType ?? invoice.fileType,
+  });
+  res.json({ invoice });
+});
+
+app.patch('/api/invoices/:id', (req, res) => {
+  const body = req.body || {};
+  const invoice = invoices.find(i => i.id === req.params.id);
+  if (!invoice) return res.status(404).json({ message: 'Not found' });
+  if (body.status) invoice.status = body.status;
+  res.json({ invoice });
+});
+
+app.delete('/api/invoices/:id', (req, res) => {
+  const idx = invoices.findIndex(i => i.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = invoices.splice(idx, 1);
+  res.json({ invoice: removed });
 });
 
 // Conversations/messages for UI

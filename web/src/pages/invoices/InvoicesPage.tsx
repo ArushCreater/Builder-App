@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -41,10 +42,12 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
+import { apiClient } from '../../lib/api';
 
 interface Invoice {
   id: string;
   invoiceNumber: string;
+  projectId?: string;
   projectName: string;
   clientName: string;
   amount: number;
@@ -67,14 +70,15 @@ const statusColors = {
 
 export function InvoicesPage() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [formData, setFormData] = useState({
     invoiceNumber: '',
+    projectId: '',
     projectName: '',
     clientName: '',
     amount: '',
@@ -83,68 +87,24 @@ export function InvoicesPage() {
     issueDate: '',
     description: '',
   });
-  const [uploadedFile, setUploadedFile] = useState<{
-    url: string;
-    name: string;
-    type: string;
-  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ url: string; name: string; type: string } | null>(null);
 
-  // Load invoices from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem('demo_invoices');
-    if (stored) {
-      setInvoices(JSON.parse(stored));
-    } else {
-      // Add some demo data
-      const demoInvoices: Invoice[] = [
-        {
-          id: '1',
-          invoiceNumber: 'INV-2024-001',
-          projectName: 'Sunrise Apartments',
-          clientName: 'John Smith',
-          amount: 45000,
-          status: 'paid',
-          dueDate: '2024-01-15',
-          issueDate: '2024-01-01',
-          description: 'Foundation and framing work',
-          createdAt: '2024-01-01T10:00:00Z',
-        },
-        {
-          id: '2',
-          invoiceNumber: 'INV-2024-002',
-          projectName: 'Downtown Office',
-          clientName: 'ABC Corporation',
-          amount: 78500,
-          status: 'unpaid',
-          dueDate: '2024-02-28',
-          issueDate: '2024-02-01',
-          description: 'Electrical and plumbing installation',
-          createdAt: '2024-02-01T10:00:00Z',
-        },
-        {
-          id: '3',
-          invoiceNumber: 'INV-2024-003',
-          projectName: 'Lake House',
-          clientName: 'Jane Doe',
-          amount: 32000,
-          status: 'overdue',
-          dueDate: '2024-01-20',
-          issueDate: '2024-01-05',
-          description: 'Roofing and exterior finish',
-          createdAt: '2024-01-05T10:00:00Z',
-        },
-      ];
-      setInvoices(demoInvoices);
-      localStorage.setItem('demo_invoices', JSON.stringify(demoInvoices));
-    }
-  }, []);
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects', 'invoice'],
+    queryFn: () => apiClient.get<{ projects: Array<{ id: string; name: string }> }>('/projects'),
+  });
 
-  // Save to localStorage whenever invoices change
-  useEffect(() => {
-    if (invoices.length > 0) {
-      localStorage.setItem('demo_invoices', JSON.stringify(invoices));
-    }
-  }, [invoices]);
+  const { data: invoicesData } = useQuery({
+    queryKey: ['invoices', searchTerm, statusFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      return apiClient.get<{ invoices: Invoice[] }>(`/invoices?${params}`);
+    },
+  });
+  const invoices = invoicesData?.invoices || [];
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -187,52 +147,36 @@ export function InvoicesPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleCreateInvoice = (e: React.FormEvent) => {
-    e.preventDefault();
+  const createMutation = useMutation({
+    mutationFn: (data: Partial<Invoice>) => apiClient.post('/invoices', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      setIsCreateDialogOpen(false);
+      setFormData({
+        invoiceNumber: '',
+        projectId: '',
+        projectName: '',
+        clientName: '',
+        amount: '',
+        status: 'draft',
+        dueDate: '',
+        issueDate: '',
+        description: '',
+      });
+      setUploadedFile(null);
+      toast({ title: 'Success', description: 'Invoice created successfully' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Failed to create invoice', variant: 'destructive' }),
+  });
 
-    const newInvoice: Invoice = {
-      id: Date.now().toString(),
-      invoiceNumber: formData.invoiceNumber || `INV-${Date.now()}`,
-      projectName: formData.projectName,
-      clientName: formData.clientName,
-      amount: parseFloat(formData.amount),
-      status: formData.status,
-      dueDate: formData.dueDate,
-      issueDate: formData.issueDate,
-      description: formData.description,
-      fileUrl: uploadedFile?.url,
-      fileName: uploadedFile?.name,
-      fileType: uploadedFile?.type,
-      createdAt: new Date().toISOString(),
-    };
-
-    setInvoices([newInvoice, ...invoices]);
-    setIsCreateDialogOpen(false);
-    setFormData({
-      invoiceNumber: '',
-      projectName: '',
-      clientName: '',
-      amount: '',
-      status: 'draft',
-      dueDate: '',
-      issueDate: '',
-      description: '',
-    });
-    setUploadedFile(null);
-
-    toast({
-      title: 'Success',
-      description: 'Invoice created successfully',
-    });
-  };
-
-  const handleDeleteInvoice = (id: string) => {
-    setInvoices(invoices.filter((inv) => inv.id !== id));
-    toast({
-      title: 'Success',
-      description: 'Invoice deleted successfully',
-    });
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/invoices/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast({ title: 'Success', description: 'Invoice deleted' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Failed to delete invoice', variant: 'destructive' }),
+  });
 
   const handleViewInvoice = (invoice: Invoice) => {
     setSelectedInvoice(invoice);
@@ -258,17 +202,12 @@ export function InvoicesPage() {
     }
   };
 
-  const handleUpdateStatus = (id: string, newStatus: Invoice['status']) => {
-    setInvoices(
-      invoices.map((inv) =>
-        inv.id === id ? { ...inv, status: newStatus } : inv
-      )
-    );
-    toast({
-      title: 'Success',
-      description: 'Invoice status updated',
-    });
-  };
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: Invoice['status'] }) =>
+      apiClient.patch(`/invoices/${id}`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+    onError: () => toast({ title: 'Error', description: 'Failed to update status', variant: 'destructive' }),
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({
@@ -277,15 +216,27 @@ export function InvoicesPage() {
     });
   };
 
-  const filteredInvoices = invoices.filter((invoice) => {
-    const matchesSearch =
-      invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.projectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.clientName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus =
-      statusFilter === 'all' || invoice.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const handleCreateInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    createMutation.mutate({
+      invoiceNumber: formData.invoiceNumber,
+      projectId: formData.projectId || undefined,
+      projectName: formData.projectName,
+      clientName: formData.clientName,
+      amount: parseFloat(formData.amount) || 0,
+      status: formData.status,
+      dueDate: formData.dueDate,
+      issueDate: formData.issueDate,
+      description: formData.description,
+      fileUrl: uploadedFile?.url,
+      fileName: uploadedFile?.name,
+      fileType: uploadedFile?.type,
+    });
+  };
+
+  const filteredInvoices = useMemo(() => {
+    return invoices;
+  }, [invoices]);
 
   const totalAmount = filteredInvoices.reduce((sum, inv) => sum + inv.amount, 0);
   const paidAmount = filteredInvoices
@@ -349,14 +300,28 @@ export function InvoicesPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="projectName">Project Name</Label>
-                    <Input
-                      id="projectName"
-                      name="projectName"
-                      value={formData.projectName}
-                      onChange={handleChange}
-                      required
-                    />
+                    <Label htmlFor="projectName">Project</Label>
+                    <Select
+                      value={formData.projectId || 'none'}
+                      onValueChange={(value) => {
+                        if (value === 'none') {
+                          setFormData({ ...formData, projectId: '', projectName: '' });
+                          return;
+                        }
+                        const proj = projectsData?.projects.find(p => p.id === value);
+                        setFormData({ ...formData, projectId: value, projectName: proj?.name || '' });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No project</SelectItem>
+                        {projectsData?.projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="clientName">Client Name</Label>
@@ -416,28 +381,29 @@ export function InvoicesPage() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="file">Upload Invoice (Image/PDF)</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="file"
-                      type="file"
-                      accept="image/jpeg,image/png,image/jpg,application/pdf"
-                      onChange={handleFileUpload}
-                      className="cursor-pointer"
-                    />
-                    <Upload className="h-5 w-5 text-gray-400" />
-                  </div>
-                  {uploadedFile && (
-                    <div className="flex items-center gap-2 text-sm text-green-600">
-                      <FileText className="h-4 w-4" />
-                      {uploadedFile.name}
+                  <div className="space-y-2">
+                    <Label htmlFor="file">Upload Invoice (Image/PDF)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        ref={fileInputRef}
+                        id="file"
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg,application/pdf"
+                        onChange={handleFileUpload}
+                        className="cursor-pointer"
+                      />
+                      <Upload className="h-5 w-5 text-gray-400" />
                     </div>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    Accepted formats: JPG, PNG, PDF (max 10MB)
-                  </p>
-                </div>
+                    {uploadedFile && (
+                      <div className="flex items-center gap-2 text-sm text-green-600">
+                        <FileText className="h-4 w-4" />
+                        {uploadedFile.name}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500">
+                      Accepted formats: JPG, PNG, PDF (max 10MB)
+                    </p>
+                  </div>
               </div>
               <DialogFooter>
                 <Button
@@ -450,7 +416,9 @@ export function InvoicesPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit">Create Invoice</Button>
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? 'Saving...' : 'Create Invoice'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -568,7 +536,7 @@ export function InvoicesPage() {
                       <Select
                         value={invoice.status}
                         onValueChange={(value) =>
-                          handleUpdateStatus(invoice.id, value as Invoice['status'])
+                          statusMutation.mutate({ id: invoice.id, status: value as Invoice['status'] })
                         }
                       >
                         <SelectTrigger className="w-[110px]">
@@ -623,7 +591,7 @@ export function InvoicesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDeleteInvoice(invoice.id)}
+                          onClick={() => deleteMutation.mutate(invoice.id)}
                         >
                           <Trash2 className="h-4 w-4 text-red-600" />
                         </Button>
