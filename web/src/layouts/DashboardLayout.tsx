@@ -61,6 +61,7 @@ const navigation: NavItem[] = [
   { name: 'Selections', path: '/selections', icon: Palette },
   { name: 'Daily Logs', path: '/daily-logs', icon: BookOpen },
   { name: 'Documents', path: '/documents', icon: FileCheck },
+  { name: 'Manage Sold', path: '/sold', icon: FileCheck },
   { name: 'Bids', path: '/bids', icon: Briefcase },
   { name: 'Inspections', path: '/inspections', icon: Briefcase },
   { name: 'Equipment', path: '/equipment', icon: Hammer },

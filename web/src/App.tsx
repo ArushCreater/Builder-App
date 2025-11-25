@@ -25,6 +25,7 @@ import MaterialsPage from './pages/materials/MaterialsPage'
 import SelectionsPage from './pages/selections/SelectionsPage'
 import DailyLogsPage from './pages/dailyLogs/DailyLogsPage'
 import DocumentsPage from './pages/documents/DocumentsPage'
+import SoldPage from './pages/sold/SoldPage'
 import InspectionsPage from './pages/inspections/InspectionsPage'
 import BidsPage from './pages/bids/BidsPage'
 import EquipmentPage from './pages/equipment/EquipmentPage'
@@ -90,6 +91,7 @@ function App() {
             <Route path="/budget" element={<BudgetPage />} />
             <Route path="/invoices" element={<InvoicesPage />} />
             <Route path="/bids" element={<BidsPage />} />
+            <Route path="/sold" element={<SoldPage />} />
 
             {/* Materials & Selections */}
             <Route path="/materials" element={<MaterialsPage />} />
