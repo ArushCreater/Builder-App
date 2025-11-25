@@ -209,8 +209,8 @@ const users = [
 ];
 
 const materials = [
-  { id: 'm-1', name: 'Concrete', description: 'Ready-mix 25 MPa', quantity: 30, unit: 'm3', costPerUnit: 120, totalCost: 3600, supplier: 'BuildCo', projectName: 'Sunrise Apartments', status: 'in-stock' },
-  { id: 'm-2', name: 'Steel Rebar', description: 'Grade 500N', quantity: 2, unit: 'ton', costPerUnit: 950, totalCost: 1900, supplier: 'SteelWorks', projectName: 'Downtown Office', status: 'ordered' },
+  { id: 'm-1', name: 'Concrete', description: 'Ready-mix 25 MPa', quantity: 30, unit: 'm3', costPerUnit: 120, totalCost: 3600, supplier: 'BuildCo', projectName: 'Sunrise Apartments', projectId: 'p-1', status: 'in-stock' },
+  { id: 'm-2', name: 'Steel Rebar', description: 'Grade 500N', quantity: 2, unit: 'ton', costPerUnit: 950, totalCost: 1900, supplier: 'SteelWorks', projectName: 'Downtown Office', projectId: 'p-2', status: 'ordered' },
 ];
 
 const selections = [
@@ -1200,8 +1200,22 @@ app.get('/api/budget/items', (_req, res) => {
 });
 
 // Materials
-app.get('/api/materials', (_req, res) => {
-  res.json({ materials });
+app.get('/api/materials', (req, res) => {
+  const { search, status, projectId } = req.query;
+  let list = [...materials];
+  if (projectId) list = list.filter(m => m.projectId === projectId);
+  if (status) list = list.filter(m => m.status === status);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      m =>
+        m.name.toLowerCase().includes(q) ||
+        m.description.toLowerCase().includes(q) ||
+        (m.projectName || '').toLowerCase().includes(q) ||
+        (m.supplier || '').toLowerCase().includes(q)
+    );
+  }
+  res.json({ materials: list });
 });
 
 app.post('/api/materials', (req, res) => {
@@ -1218,10 +1232,39 @@ app.post('/api/materials', (req, res) => {
     totalCost: quantity * costPerUnit,
     supplier: body.supplier || '',
     projectName: body.projectName || '',
+    projectId: body.projectId,
     status: body.status || 'in-stock',
   };
   materials.push(material);
   res.json(material);
+});
+
+app.put('/api/materials/:id', (req, res) => {
+  const body = req.body || {};
+  const material = materials.find(m => m.id === req.params.id);
+  if (!material) return res.status(404).json({ message: 'Not found' });
+  const nextQuantity = body.quantity !== undefined ? parseFloat(body.quantity) || 0 : material.quantity;
+  const nextCostPerUnit = body.costPerUnit !== undefined ? parseFloat(body.costPerUnit) || 0 : material.costPerUnit;
+  Object.assign(material, {
+    name: body.name ?? material.name,
+    description: body.description ?? material.description,
+    quantity: nextQuantity,
+    unit: body.unit ?? material.unit,
+    costPerUnit: nextCostPerUnit,
+    totalCost: nextQuantity * nextCostPerUnit,
+    supplier: body.supplier ?? material.supplier,
+    projectName: body.projectName ?? material.projectName,
+    projectId: body.projectId ?? material.projectId,
+    status: body.status ?? material.status,
+  });
+  res.json({ material });
+});
+
+app.delete('/api/materials/:id', (req, res) => {
+  const idx = materials.findIndex(m => m.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = materials.splice(idx, 1);
+  res.json({ material: removed });
 });
 
 // Selections

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Card, CardContent, CardHeader } from '../../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import {
   Table,
   TableBody,
@@ -24,8 +24,15 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Package, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Package, AlertTriangle, Trash2, Edit, Truck } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 
 interface Material {
   id: string;
@@ -36,6 +43,7 @@ interface Material {
   costPerUnit: number;
   totalCost: number;
   supplier: string;
+  projectId?: string;
   projectName: string;
   status: 'ordered' | 'in-stock' | 'low-stock' | 'out-of-stock';
 }
@@ -51,7 +59,10 @@ export function MaterialsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -59,18 +70,27 @@ export function MaterialsPage() {
     unit: '',
     costPerUnit: '',
     supplier: '',
+    projectId: '',
     projectName: '',
+    status: 'ordered' as Material['status'],
   });
 
   const { data: materialsData, isLoading } = useQuery({
-    queryKey: ['materials', searchTerm],
+    queryKey: ['materials', searchTerm, statusFilter, projectFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (projectFilter !== 'all') params.append('projectId', projectFilter);
       return apiClient.get<{ materials: Material[] }>(`/materials?${params}`);
     },
   });
   const materials = materialsData?.materials || [];
+
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects', 'materials'],
+    queryFn: () => apiClient.get<{ projects: Array<{ id: string; name: string }> }>('/projects'),
+  });
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Material>) => apiClient.post('/materials', data),
@@ -84,7 +104,9 @@ export function MaterialsPage() {
         unit: '',
         costPerUnit: '',
         supplier: '',
+        projectId: '',
         projectName: '',
+        status: 'ordered',
       });
       toast({
         title: 'Success',
@@ -102,12 +124,18 @@ export function MaterialsPage() {
 
   const handleCreateMaterial = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate({
+    const payload = {
       ...formData,
       quantity: parseFloat(formData.quantity),
       costPerUnit: parseFloat(formData.costPerUnit),
       totalCost: parseFloat(formData.quantity) * parseFloat(formData.costPerUnit),
-    });
+      projectId: formData.projectId || undefined,
+    };
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, data: payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,6 +144,58 @@ export function MaterialsPage() {
       [e.target.name]: e.target.value,
     });
   };
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: { id: string; data: Partial<Material> }) =>
+      apiClient.put(`/materials/${payload.id}`, payload.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['materials'] });
+      setIsCreateDialogOpen(false);
+      setEditingId(null);
+      setFormData({
+        name: '',
+        description: '',
+        quantity: '',
+        unit: '',
+        costPerUnit: '',
+        supplier: '',
+        projectId: '',
+        projectName: '',
+        status: 'ordered',
+      });
+      toast({ title: 'Updated', description: 'Material updated successfully' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Update failed', variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/materials/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['materials'] });
+      toast({ title: 'Deleted', description: 'Material removed' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Delete failed', variant: 'destructive' }),
+  });
+
+  const handleEdit = (material: Material) => {
+    setEditingId(material.id);
+    setFormData({
+      name: material.name,
+      description: material.description,
+      quantity: material.quantity.toString(),
+      unit: material.unit,
+      costPerUnit: material.costPerUnit.toString(),
+      supplier: material.supplier,
+      projectId: material.projectId || '',
+      projectName: material.projectName,
+      status: material.status,
+    });
+    setIsCreateDialogOpen(true);
+  };
+
+  const lowStock = materials.filter(m => m.status === 'low-stock' || m.quantity <= 2);
+  const totalValue = materials.reduce((sum, m) => sum + (m.totalCost || 0), 0);
+  const orderedCount = materials.filter(m => m.status === 'ordered').length;
 
   return (
     <div className="space-y-6">
@@ -128,13 +208,13 @@ export function MaterialsPage() {
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Add Material
+              {editingId ? 'Edit Material' : 'Add Material'}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <form onSubmit={handleCreateMaterial}>
               <DialogHeader>
-                <DialogTitle>Add New Material</DialogTitle>
+                <DialogTitle>{editingId ? 'Edit Material' : 'Add New Material'}</DialogTitle>
                 <DialogDescription>Add materials to your inventory</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -207,14 +287,45 @@ export function MaterialsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="projectName">Project</Label>
-                    <Input
-                      id="projectName"
-                      name="projectName"
-                      value={formData.projectName}
-                      onChange={handleChange}
-                      required
-                    />
+                    <Select
+                      value={formData.projectId || 'none'}
+                      onValueChange={(value) => {
+                        if (value === 'none') {
+                          setFormData({ ...formData, projectId: '', projectName: '' });
+                          return;
+                        }
+                        const proj = projectsData?.projects.find(p => p.id === value);
+                        setFormData({ ...formData, projectId: value, projectName: proj?.name || '' });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No project</SelectItem>
+                        {projectsData?.projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value: Material['status']) => setFormData({ ...formData, status: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ordered">Ordered</SelectItem>
+                      <SelectItem value="in-stock">In Stock</SelectItem>
+                      <SelectItem value="low-stock">Low Stock</SelectItem>
+                      <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <DialogFooter>
@@ -230,16 +341,73 @@ export function MaterialsPage() {
         </Dialog>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">Inventory Value</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(totalValue)}</div>
+            <p className="text-xs text-gray-500">{materials.length} items</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">Orders in transit</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{orderedCount}</div>
+            <p className="text-xs text-gray-500">Awaiting delivery</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">Low stock</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{lowStock.length}</div>
+            <p className="text-xs text-gray-500">Needs reorder</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search materials..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search materials..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Select value={projectFilter} onValueChange={setProjectFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Projects</SelectItem>
+                  {projectsData?.projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="ordered">Ordered</SelectItem>
+                  <SelectItem value="in-stock">In Stock</SelectItem>
+                  <SelectItem value="low-stock">Low Stock</SelectItem>
+                  <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -258,6 +426,7 @@ export function MaterialsPage() {
                   <TableHead>Supplier</TableHead>
                   <TableHead>Project</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -283,11 +452,38 @@ export function MaterialsPage() {
                     <TableCell>{formatCurrency(material.costPerUnit)}</TableCell>
                     <TableCell className="font-medium">{formatCurrency(material.totalCost)}</TableCell>
                     <TableCell>{material.supplier}</TableCell>
-                    <TableCell>{material.projectName}</TableCell>
+                    <TableCell>{material.projectName || '—'}</TableCell>
                     <TableCell>
                       <Badge variant={statusColors[material.status]}>
                         {material.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center gap-2 justify-end">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() =>
+                            updateMutation.mutate({
+                              id: material.id,
+                              data: { status: material.status === 'ordered' ? 'in-stock' : 'ordered' },
+                            })
+                          }
+                          title="Toggle ordered"
+                        >
+                          <Truck className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => handleEdit(material)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteMutation.mutate(material.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
