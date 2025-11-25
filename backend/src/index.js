@@ -7,7 +7,7 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 8081;
 const dbUrl = process.env.DATABASE_URL;
-const BODY_LIMIT = process.env.BODY_LIMIT || '10mb';
+const BODY_LIMIT = process.env.BODY_LIMIT || '12mb';
 
 let pool;
 if (dbUrl) {

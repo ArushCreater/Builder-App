@@ -198,6 +198,25 @@ export function ProjectDetailPage() {
   const budgetItems = budgetData?.items || [];
   const documents = documentsData?.documents || [];
   const scheduleEvents = scheduleData?.events || [];
+  const combinedPlanItems = useMemo(() => {
+    const events = scheduleEvents.map(ev => ({
+      id: ev.id,
+      title: ev.title,
+      startDate: ev.startDate,
+      endDate: ev.endDate || ev.startDate,
+      type: ev.type || 'event',
+    }));
+    const taskEvents = tasks
+      .filter(t => !!t.dueDate)
+      .map(t => ({
+        id: `task-${t.id}`,
+        title: t.title,
+        startDate: t.dueDate!,
+        endDate: t.dueDate!,
+        type: 'task',
+      }));
+    return [...events, ...taskEvents].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+  }, [scheduleEvents, tasks]);
 
   const filteredDocPages = useMemo(() => {
     if (!docSearch) return docPages;
@@ -810,11 +829,11 @@ export function ProjectDetailPage() {
               <Badge variant="secondary">Timeline</Badge>
             </CardHeader>
             <CardContent className="space-y-4">
-              {scheduleEvents.length === 0 && (
-                <p className="text-sm text-gray-500">No scheduled tasks yet.</p>
+              {combinedPlanItems.length === 0 && (
+                <p className="text-sm text-gray-500">No scheduled items yet.</p>
               )}
               <div className="space-y-3">
-                {scheduleEvents.map((ev) => {
+                {combinedPlanItems.map((ev) => {
                   const start = ev.startDate ? new Date(ev.startDate) : new Date();
                   const end = ev.endDate ? new Date(ev.endDate) : start;
                   const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
