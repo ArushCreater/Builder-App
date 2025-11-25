@@ -93,6 +93,17 @@ export function TasksPage() {
     projectId: undefined,
     dueDate: '',
   });
+  const [viewTask, setViewTask] = useState<Task | null>(null);
+  const [viewForm, setViewForm] = useState({
+    title: '',
+    description: '',
+    priority: 'medium' as Task['priority'],
+    assignee: '',
+    projectId: '',
+    projectName: '',
+    dueDate: '',
+    status: 'todo' as Task['status'],
+  });
 
   const { data: projectsData } = useQuery({
     queryKey: ['projects', 'options'],
@@ -171,6 +182,26 @@ export function TasksPage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Task> }) => apiClient.patch(`/tasks/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setViewTask(null);
+      toast({ title: 'Task updated' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not update task', variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/tasks/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setViewTask(null);
+      toast({ title: 'Task deleted' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not delete task', variant: 'destructive' }),
+  });
+
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     createMutation.mutate({
@@ -196,6 +227,7 @@ export function TasksPage() {
   }));
 
   return (
+    <>
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
@@ -436,8 +468,27 @@ export function TasksPage() {
                               {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
                             </span>
                           </div>
-                          <div className="mt-2">
-                            <Progress value={task.completed ? 100 : task.status === 'in-progress' ? 50 : 10} />
+                          <div className="mt-2 flex items-center justify-between">
+                            <Progress value={task.completed ? 100 : task.status === 'in-progress' ? 50 : 10} className="w-[70%]" />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setViewTask(task);
+                                setViewForm({
+                                  title: task.title,
+                                  description: task.description,
+                                  priority: task.priority,
+                                  assignee: task.assignee,
+                                  projectId: task.projectId || '',
+                                  projectName: task.projectName || '',
+                                  dueDate: task.dueDate || '',
+                                  status: task.status,
+                                });
+                              }}
+                            >
+                              View
+                            </Button>
                           </div>
                         </div>
                       ))
@@ -450,6 +501,129 @@ export function TasksPage() {
         </CardContent>
       </Card>
     </div>
+
+    <Dialog open={!!viewTask} onOpenChange={(open) => !open && setViewTask(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Task Details</DialogTitle>
+          <DialogDescription>Review, edit, or delete this task.</DialogDescription>
+        </DialogHeader>
+        {viewTask && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Title</Label>
+                <Input
+                  value={viewForm.title}
+                  onChange={(e) => setViewForm({ ...viewForm, title: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Status</Label>
+                <Select value={viewForm.status} onValueChange={(v: Task['status']) => setViewForm({ ...viewForm, status: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todo">To Do</SelectItem>
+                    <SelectItem value="in-progress">In Progress</SelectItem>
+                    <SelectItem value="review">Review</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Description</Label>
+              <Input
+                value={viewForm.description}
+                onChange={(e) => setViewForm({ ...viewForm, description: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Priority</Label>
+                <Select value={viewForm.priority} onValueChange={(v: Task['priority']) => setViewForm({ ...viewForm, priority: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Assignee</Label>
+                <Input
+                  value={viewForm.assignee}
+                  onChange={(e) => setViewForm({ ...viewForm, assignee: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Project</Label>
+                <Select
+                  value={viewForm.projectId || 'none'}
+                  onValueChange={(val) => {
+                    if (val === 'none') {
+                      setViewForm({ ...viewForm, projectId: '', projectName: '' });
+                      return;
+                    }
+                    const proj = projectOptions.find(p => p.id === val);
+                    setViewForm({ ...viewForm, projectId: val, projectName: proj?.name || '' });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No project</SelectItem>
+                    {projectOptions.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Due date</Label>
+                <Input
+                  type="date"
+                  value={viewForm.dueDate}
+                  onChange={(e) => setViewForm({ ...viewForm, dueDate: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter className="flex justify-between gap-2">
+              <Button variant="destructive" onClick={() => deleteMutation.mutate(viewTask.id)} disabled={deleteMutation.isPending}>
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setViewTask(null)}>Close</Button>
+                <Button
+                  onClick={() =>
+                    updateMutation.mutate({
+                      id: viewTask.id,
+                      data: {
+                        ...viewForm,
+                        projectId: viewForm.projectId || undefined,
+                        projectName: viewForm.projectName,
+                      },
+                    })
+                  }
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

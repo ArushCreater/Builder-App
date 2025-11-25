@@ -1,0 +1,60 @@
+    .query(
+      `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date, completed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [
+        task.id,
+        task.title,
+        task.description,
+        task.status,
+        task.priority,
+        task.assignee,
+        task.projectId,
+        task.projectName,
+        task.dueDate || null,
+        task.completed,
+      ]
+    )
+    .then(result => res.json({ task: { ...task, ...result.rows[0] } }))
+    .catch(() => res.json({ task }));
+});
+
+app.patch('/api/tasks/:id', (req, res) => {
+  const body = req.body || {};
+  if (!pool) {
+    const task = tasks.find(t => t.id === req.params.id);
+    if (task) {
+      if (body.completed !== undefined) task.completed = !!body.completed;
+      if (body.status) task.status = body.status;
+    }
+
+    Object.values(projectTasks).forEach(list => {
+      const t = list.find(x => x.id === req.params.id);
+      if (t) {
+        if (body.completed !== undefined) t.status = body.completed ? 'done' : t.status || 'todo';
+        if (body.status) t.status = body.status;
+      }
+    });
+
+    if (!task) return res.status(404).json({ message: 'Not found' });
+    return res.json({ task });
+  }
+
+  pool
+    .query(
+      `UPDATE tasks SET
+        completed=COALESCE($1, completed),
+        status=COALESCE($2, status),
+        updated_at=now()
+       WHERE id=$3
+       RETURNING *`,
+      [body.completed, body.status, req.params.id]
+    )
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({
+        task: {
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          status: row.status,

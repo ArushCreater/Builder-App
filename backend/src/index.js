@@ -225,6 +225,7 @@ const dailyLogs = [
 
 const projectTasks = {};
 const projectDocuments = {};
+const projectDocPages = {};
 
 const documents = [
   {
@@ -1124,6 +1125,13 @@ app.patch('/api/tasks/:id', (req, res) => {
     if (task) {
       if (body.completed !== undefined) task.completed = !!body.completed;
       if (body.status) task.status = body.status;
+      if (body.title) task.title = body.title;
+      if (body.description) task.description = body.description;
+      if (body.priority) task.priority = body.priority;
+      if (body.assignee) task.assignee = body.assignee;
+      if (body.projectName) task.projectName = body.projectName;
+      if (body.projectId) task.projectId = body.projectId;
+      if (body.dueDate) task.dueDate = body.dueDate;
     }
 
     Object.values(projectTasks).forEach(list => {
@@ -1131,6 +1139,13 @@ app.patch('/api/tasks/:id', (req, res) => {
       if (t) {
         if (body.completed !== undefined) t.status = body.completed ? 'done' : t.status || 'todo';
         if (body.status) t.status = body.status;
+        if (body.title) t.title = body.title;
+        if (body.description) t.description = body.description;
+        if (body.priority) t.priority = body.priority;
+        if (body.assignee) t.assignedTo = body.assignee;
+        if (body.projectName) t.projectName = body.projectName;
+        if (body.projectId) t.projectId = body.projectId;
+        if (body.dueDate) t.dueDate = body.dueDate;
       }
     });
 
@@ -1143,10 +1158,28 @@ app.patch('/api/tasks/:id', (req, res) => {
       `UPDATE tasks SET
         completed=COALESCE($1, completed),
         status=COALESCE($2, status),
-        updated_at=now()
-       WHERE id=$3
-       RETURNING *`,
-      [body.completed, body.status, req.params.id]
+        title=COALESCE($3, title),
+        description=COALESCE($4, description),
+        priority=COALESCE($5, priority),
+        assignee=COALESCE($6, assignee),
+        project_id=COALESCE($7, project_id),
+        project_name=COALESCE($8, project_name),
+       due_date=COALESCE($9, due_date),
+       updated_at=now()
+      WHERE id=$10
+      RETURNING *`,
+      [
+        body.completed,
+        body.status,
+        body.title,
+        body.description,
+        body.priority,
+        body.assignee,
+        body.projectId,
+        body.projectName,
+        body.dueDate,
+        req.params.id,
+      ]
     )
     .then(result => {
       const row = result.rows[0];
@@ -1167,6 +1200,27 @@ app.patch('/api/tasks/:id', (req, res) => {
       });
     })
     .catch(() => res.status(500).json({ message: 'Update failed' }));
+});
+
+app.delete('/api/tasks/:id', (req, res) => {
+  if (!pool) {
+    const idx = tasks.findIndex(t => t.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = tasks.splice(idx, 1);
+    Object.keys(projectTasks).forEach(pid => {
+      projectTasks[pid] = (projectTasks[pid] || []).filter(t => t.id !== req.params.id);
+    });
+    return res.json({ task: removed });
+  }
+
+  pool
+    .query('DELETE FROM tasks WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ task: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Users
@@ -1411,6 +1465,46 @@ app.delete('/api/documents/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ message: 'Not found' });
   const [removed] = documents.splice(idx, 1);
   res.json({ document: removed });
+});
+
+// Project doc pages (lightweight wiki/notes per project)
+app.get('/api/projects/:id/doc-pages', (req, res) => {
+  const pages = projectDocPages[req.params.id] || [];
+  res.json({ pages });
+});
+
+app.post('/api/projects/:id/doc-pages', (req, res) => {
+  const body = req.body || {};
+  const page = {
+    id: randomUUID(),
+    title: body.title || 'Untitled Page',
+    content: body.content || '',
+    images: Array.isArray(body.images) ? body.images : [],
+    updatedAt: new Date().toISOString(),
+  };
+  projectDocPages[req.params.id] = projectDocPages[req.params.id] || [];
+  projectDocPages[req.params.id].unshift(page);
+  res.json({ page });
+});
+
+app.put('/api/projects/:id/doc-pages/:pageId', (req, res) => {
+  const body = req.body || {};
+  const pages = projectDocPages[req.params.id] || [];
+  const page = pages.find(p => p.id === req.params.pageId);
+  if (!page) return res.status(404).json({ message: 'Not found' });
+  page.title = body.title ?? page.title;
+  page.content = body.content ?? page.content;
+  page.images = Array.isArray(body.images) ? body.images : page.images;
+  page.updatedAt = new Date().toISOString();
+  res.json({ page });
+});
+
+app.delete('/api/projects/:id/doc-pages/:pageId', (req, res) => {
+  const pages = projectDocPages[req.params.id] || [];
+  const idx = pages.findIndex(p => p.id === req.params.pageId);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = pages.splice(idx, 1);
+  res.json({ page: removed });
 });
 
 // Bids

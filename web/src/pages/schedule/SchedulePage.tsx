@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
@@ -66,6 +66,16 @@ export function SchedulePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [localEvents, setLocalEvents] = useState<ScheduleEvent[]>([]);
+  const ganttRef = useRef<HTMLDivElement | null>(null);
+  const [dragState, setDragState] = useState<{
+    id: string;
+    mode: 'move' | 'start' | 'end';
+    start: string;
+    end: string;
+    startX: number;
+  } | null>(null);
+  const CELL_WIDTH = 80; // px per day in the Gantt grid for predictable interaction
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -132,6 +142,12 @@ export function SchedulePage() {
     onError: () => toast({ title: 'Error', description: 'Could not delete event', variant: 'destructive' }),
   });
 
+  const updateDatesMutation = useMutation({
+    mutationFn: (payload: { id: string; startDate: string; endDate: string }) =>
+      apiClient.put(`/schedule/events/${payload.id}`, { startDate: payload.startDate, endDate: payload.endDate }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['schedule-events'] }),
+  });
+
   const filteredEvents = useMemo(() => {
     const taskEvents: ScheduleEvent[] = tasks
       .filter(t => !!t.dueDate)
@@ -157,8 +173,25 @@ export function SchedulePage() {
     return filtered.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
   }, [events, tasks, selectedProject, typeFilter]);
 
-  const minDate = filteredEvents.length ? filteredEvents[0].startDate : undefined;
-  const maxDate = filteredEvents.length ? filteredEvents[filteredEvents.length - 1].endDate : undefined;
+  useEffect(() => {
+    setLocalEvents(filteredEvents);
+  }, [filteredEvents]);
+
+  const minDate = useMemo(() => {
+    if (!localEvents.length) return undefined;
+    return localEvents.reduce(
+      (min, ev) => (new Date(ev.startDate) < new Date(min) ? ev.startDate : min),
+      localEvents[0].startDate
+    );
+  }, [localEvents]);
+
+  const maxDate = useMemo(() => {
+    if (!localEvents.length) return undefined;
+    return localEvents.reduce(
+      (max, ev) => (new Date(ev.endDate) > new Date(max) ? ev.endDate : max),
+      localEvents[0].endDate
+    );
+  }, [localEvents]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,7 +219,7 @@ export function SchedulePage() {
 
   const ganttItems = useMemo(() => {
     const combined = [
-      ...filteredEvents.map(e => ({
+      ...localEvents.map(e => ({
         id: e.id,
         label: e.title,
         projectName: e.projectName,
@@ -206,18 +239,89 @@ export function SchedulePage() {
         })),
     ].sort((a, b) => a.start.localeCompare(b.start));
     return combined;
-  }, [filteredEvents, projects]);
+  }, [localEvents, projects]);
+
+  const timelineDays = useMemo(() => {
+    if (!minDate || !maxDate) {
+      const today = new Date();
+      const start = new Date(today);
+      start.setDate(today.getDate() - 7);
+      const end = new Date(today);
+      end.setDate(today.getDate() + 30);
+      const days: string[] = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        days.push(new Date(d).toISOString().split('T')[0]);
+      }
+      return days;
+    }
+    const start = new Date(minDate);
+    start.setDate(start.getDate() - 3);
+    const end = new Date(maxDate);
+    end.setDate(end.getDate() + 7);
+    const days: string[] = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      days.push(new Date(d).toISOString().split('T')[0]);
+    }
+    return days;
+  }, [minDate, maxDate]);
 
   const computeBar = (start: string, end: string) => {
-    if (!minDate || !maxDate) return { left: '0%', width: '100%' };
-    const startMs = new Date(start).getTime();
-    const endMs = new Date(end).getTime() || startMs;
-    const minMs = new Date(minDate).getTime();
-    const maxMs = new Date(maxDate).getTime();
-    const span = Math.max(maxMs - minMs, 1);
-    const leftPct = Math.max(0, ((startMs - minMs) / span) * 100);
-    const widthPct = Math.max(5, ((endMs - startMs) / span) * 100 || 5);
-    return { left: `${leftPct}%`, width: `${widthPct}%` };
+    const startIdx = timelineDays.findIndex(d => d === start);
+    const endIdx = timelineDays.findIndex(d => d === end);
+    const safeStart = startIdx >= 0 ? startIdx : 0;
+    const safeEnd = endIdx >= 0 ? endIdx : safeStart;
+    const left = safeStart;
+    const width = Math.max(1, safeEnd - safeStart + 1);
+    return { left, width };
+  };
+
+  const updateEventDates = (id: string, newStart: string, newEnd: string) => {
+    setLocalEvents(prev =>
+      prev.map(ev => (ev.id === id ? { ...ev, startDate: newStart, endDate: newEnd } : ev))
+    );
+    // Persist to backend (only for real schedule events, not derived tasks)
+    if (!id.startsWith('task-') && !id.startsWith('proj-')) {
+      updateDatesMutation.mutate({ id, startDate: newStart, endDate: newEnd });
+    }
+  };
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      if (!dragState || !ganttRef.current) return;
+      const dayWidth = CELL_WIDTH;
+      const deltaDays = Math.round((e.clientX - dragState.startX) / dayWidth);
+      const origStart = new Date(dragState.start);
+      const origEnd = new Date(dragState.end);
+      if (dragState.mode === 'move') {
+        const newStart = new Date(origStart);
+        newStart.setDate(origStart.getDate() + deltaDays);
+        const newEnd = new Date(origEnd);
+        newEnd.setDate(origEnd.getDate() + deltaDays);
+        updateEventDates(dragState.id, newStart.toISOString().split('T')[0], newEnd.toISOString().split('T')[0]);
+      } else if (dragState.mode === 'start') {
+        const newStart = new Date(origStart);
+        newStart.setDate(origStart.getDate() + deltaDays);
+        const newStartStr = newStart.toISOString().split('T')[0];
+        updateEventDates(dragState.id, newStartStr, dragState.end);
+      } else if (dragState.mode === 'end') {
+        const newEnd = new Date(origEnd);
+        newEnd.setDate(origEnd.getDate() + deltaDays);
+        const newEndStr = newEnd.toISOString().split('T')[0];
+        updateEventDates(dragState.id, dragState.start, newEndStr);
+      }
+    };
+    const handleUp = () => setDragState(null);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [dragState, timelineDays]);
+
+  const handleBarMouseDown = (e: React.MouseEvent, id: string, mode: 'move' | 'start' | 'end', start: string, end: string) => {
+    e.preventDefault();
+    setDragState({ id, mode, start, end, startX: e.clientX });
   };
 
   const daysInMonth = useMemo(() => {
@@ -467,32 +571,104 @@ export function SchedulePage() {
               )}
             </div>
           ) : view === 'gantt' ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {ganttItems.length === 0 ? (
                 <div className="text-center text-gray-500 py-12">No timelines yet. Add events or set project dates.</div>
               ) : (
-                ganttItems.map((item) => {
-                  const bar = computeBar(item.start, item.end);
-                  return (
-                    <div key={item.id} className="border border-gray-200 rounded-lg p-3">
-                      <div className="flex items-center justify-between text-sm text-gray-700">
-                        <div>
-                          <div className="font-semibold text-gray-900">{item.label}</div>
-                          <div className="text-xs text-gray-500">{item.projectName || 'No project'}</div>
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="flex border-b border-gray-100 bg-gray-50 text-xs text-gray-600">
+                    <div className="w-64 px-3 py-2 font-semibold">Item</div>
+                    <div className="flex-1 overflow-x-auto">
+                      <div className="min-w-[900px]">
+                        <div className="grid" style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${CELL_WIDTH}px)` }}>
+                          {timelineDays.map((d) => (
+                            <div key={d} className="px-2 py-2 text-center border-l border-gray-100">
+                              {new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </div>
+                          ))}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {formatDate(item.start)} - {formatDate(item.end)}
-                        </div>
-                      </div>
-                      <div className="mt-3 h-10 relative bg-gray-100 rounded-md overflow-hidden">
-                        <div
-                          className="absolute top-1/2 -translate-y-1/2 h-6 rounded-md bg-gradient-to-r from-blue-500 to-indigo-500 shadow-sm"
-                          style={{ left: bar.left, width: bar.width }}
-                        />
                       </div>
                     </div>
-                  );
-                })
+                  </div>
+                  <div className="flex">
+                    <div className="w-64 border-r border-gray-100">
+                      {ganttItems.map((item) => (
+                        <div key={item.id} className="px-3 py-3 border-b border-gray-100">
+                          <div className="font-semibold text-sm text-gray-900">{item.label}</div>
+                          <div className="text-xs text-gray-500">{item.projectName || 'No project'}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex-1 overflow-x-auto" ref={ganttRef}>
+                      <div className="relative min-w-[900px]">
+                        <div className="grid" style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${CELL_WIDTH}px)` }}>
+                          {timelineDays.map((d) => (
+                            <div
+                              key={d}
+                              className="h-full border-l border-gray-100 last:border-r border-dashed border-gray-200"
+                              onClick={(e) => {
+                                const projectId = selectedProject !== 'all' ? selectedProject : '';
+                                setFormData({
+                                  ...formData,
+                                  projectId,
+                                  startDate: d,
+                                  endDate: d,
+                                });
+                                setEditingId(null);
+                                setIsDialogOpen(true);
+                                e.stopPropagation();
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <div className="absolute inset-0 pointer-events-none">
+                          {ganttItems.map((item, idx) => {
+                            const bar = computeBar(item.start, item.end);
+                            const top = idx * 64 + 10;
+                            const today = new Date().toISOString().split('T')[0];
+                            const todayIdx = timelineDays.findIndex(d => d === today);
+                            return (
+                              <div key={item.id} className="absolute left-0 right-0" style={{ top }}>
+                                <div
+                                  className="absolute h-10 rounded-md bg-gradient-to-r from-blue-500 to-indigo-500 shadow-sm flex items-center text-xs text-white px-3 gap-2 cursor-grab"
+                                  style={{
+                                    left: `calc(${bar.left} * ${CELL_WIDTH}px)`,
+                                    width: `calc(${bar.width} * ${CELL_WIDTH}px)`,
+                                  }}
+                                  onMouseDown={(e) => handleBarMouseDown(e, item.id, 'move', item.start, item.end)}
+                                >
+                                  <span className="font-semibold">{item.label}</span>
+                                </div>
+                                <div
+                                  className="absolute h-10 w-2 bg-indigo-700 rounded-l cursor-ew-resize"
+                                  style={{
+                                    left: `calc(${bar.left} * ${CELL_WIDTH}px)`,
+                                  }}
+                                  onMouseDown={(e) => handleBarMouseDown(e, item.id, 'start', item.start, item.end)}
+                                />
+                                <div
+                                  className="absolute h-10 w-2 bg-indigo-700 rounded-r cursor-ew-resize"
+                                  style={{
+                                    left: `calc(${bar.left + bar.width} * ${CELL_WIDTH}px - 8px)`,
+                                  }}
+                                  onMouseDown={(e) => handleBarMouseDown(e, item.id, 'end', item.start, item.end)}
+                                />
+                                {todayIdx >= 0 && (
+                                  <div
+                                    className="absolute top-[-8px] bottom-[-4px] w-[2px] bg-red-500"
+                                    style={{ left: `calc(${todayIdx} * ${CELL_WIDTH}px)` }}
+                                  >
+                                    <div className="absolute -top-3 left-[-12px] text-[10px] text-red-600">Today</div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           ) : view === 'calendar' ? (
