@@ -80,6 +80,7 @@ export function DocumentsPage() {
     projectName: '',
   });
   const [fileMeta, setFileMeta] = useState<{ name: string; size: string } | null>(null);
+  const [fileUrl, setFileUrl] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: projectsData } = useQuery({
@@ -106,6 +107,7 @@ export function DocumentsPage() {
       setIsUploadDialogOpen(false);
       setFormData({ name: '', category: '', projectId: '', projectName: '' });
       setFileMeta(null);
+      setFileUrl('');
     },
   });
 
@@ -120,7 +122,7 @@ export function DocumentsPage() {
       type: fileMeta?.name?.split('.').pop() || 'file',
       size: fileMeta?.size || 'N/A',
       uploadedBy: 'You',
-      url: '#',
+      url: fileUrl || '#',
     });
   };
 
@@ -140,6 +142,14 @@ export function DocumentsPage() {
     if (!formData.name) {
       setFormData((prev) => ({ ...prev, name: file.name }));
     }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result;
+      if (typeof result === 'string') {
+        setFileUrl(result);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

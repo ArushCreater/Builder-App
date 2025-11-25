@@ -187,18 +187,18 @@ export function ProposalsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Proposals</h1>
-          <p className="text-gray-500 mt-1">Quote, send, and track proposals across projects.</p>
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold text-gray-900 leading-tight">Proposals</h1>
+          <p className="text-gray-500 text-sm leading-snug">Quote, send, and track proposals across projects.</p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               {editingId ? 'Edit Proposal' : 'New Proposal'}
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl w-[95vw] sm:w-full">
             <form onSubmit={handleCreateProposal}>
               <DialogHeader>
                 <DialogTitle>{editingId ? 'Edit Proposal' : 'Create New Proposal'}</DialogTitle>
@@ -298,11 +298,11 @@ export function ProposalsPage() {
                   </Select>
                 </div>
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setIsCreateDialogOpen(false); setEditingId(null); }}>
+              <DialogFooter className="flex flex-col sm:flex-row sm:justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => { setIsCreateDialogOpen(false); setEditingId(null); }} className="w-full sm:w-auto">
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
+                <Button type="submit" disabled={createMutation.isPending} className="w-full sm:w-auto">
                   {createMutation.isPending ? 'Saving...' : editingId ? 'Save Changes' : 'Create Proposal'}
                 </Button>
               </DialogFooter>

@@ -7,6 +7,7 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 8081;
 const dbUrl = process.env.DATABASE_URL;
+const BODY_LIMIT = process.env.BODY_LIMIT || '10mb';
 
 let pool;
 if (dbUrl) {
@@ -34,7 +35,8 @@ const corsOptions = {
 };
 
 app.use(morgan('tiny'));
-app.use(express.json());
+app.use(express.json({ limit: BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
@@ -1918,7 +1920,15 @@ app.post('/api/messages/conversation/:id', (req, res) => {
 app.get('/api/schedule/events', (req, res) => {
   const { projectId, type, search } = req.query;
   let list = [...scheduleEvents];
-  if (projectId) list = list.filter(e => e.projectId === projectId);
+  if (projectId) {
+    const projectMatchName =
+      projects.find(p => p.id === projectId)?.name ||
+      projectDocuments[projectId]?.projectName ||
+      '';
+    list = list.filter(
+      e => e.projectId === projectId || (!!projectMatchName && e.projectName === projectMatchName)
+    );
+  }
   if (type) list = list.filter(e => e.type === type);
   if (search) {
     const q = String(search).toLowerCase();
@@ -1938,7 +1948,10 @@ app.post('/api/schedule/events', (req, res) => {
     id: randomUUID(),
     title: body.title || 'Event',
     projectId: body.projectId,
-    projectName: body.projectName || '',
+    projectName:
+      body.projectName ||
+      projects.find(p => p.id === body.projectId)?.name ||
+      '',
     type: body.type || 'task',
     startDate: body.startDate || '',
     endDate: body.endDate || body.startDate || '',
@@ -1957,7 +1970,10 @@ app.put('/api/schedule/events/:id', (req, res) => {
   Object.assign(event, {
     title: body.title ?? event.title,
     projectId: body.projectId ?? event.projectId,
-    projectName: body.projectName ?? event.projectName,
+    projectName:
+      body.projectName ??
+      event.projectName ??
+      (body.projectId ? projects.find(p => p.id === body.projectId)?.name : undefined),
     type: body.type ?? event.type,
     startDate: body.startDate ?? event.startDate,
     endDate: body.endDate ?? event.endDate,
