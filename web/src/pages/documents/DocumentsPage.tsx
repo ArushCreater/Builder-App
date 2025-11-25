@@ -32,7 +32,7 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Separator } from '../../components/ui/separator';
-import { Search, FileText, Download, Eye, Upload, Folder, Grid, List, Trash2 } from 'lucide-react';
+import { Search, FileText, Download, Eye, Upload, Folder, Grid, List, Trash2, FolderPlus } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
 
@@ -75,6 +75,8 @@ export function DocumentsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('folders');
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
+  const [newFolder, setNewFolder] = useState('');
   const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
@@ -429,6 +431,40 @@ export function DocumentsPage() {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">
+              <FolderPlus className="mr-2 h-4 w-4" />
+              New Folder
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Folder</DialogTitle>
+              <DialogDescription>Creates a nested folder inside the project directory.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <Label htmlFor="folderName">Folder path</Label>
+              <Input
+                id="folderName"
+                placeholder="e.g. specs/2024"
+                value={newFolder}
+                onChange={(e) => setNewFolder(e.target.value)}
+              />
+            </div>
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsFolderDialogOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  setFormData((prev) => ({ ...prev, folder: newFolder }));
+                  setIsFolderDialogOpen(false);
+                }}
+              >
+                Save
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
