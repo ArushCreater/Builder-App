@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { ArrowLeft, Calendar, FileText, Edit, Plus } from 'lucide-react';
+import { ArrowLeft, Calendar, FileText, Edit, Plus, Trash2 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
 interface Project {
@@ -45,6 +45,7 @@ interface Project {
   endDate?: string;
   estimatedBudget: number;
   actualCost: number;
+  progress?: number;
   ownerId: string;
   createdAt: string;
   updatedAt: string;
@@ -128,6 +129,7 @@ export function ProjectDetailPage() {
     estimatedBudget: '',
     actualCost: '',
   });
+  const [progressValue, setProgressValue] = useState(0);
 
   const { data: projectData, isLoading } = useQuery({
     queryKey: ['project', id],
@@ -153,6 +155,11 @@ export function ProjectDetailPage() {
   const tasks = tasksData?.tasks || [];
   const budgetItems = budgetData?.items || [];
   const documents = documentsData?.documents || [];
+  useEffect(() => {
+    if (project?.progress !== undefined && project.progress !== null) {
+      setProgressValue(Math.round(project.progress));
+    }
+  }, [project?.progress]);
 
   const taskMutation = useMutation({
     mutationFn: (data: any) => apiClient.post<{ task: Task }>(`/projects/${id}/tasks`, data),
@@ -196,6 +203,26 @@ export function ProjectDetailPage() {
     onError: () => toast({ title: 'Error', description: 'Could not update project', variant: 'destructive' }),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => apiClient.delete<{ project: Project }>(`/projects/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast({ title: 'Project deleted' });
+      navigate('/projects');
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not delete project', variant: 'destructive' }),
+  });
+
+  const progressMutation = useMutation({
+    mutationFn: (value: number) => apiClient.put<{ project: Project }>(`/projects/${id}`, { progress: value }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast({ title: 'Progress updated' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not update progress', variant: 'destructive' }),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -236,153 +263,215 @@ export function ProjectDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/projects')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
-            <p className="text-gray-500 mt-1">{project.description}</p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+              <Badge className="uppercase tracking-wide">{project.status}</Badge>
+              <Badge variant="outline" className="font-semibold">{progressValue}%</Badge>
+            </div>
+            <p className="text-gray-500">{project.description}</p>
           </div>
         </div>
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={openEdit}>
-              <Edit className="mr-2 h-4 w-4" />
-              Edit Project
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                editMutation.mutate({
-                  ...editForm,
-                  estimatedBudget: editForm.estimatedBudget ? parseFloat(editForm.estimatedBudget) : 0,
-                  actualCost: editForm.actualCost ? parseFloat(editForm.actualCost) : 0,
-                });
-              }}
-            >
-              <DialogHeader>
-                <DialogTitle>Edit Project</DialogTitle>
-                <DialogDescription>Update project details</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-2 gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="p-name">Name</Label>
-                  <Input
-                    id="p-name"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-type">Type</Label>
-                  <Input
-                    id="p-type"
-                    value={editForm.type}
-                    onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-status">Status</Label>
-                  <Input
-                    id="p-status"
-                    value={editForm.status}
-                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-budget">Estimated Budget</Label>
-                  <Input
-                    id="p-budget"
-                    type="number"
-                    value={editForm.estimatedBudget}
-                    onChange={(e) => setEditForm({ ...editForm, estimatedBudget: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-actual">Actual Cost</Label>
-                  <Input
-                    id="p-actual"
-                    type="number"
-                    value={editForm.actualCost}
-                    onChange={(e) => setEditForm({ ...editForm, actualCost: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="p-desc">Description</Label>
-                  <textarea
-                    id="p-desc"
-                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
-                    value={editForm.description}
-                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-address">Address</Label>
-                  <Input
-                    id="p-address"
-                    value={editForm.address}
-                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-city">City</Label>
-                  <Input
-                    id="p-city"
-                    value={editForm.city}
-                    onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-state">State</Label>
-                  <Input
-                    id="p-state"
-                    value={editForm.state}
-                    onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-zip">Zip</Label>
-                  <Input
-                    id="p-zip"
-                    value={editForm.zipCode}
-                    onChange={(e) => setEditForm({ ...editForm, zipCode: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-start">Start Date</Label>
-                  <Input
-                    id="p-start"
-                    type="date"
-                    value={editForm.startDate}
-                    onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-end">End Date</Label>
-                  <Input
-                    id="p-end"
-                    type="date"
-                    value={editForm.endDate}
-                    onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
-                  />
-                </div>
+
+        <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[360px]">
+          {project.status === 'IN_PROGRESS' && (
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-gray-700">Progress</Label>
+                <span className="text-sm font-semibold text-gray-900">{progressValue}%</span>
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                  Cancel
+              <div className="mt-2 flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={progressValue}
+                  onChange={(e) => setProgressValue(parseInt(e.target.value, 10))}
+                  className="w-full accent-blue-600"
+                />
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => progressMutation.mutate(progressValue)}
+                  disabled={progressMutation.isPending}
+                >
+                  {progressMutation.isPending ? 'Saving...' : 'Save Progress'}
                 </Button>
-                <Button type="submit" disabled={editMutation.isPending}>
-                  {editMutation.isPending ? 'Saving...' : 'Save'}
+              </div>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" onClick={openEdit}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Project
                 </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    editMutation.mutate({
+                      ...editForm,
+                      estimatedBudget: editForm.estimatedBudget ? parseFloat(editForm.estimatedBudget) : 0,
+                      actualCost: editForm.actualCost ? parseFloat(editForm.actualCost) : 0,
+                    });
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>Edit Project</DialogTitle>
+                    <DialogDescription>Update project details</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-2 gap-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="p-name">Name</Label>
+                      <Input
+                        id="p-name"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-type">Type</Label>
+                      <Input
+                        id="p-type"
+                        value={editForm.type}
+                        onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-status">Status</Label>
+                      <Input
+                        id="p-status"
+                        value={editForm.status}
+                        onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-budget">Estimated Budget</Label>
+                      <Input
+                        id="p-budget"
+                        type="number"
+                        value={editForm.estimatedBudget}
+                        onChange={(e) => setEditForm({ ...editForm, estimatedBudget: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-actual">Actual Cost</Label>
+                      <Input
+                        id="p-actual"
+                        type="number"
+                        value={editForm.actualCost}
+                        onChange={(e) => setEditForm({ ...editForm, actualCost: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2 col-span-2">
+                      <Label htmlFor="p-desc">Description</Label>
+                      <textarea
+                        id="p-desc"
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+                        value={editForm.description}
+                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-address">Address</Label>
+                      <Input
+                        id="p-address"
+                        value={editForm.address}
+                        onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-city">City</Label>
+                      <Input
+                        id="p-city"
+                        value={editForm.city}
+                        onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-state">State</Label>
+                      <Input
+                        id="p-state"
+                        value={editForm.state}
+                        onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-zip">Zip</Label>
+                      <Input
+                        id="p-zip"
+                        value={editForm.zipCode}
+                        onChange={(e) => setEditForm({ ...editForm, zipCode: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-start">Start Date</Label>
+                      <Input
+                        id="p-start"
+                        type="date"
+                        value={editForm.startDate}
+                        onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p-end">End Date</Label>
+                      <Input
+                        id="p-end"
+                        type="date"
+                        value={editForm.endDate}
+                        onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={editMutation.isPending}>
+                      {editMutation.isPending ? 'Saving...' : 'Save'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="destructive" disabled={deleteMutation.isPending}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete project?</DialogTitle>
+                  <DialogDescription>
+                    This action permanently removes the project and its tasks/files. This cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline">Cancel</Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                  >
+                    {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
       </div>
 
       {/* Overview Cards */}

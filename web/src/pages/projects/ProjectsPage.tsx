@@ -42,6 +42,7 @@ interface Project {
   endDate?: string;
   estimatedBudget: number;
   actualCost: number;
+   progress?: number;
   ownerId: string;
   createdAt: string;
   updatedAt: string;
@@ -460,6 +461,13 @@ export function ProjectsPage() {
                         </div>
                         <div className="space-y-2 text-sm">
                           <div className="flex items-center justify-between">
+                            <div className="text-gray-600">Progress</div>
+                            <span className="font-medium">
+                              {project.progress !== undefined ? Math.round(project.progress) : 0}%
+                            </span>
+                          </div>
+                          <Progress value={project.progress ?? 0} />
+                          <div className="flex items-center justify-between">
                             <div className="flex items-center text-gray-600">
                               <DollarSign className="h-4 w-4 mr-1" />
                               Budget
@@ -569,6 +577,13 @@ export function ProjectsPage() {
                                   </span>
                                 </div>
                               )}
+                                <div className="flex items-center justify-between">
+                                  <span>Progress</span>
+                                  <span className="font-semibold text-gray-900">
+                                    {project.progress !== undefined ? Math.round(project.progress) : 0}%
+                                  </span>
+                                </div>
+                                <Progress value={project.progress ?? 0} />
                                 <Progress
                                   value={
                                     project.estimatedBudget > 0

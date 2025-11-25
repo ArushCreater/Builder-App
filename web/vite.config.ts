@@ -12,5 +12,12 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://awseb-e-7-AWSEBLoa-8SHHN7GS1RDA-389774250.ap-southeast-2.elb.amazonaws.com',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 })

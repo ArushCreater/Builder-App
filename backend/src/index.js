@@ -73,6 +73,24 @@ async function ensureTables() {
         estimated_budget numeric,
         actual_cost numeric,
         owner_id text,
+        progress numeric DEFAULT 0,
+        created_at timestamptz DEFAULT now(),
+        updated_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS progress numeric DEFAULT 0;`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id uuid PRIMARY KEY,
+        title text,
+        description text,
+        status text,
+        priority text,
+        assignee text,
+        project_id text,
+        project_name text,
+        due_date date,
+        completed boolean DEFAULT false,
         created_at timestamptz DEFAULT now(),
         updated_at timestamptz DEFAULT now()
       );
@@ -98,6 +116,7 @@ const projects = [
     endDate: '2024-08-15',
     estimatedBudget: 750000,
     actualCost: 320000,
+    progress: 45,
     ownerId: 'u-1',
     createdAt: '2024-01-01',
     updatedAt: '2024-02-01',
@@ -116,6 +135,7 @@ const projects = [
     endDate: '2025-02-01',
     estimatedBudget: 1500000,
     actualCost: 0,
+    progress: 10,
     ownerId: 'u-2',
     createdAt: '2024-03-10',
     updatedAt: '2024-03-10',
@@ -246,10 +266,38 @@ const proposals = [
     title: 'Electrical Package',
     clientName: 'Acme Corp',
     projectName: 'Sunrise Apartments',
+    projectId: 'p-1',
     amount: 55000,
     status: 'sent',
-    dueDate: '2024-04-15',
+    validUntil: '2024-04-15',
     createdAt: '2024-03-20',
+  },
+];
+
+const scheduleEvents = [
+  {
+    id: 'sch-1',
+    title: 'Kickoff Meeting',
+    projectId: 'p-1',
+    projectName: 'Sunrise Apartments',
+    type: 'meeting',
+    startDate: '2024-04-02',
+    endDate: '2024-04-02',
+    assignee: 'Admin User',
+    description: 'Project kickoff with client and GC',
+    location: 'Site Office',
+  },
+  {
+    id: 'sch-2',
+    title: 'Concrete Pour',
+    projectId: 'p-2',
+    projectName: 'Downtown Office',
+    type: 'delivery',
+    startDate: '2024-04-05',
+    endDate: '2024-04-06',
+    assignee: 'Project Manager',
+    description: 'Coordinate concrete trucks and pump',
+    location: 'Site B',
   },
 ];
 
@@ -302,6 +350,7 @@ app.get('/api/projects', (_req, res) => {
           endDate: row.end_date,
           estimatedBudget: Number(row.estimated_budget || 0),
           actualCost: Number(row.actual_cost || 0),
+          progress: Number(row.progress || 0),
           ownerId: row.owner_id,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
@@ -327,6 +376,7 @@ app.post('/api/projects', (req, res) => {
     endDate: body.endDate,
     estimatedBudget: body.estimatedBudget || 0,
     actualCost: body.actualCost || 0,
+    progress: body.progress !== undefined ? Number(body.progress) || 0 : 0,
     ownerId: 'u-1',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -338,8 +388,8 @@ app.post('/api/projects', (req, res) => {
   pool
     .query(
       `INSERT INTO projects
-        (id, name, description, type, status, address, city, state, zip_code, start_date, end_date, estimated_budget, actual_cost, owner_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        (id, name, description, type, status, address, city, state, zip_code, start_date, end_date, estimated_budget, actual_cost, owner_id, progress)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         project.id,
@@ -356,6 +406,7 @@ app.post('/api/projects', (req, res) => {
         project.estimatedBudget,
         project.actualCost,
         project.ownerId,
+        project.progress,
       ]
     )
     .then(result => res.json({ project: { ...project, ...result.rows[0] } }))
@@ -379,20 +430,21 @@ app.get('/api/projects/:id', (req, res) => {
           name: row.name,
           description: row.description,
           type: row.type,
-          status: row.status,
-          address: row.address,
-          city: row.city,
-          state: row.state,
-          zipCode: row.zip_code,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          estimatedBudget: Number(row.estimated_budget || 0),
-          actualCost: Number(row.actual_cost || 0),
-          ownerId: row.owner_id,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        },
-      });
+        status: row.status,
+        address: row.address,
+        city: row.city,
+        state: row.state,
+        zipCode: row.zip_code,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        estimatedBudget: Number(row.estimated_budget || 0),
+        actualCost: Number(row.actual_cost || 0),
+        progress: Number(row.progress || 0),
+        ownerId: row.owner_id,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    });
     })
     .catch(() => res.status(404).json({ message: 'Not found' }));
 });
@@ -416,55 +468,81 @@ app.put('/api/projects/:id', (req, res) => {
       estimatedBudget:
         body.estimatedBudget !== undefined ? Number(body.estimatedBudget) || 0 : project.estimatedBudget,
       actualCost: body.actualCost !== undefined ? Number(body.actualCost) || 0 : project.actualCost,
+      progress: body.progress !== undefined ? Number(body.progress) || 0 : project.progress,
       updatedAt: new Date().toISOString(),
     });
     return res.json({ project });
   }
   pool
-    .query(
-      `UPDATE projects SET
-        name=$1, description=$2, type=$3, status=$4, address=$5, city=$6, state=$7, zip_code=$8,
-        start_date=$9, end_date=$10, estimated_budget=$11, actual_cost=$12, updated_at=now()
-       WHERE id=$13 RETURNING *`,
-      [
-        body.name,
-        body.description,
-        body.type,
-        body.status,
-        body.address,
-        body.city,
-        body.state,
-        body.zipCode,
-        body.startDate,
-        body.endDate,
-        body.estimatedBudget !== undefined ? Number(body.estimatedBudget) || 0 : null,
-        body.actualCost !== undefined ? Number(body.actualCost) || 0 : null,
-        req.params.id,
-      ]
-    )
+    .query('SELECT * FROM projects WHERE id = $1', [req.params.id])
     .then(result => {
-      const row = result.rows[0];
-      if (!row) return res.status(404).json({ message: 'Not found' });
-      res.json({
-        project: {
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          type: row.type,
-          status: row.status,
-          address: row.address,
-          city: row.city,
-          state: row.state,
-          zipCode: row.zip_code,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          estimatedBudget: Number(row.estimated_budget || 0),
-          actualCost: Number(row.actual_cost || 0),
-          ownerId: row.owner_id,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        },
-      });
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+
+      const next = {
+        name: body.name ?? current.name,
+        description: body.description ?? current.description,
+        type: body.type ?? current.type,
+        status: body.status ?? current.status,
+        address: body.address ?? current.address,
+        city: body.city ?? current.city,
+        state: body.state ?? current.state,
+        zip_code: body.zipCode ?? current.zip_code,
+        start_date: body.startDate ?? current.start_date,
+        end_date: body.endDate ?? current.end_date,
+        estimated_budget:
+          body.estimatedBudget !== undefined ? Number(body.estimatedBudget) || 0 : current.estimated_budget,
+        actual_cost: body.actualCost !== undefined ? Number(body.actualCost) || 0 : current.actual_cost,
+        progress: body.progress !== undefined ? Number(body.progress) || 0 : current.progress,
+      };
+
+      return pool
+        .query(
+          `UPDATE projects SET
+            name=$1, description=$2, type=$3, status=$4, address=$5, city=$6, state=$7, zip_code=$8,
+            start_date=$9, end_date=$10, estimated_budget=$11, actual_cost=$12, progress=$13, updated_at=now()
+           WHERE id=$14 RETURNING *`,
+          [
+            next.name,
+            next.description,
+            next.type,
+            next.status,
+            next.address,
+            next.city,
+            next.state,
+            next.zip_code,
+            next.start_date,
+            next.end_date,
+            next.estimated_budget,
+            next.actual_cost,
+            next.progress,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => {
+          const row = updateResult.rows[0];
+          res.json({
+            project: {
+              id: row.id,
+              name: row.name,
+              description: row.description,
+              type: row.type,
+              status: row.status,
+              address: row.address,
+              city: row.city,
+              state: row.state,
+              zipCode: row.zip_code,
+              startDate: row.start_date,
+              endDate: row.end_date,
+              estimatedBudget: Number(row.estimated_budget || 0),
+              actualCost: Number(row.actual_cost || 0),
+              progress: Number(row.progress || 0),
+              ownerId: row.owner_id,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            },
+          });
+        });
     })
     .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
@@ -480,44 +558,122 @@ app.post('/api/projects/:id/tasks', (req, res) => {
     priority: body.priority || 'medium',
     assignedTo: body.assignedTo || '',
     dueDate: body.dueDate || '',
+    projectName: body.projectName || '',
     createdBy: body.createdBy || 'System',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  projectTasks[req.params.id] = projectTasks[req.params.id] || [];
-  projectTasks[req.params.id].push(task);
-  res.json({ task });
+  if (!pool) {
+    projectTasks[req.params.id] = projectTasks[req.params.id] || [];
+    projectTasks[req.params.id].push(task);
+    // Keep global list in sync so tasks page can see project tasks
+    tasks.push({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      assignee: task.assignedTo || '',
+      projectName: task.projectName || '',
+      projectId: task.projectId,
+      dueDate: task.dueDate,
+      completed: task.status === 'done' || task.status === 'completed',
+    });
+    return res.json({ task });
+  }
+  pool
+    .query(
+      `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date, completed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       RETURNING *`,
+      [
+        task.id,
+        task.title,
+        task.description,
+        task.status,
+        task.priority,
+        task.assignedTo,
+        task.projectId,
+        task.projectName,
+        task.dueDate || null,
+        task.status === 'completed' || task.status === 'done',
+      ]
+    )
+    .then(result => res.json({ task: { ...task, ...result.rows[0] } }))
+    .catch(() => res.json({ task }));
 });
 
 app.put('/api/projects/:id/tasks/:taskId', (req, res) => {
   const body = req.body || {};
-  const tasks = (projectTasks[req.params.id] = projectTasks[req.params.id] || []);
-  let task = tasks.find(t => t.id === req.params.taskId);
-  if (!task) {
-    task = {
-      id: req.params.taskId,
-      projectId: req.params.id,
-      title: body.title || 'Task',
-      description: body.description || '',
-      status: body.status || 'todo',
-      priority: body.priority || 'medium',
-      assignedTo: body.assignedTo || '',
-      dueDate: body.dueDate || '',
-      createdBy: body.createdBy || 'System',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    tasks.push(task);
-  } else {
-    task.title = body.title ?? task.title;
-    task.description = body.description ?? task.description;
-    task.status = body.status ?? task.status;
-    task.priority = body.priority ?? task.priority;
-    task.assignedTo = body.assignedTo ?? task.assignedTo;
-    task.dueDate = body.dueDate ?? task.dueDate;
-    task.updatedAt = new Date().toISOString();
+  if (!pool) {
+    const tasks = (projectTasks[req.params.id] = projectTasks[req.params.id] || []);
+    let task = tasks.find(t => t.id === req.params.taskId);
+    if (!task) {
+      task = {
+        id: req.params.taskId,
+        projectId: req.params.id,
+        title: body.title || 'Task',
+        description: body.description || '',
+        status: body.status || 'todo',
+        priority: body.priority || 'medium',
+        assignedTo: body.assignedTo || '',
+        dueDate: body.dueDate || '',
+        createdBy: body.createdBy || 'System',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      tasks.push(task);
+    } else {
+      task.title = body.title ?? task.title;
+      task.description = body.description ?? task.description;
+      task.status = body.status ?? task.status;
+      task.priority = body.priority ?? task.priority;
+      task.assignedTo = body.assignedTo ?? task.assignedTo;
+      task.dueDate = body.dueDate ?? task.dueDate;
+      task.updatedAt = new Date().toISOString();
+    }
+    return res.json({ task });
   }
-  res.json({ task });
+
+  pool
+    .query(
+      `UPDATE tasks SET
+        title=$1, description=$2, status=$3, priority=$4, assignee=$5, due_date=$6, project_name=$7, updated_at=now()
+       WHERE id=$8 AND project_id=$9
+       RETURNING *`,
+      [
+        body.title,
+        body.description,
+        body.status,
+        body.priority,
+        body.assignedTo,
+        body.dueDate || null,
+        body.projectName,
+        req.params.taskId,
+        req.params.id,
+      ]
+    )
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({
+        task: {
+          id: row.id,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          priority: row.priority,
+          assignedTo: row.assignee,
+          dueDate: row.due_date,
+          createdBy: 'System',
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        },
+      });
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.post('/api/projects/:id/documents', (req, res) => {
@@ -539,9 +695,91 @@ app.post('/api/projects/:id/documents', (req, res) => {
   res.json({ document: doc });
 });
 
-app.get('/api/projects/:id/tasks', (_req, res) => {
-  const tasks = projectTasks[_req.params.id] || [];
-  res.json({ tasks });
+app.delete('/api/projects/:id', async (req, res) => {
+  const projectId = req.params.id;
+
+  // In-memory fallback
+  const deleteFromMemory = () => {
+    const idx = projects.findIndex(p => p.id === projectId);
+    if (idx !== -1) {
+      const [removed] = projects.splice(idx, 1);
+      return removed;
+    }
+    return null;
+  };
+
+  if (!pool) {
+    const removed = deleteFromMemory();
+    if (!removed) return res.status(404).json({ message: 'Not found' });
+    return res.json({ project: removed });
+  }
+
+  try {
+    const result = await pool.query('DELETE FROM projects WHERE id = $1 RETURNING *', [projectId]);
+    const row = result.rows[0];
+    if (row) {
+      return res.json({
+        project: {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          type: row.type,
+          status: row.status,
+          address: row.address,
+          city: row.city,
+          state: row.state,
+          zipCode: row.zip_code,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          estimatedBudget: Number(row.estimated_budget || 0),
+          actualCost: Number(row.actual_cost || 0),
+          progress: Number(row.progress || 0),
+          ownerId: row.owner_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        },
+      });
+    }
+  } catch (err) {
+    // fall through to memory + success response
+  }
+
+  const removed = deleteFromMemory();
+  if (removed) return res.json({ project: removed });
+
+  // If it was already gone, still return success so the UI can continue
+  return res.json({ project: { id: projectId } });
+});
+
+app.get('/api/projects/:id/tasks', (req, res) => {
+  if (!pool) {
+    const tasks = projectTasks[req.params.id] || [];
+    return res.json({ tasks });
+  }
+  pool
+    .query('SELECT * FROM tasks WHERE project_id = $1 ORDER BY created_at DESC', [req.params.id])
+    .then(result =>
+      res.json({
+        tasks: result.rows.map(row => ({
+          id: row.id,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          priority: row.priority,
+          assignedTo: row.assignee,
+          dueDate: row.due_date,
+          createdBy: 'System',
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        })),
+      })
+    )
+    .catch(() => {
+      const tasks = projectTasks[req.params.id] || [];
+      res.json({ tasks });
+    });
 });
 
 app.get('/api/projects/:id/budget', (_req, res) => {
@@ -721,8 +959,62 @@ app.delete('/api/leads/:id', (req, res) => {
 });
 
 // Tasks
-app.get('/api/tasks', (_req, res) => {
-  res.json(tasks);
+app.get('/api/tasks', (req, res) => {
+  const { search, status, projectId } = req.query;
+  if (!pool) {
+    // Flatten project-specific tasks into the global view so all tasks appear here
+    const projectTaskList = Object.entries(projectTasks).flatMap(([pid, taskList]) =>
+      (taskList || []).map(t => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: t.priority,
+        assignee: t.assignedTo || '',
+        projectId: pid,
+        projectName: t.projectName || '',
+        dueDate: t.dueDate || '',
+        completed: t.status === 'done' || t.status === 'completed',
+      }))
+    );
+    return res.json({ tasks: [...tasks, ...projectTaskList] });
+  }
+
+  const clauses = [];
+  const values = [];
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (search) {
+    clauses.push(`(LOWER(title) LIKE $${clauses.length + 1} OR LOWER(description) LIKE $${clauses.length + 1})`);
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  pool
+    .query(`SELECT * FROM tasks ${where} ORDER BY created_at DESC`, values)
+    .then(result =>
+      res.json({
+        tasks: result.rows.map(row => ({
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          priority: row.priority,
+          assignee: row.assignee,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          dueDate: row.due_date,
+          completed: !!row.completed,
+        })),
+      })
+    )
+    .catch(() => res.json({ tasks: [] }));
 });
 
 app.post('/api/tasks', (req, res) => {
@@ -735,11 +1027,104 @@ app.post('/api/tasks', (req, res) => {
     priority: body.priority || 'medium',
     assignee: body.assignee || '',
     projectName: body.projectName || '',
+    projectId: body.projectId,
     dueDate: body.dueDate || '',
     completed: !!body.completed,
   };
-  tasks.push(task);
-  res.json(task);
+
+  if (!pool) {
+    tasks.push(task);
+    if (task.projectId) {
+      const bucket = (projectTasks[task.projectId] = projectTasks[task.projectId] || []);
+      bucket.push({
+        id: task.id,
+        projectId: task.projectId,
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        assignedTo: task.assignee,
+        dueDate: task.dueDate,
+        projectName: task.projectName,
+        createdBy: 'System',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    return res.json(task);
+  }
+
+  pool
+    .query(
+      `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date, completed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [
+        task.id,
+        task.title,
+        task.description,
+        task.status,
+        task.priority,
+        task.assignee,
+        task.projectId,
+        task.projectName,
+        task.dueDate || null,
+        task.completed,
+      ]
+    )
+    .then(result => res.json({ task: { ...task, ...result.rows[0] } }))
+    .catch(() => res.json({ task }));
+});
+
+app.patch('/api/tasks/:id', (req, res) => {
+  const body = req.body || {};
+  if (!pool) {
+    const task = tasks.find(t => t.id === req.params.id);
+    if (task) {
+      if (body.completed !== undefined) task.completed = !!body.completed;
+      if (body.status) task.status = body.status;
+    }
+
+    Object.values(projectTasks).forEach(list => {
+      const t = list.find(x => x.id === req.params.id);
+      if (t) {
+        if (body.completed !== undefined) t.status = body.completed ? 'done' : t.status || 'todo';
+        if (body.status) t.status = body.status;
+      }
+    });
+
+    if (!task) return res.status(404).json({ message: 'Not found' });
+    return res.json({ task });
+  }
+
+  pool
+    .query(
+      `UPDATE tasks SET
+        completed=COALESCE($1, completed),
+        status=COALESCE($2, status),
+        updated_at=now()
+       WHERE id=$3
+       RETURNING *`,
+      [body.completed, body.status, req.params.id]
+    )
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({
+        task: {
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          priority: row.priority,
+          assignee: row.assignee,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          dueDate: row.due_date,
+          completed: !!row.completed,
+        },
+      });
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 // Users
@@ -952,8 +1337,26 @@ app.post('/api/messages', (req, res) => {
 });
 
 // Proposals
-app.get('/api/proposals', (_req, res) => {
-  res.json({ proposals });
+app.get('/api/proposals', (req, res) => {
+  const { search, status, projectId } = req.query;
+  let list = [...proposals];
+  if (projectId) list = list.filter(p => p.projectId === projectId);
+  if (status) list = list.filter(p => p.status === status);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      p =>
+        p.title.toLowerCase().includes(q) ||
+        p.clientName.toLowerCase().includes(q) ||
+        (p.projectName || '').toLowerCase().includes(q)
+    );
+  }
+  res.json({ proposals: list });
+});
+
+app.get('/api/projects/:id/proposals', (req, res) => {
+  const list = proposals.filter(p => p.projectId === req.params.id);
+  res.json({ proposals: list });
 });
 
 app.post('/api/proposals', (req, res) => {
@@ -963,13 +1366,64 @@ app.post('/api/proposals', (req, res) => {
     title: body.title || 'Proposal',
     clientName: body.clientName || '',
     projectName: body.projectName || '',
+    projectId: body.projectId,
     amount: parseFloat(body.amount) || 0,
     status: body.status || 'draft',
-    dueDate: body.dueDate || '',
+    validUntil: body.validUntil || body.dueDate || '',
     createdAt: new Date().toISOString(),
   };
   proposals.push(proposal);
-  res.json(proposal);
+  res.json({ proposal });
+});
+
+app.post('/api/projects/:id/proposals', (req, res) => {
+  const body = req.body || {};
+  const proposal = {
+    id: randomUUID(),
+    title: body.title || 'Proposal',
+    clientName: body.clientName || '',
+    projectName: body.projectName || '',
+    projectId: req.params.id,
+    amount: parseFloat(body.amount) || 0,
+    status: body.status || 'draft',
+    validUntil: body.validUntil || '',
+    createdAt: new Date().toISOString(),
+  };
+  proposals.push(proposal);
+  res.json({ proposal });
+});
+
+app.put('/api/proposals/:id', (req, res) => {
+  const body = req.body || {};
+  const proposal = proposals.find(p => p.id === req.params.id);
+  if (!proposal) return res.status(404).json({ message: 'Not found' });
+  Object.assign(proposal, {
+    title: body.title ?? proposal.title,
+    clientName: body.clientName ?? proposal.clientName,
+    projectName: body.projectName ?? proposal.projectName,
+    projectId: body.projectId ?? proposal.projectId,
+    amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : proposal.amount,
+    status: body.status ?? proposal.status,
+    validUntil: body.validUntil ?? proposal.validUntil,
+  });
+  res.json({ proposal });
+});
+
+app.patch('/api/proposals/:id', (req, res) => {
+  const body = req.body || {};
+  const proposal = proposals.find(p => p.id === req.params.id);
+  if (!proposal) return res.status(404).json({ message: 'Not found' });
+  if (body.status) proposal.status = body.status;
+  if (body.amount !== undefined) proposal.amount = parseFloat(body.amount) || proposal.amount;
+  if (body.validUntil !== undefined) proposal.validUntil = body.validUntil;
+  res.json({ proposal });
+});
+
+app.delete('/api/proposals/:id', (req, res) => {
+  const idx = proposals.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = proposals.splice(idx, 1);
+  res.json({ proposal: removed });
 });
 
 // Conversations/messages for UI
@@ -996,6 +1450,67 @@ app.post('/api/messages/conversation/:id', (req, res) => {
   conversationMessages[id] = conversationMessages[id] || [];
   conversationMessages[id].push(msg);
   res.json(msg);
+});
+
+// Schedule (in-memory only)
+app.get('/api/schedule/events', (req, res) => {
+  const { projectId, type, search } = req.query;
+  let list = [...scheduleEvents];
+  if (projectId) list = list.filter(e => e.projectId === projectId);
+  if (type) list = list.filter(e => e.type === type);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      e =>
+        e.title.toLowerCase().includes(q) ||
+        (e.projectName || '').toLowerCase().includes(q) ||
+        (e.description || '').toLowerCase().includes(q)
+    );
+  }
+  res.json({ events: list });
+});
+
+app.post('/api/schedule/events', (req, res) => {
+  const body = req.body || {};
+  const event = {
+    id: randomUUID(),
+    title: body.title || 'Event',
+    projectId: body.projectId,
+    projectName: body.projectName || '',
+    type: body.type || 'task',
+    startDate: body.startDate || '',
+    endDate: body.endDate || body.startDate || '',
+    assignee: body.assignee || '',
+    description: body.description || '',
+    location: body.location || '',
+  };
+  scheduleEvents.push(event);
+  res.json({ event });
+});
+
+app.put('/api/schedule/events/:id', (req, res) => {
+  const body = req.body || {};
+  const event = scheduleEvents.find(e => e.id === req.params.id);
+  if (!event) return res.status(404).json({ message: 'Not found' });
+  Object.assign(event, {
+    title: body.title ?? event.title,
+    projectId: body.projectId ?? event.projectId,
+    projectName: body.projectName ?? event.projectName,
+    type: body.type ?? event.type,
+    startDate: body.startDate ?? event.startDate,
+    endDate: body.endDate ?? event.endDate,
+    assignee: body.assignee ?? event.assignee,
+    description: body.description ?? event.description,
+    location: body.location ?? event.location,
+  });
+  res.json({ event });
+});
+
+app.delete('/api/schedule/events/:id', (req, res) => {
+  const idx = scheduleEvents.findIndex(e => e.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = scheduleEvents.splice(idx, 1);
+  res.json({ event: removed });
 });
 
 // Fallback

@@ -1,17 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Card, CardContent, CardHeader } from '../../components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../../components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -32,39 +24,57 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Checkbox } from '../../components/ui/checkbox';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Filter, Calendar, Clock3 } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
+import { Progress } from '../../components/ui/progress';
 
 interface Task {
   id: string;
   title: string;
   description: string;
-  status: 'todo' | 'in-progress' | 'review' | 'completed';
+  status: 'todo' | 'in-progress' | 'in_progress' | 'review' | 'done' | 'completed';
   priority: 'low' | 'medium' | 'high';
   assignee: string;
   projectName: string;
+  projectId?: string;
   dueDate: string;
   completed: boolean;
 }
 
+interface ProjectOption {
+  id: string;
+  name: string;
+}
+
 const statusColors = {
-  'todo': 'secondary',
+  todo: 'secondary',
   'in-progress': 'default',
-  'review': 'warning',
-  'completed': 'success',
+  in_progress: 'default',
+  review: 'warning',
+  completed: 'success',
+  done: 'success',
 } as const;
 
 const priorityColors = {
-  'low': 'secondary',
-  'medium': 'warning',
-  'high': 'destructive',
+  low: 'secondary',
+  medium: 'warning',
+  high: 'destructive',
 } as const;
+
+const statusColumns: { key: Task['status']; label: string }[] = [
+  { key: 'todo', label: 'To Do' },
+  { key: 'in-progress', label: 'In Progress' },
+  { key: 'review', label: 'Review' },
+  { key: 'completed', label: 'Completed' },
+];
 
 export function TasksPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'project' | 'due' | 'priority'>('project');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [formData, setFormData] = useState<{
     title: string;
@@ -72,6 +82,7 @@ export function TasksPage() {
     priority: Task['priority'];
     assignee: string;
     projectName: string;
+    projectId?: string;
     dueDate: string;
   }>({
     title: '',
@@ -79,18 +90,50 @@ export function TasksPage() {
     priority: 'medium',
     assignee: '',
     projectName: '',
+    projectId: undefined,
     dueDate: '',
   });
 
-  const { data: tasks, isLoading } = useQuery({
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects', 'options'],
+    queryFn: () => apiClient.get<{ projects: ProjectOption[] }>('/projects'),
+  });
+
+  const { data: tasksData, isLoading } = useQuery({
     queryKey: ['tasks', searchTerm, statusFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
-      return apiClient.get<Task[]>(`/tasks?${params}`);
+      return apiClient.get<{ tasks: Task[] }>(`/tasks?${params}`);
     },
   });
+
+  const tasks = tasksData?.tasks || [];
+  const projectOptions = projectsData?.projects || [];
+
+  const filtered = useMemo(() => {
+    let list = [...tasks];
+    if (projectFilter !== 'all') {
+      list = list.filter(t => t.projectId === projectFilter || t.projectName === projectFilter);
+    }
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(t => t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q));
+    }
+    if (statusFilter !== 'all') {
+      list = list.filter(t => (t.status || 'todo') === statusFilter);
+    }
+    if (sortBy === 'project') {
+      list.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
+    } else if (sortBy === 'due') {
+      list.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+    } else if (sortBy === 'priority') {
+      const order = { high: 0, medium: 1, low: 2 };
+      list.sort((a, b) => (order[a.priority] ?? 3) - (order[b.priority] ?? 3));
+    }
+    return list;
+  }, [tasks, projectFilter, searchTerm, statusFilter, sortBy]);
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Task>) => apiClient.post('/tasks', data),
@@ -103,6 +146,7 @@ export function TasksPage() {
         priority: 'medium',
         assignee: '',
         projectName: '',
+        projectId: undefined,
         dueDate: '',
       });
       toast({
@@ -129,7 +173,10 @@ export function TasksPage() {
 
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData as Partial<Task>);
+    createMutation.mutate({
+      ...formData,
+      completed: false,
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,12 +186,21 @@ export function TasksPage() {
     });
   };
 
+  const groupedByStatus = statusColumns.map(col => ({
+    key: col.key,
+    label: col.label,
+    tasks: filtered.filter(t => {
+      const status = t.status === 'in_progress' ? 'in-progress' : t.status === 'done' ? 'completed' : t.status;
+      return status === col.key;
+    }),
+  }));
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
-          <p className="text-gray-500 mt-1">Manage project tasks and assignments</p>
+          <p className="text-gray-500 mt-1">All tasks across projects with fast filters and sorting.</p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
@@ -157,7 +213,7 @@ export function TasksPage() {
             <form onSubmit={handleCreateTask}>
               <DialogHeader>
                 <DialogTitle>Create New Task</DialogTitle>
-                <DialogDescription>Add a new task to a project</DialogDescription>
+                <DialogDescription>Log work against a project with priority and due date.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
@@ -183,13 +239,31 @@ export function TasksPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="projectName">Project</Label>
-                    <Input
-                      id="projectName"
-                      name="projectName"
-                      value={formData.projectName}
-                      onChange={handleChange}
-                      required
-                    />
+                    <Select
+                      value={formData.projectId || 'none'}
+                      onValueChange={(value) => {
+                        if (value === 'none') {
+                          setFormData({ ...formData, projectId: undefined, projectName: '' });
+                          return;
+                        }
+                        const project = projectOptions.find(p => p.id === value);
+                        setFormData({
+                          ...formData,
+                          projectId: value,
+                          projectName: project?.name || '',
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No project</SelectItem>
+                        {projectOptions.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="assignee">Assignee</Label>
@@ -227,7 +301,6 @@ export function TasksPage() {
                       type="date"
                       value={formData.dueDate}
                       onChange={handleChange}
-                      required
                     />
                   </div>
                 </div>
@@ -245,9 +318,29 @@ export function TasksPage() {
         </Dialog>
       </div>
 
+      {/* Quick stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        {[
+          { label: 'Total', value: tasks.length },
+          { label: 'In Progress', value: tasks.filter(t => ['in-progress', 'in_progress'].includes(t.status)).length },
+          { label: 'Completed', value: tasks.filter(t => ['completed', 'done'].includes(t.status)).length },
+          { label: 'Due Soon', value: tasks.filter(t => !!t.dueDate).length },
+        ].map(stat => (
+          <Card key={stat.label} className="border-blue-100">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-gray-500">{stat.label}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Filters */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
@@ -257,18 +350,41 @@ export function TasksPage() {
                 className="pl-10"
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="todo">To Do</SelectItem>
-                <SelectItem value="in-progress">In Progress</SelectItem>
-                <SelectItem value="review">Review</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-2">
+              <Select value={projectFilter} onValueChange={setProjectFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Projects</SelectItem>
+                  {projectOptions.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="todo">To Do</SelectItem>
+                  <SelectItem value="in-progress">In Progress</SelectItem>
+                  <SelectItem value="review">Review</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={(v: 'project' | 'due' | 'priority') => setSortBy(v)}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="project">Project</SelectItem>
+                  <SelectItem value="due">Due Date</SelectItem>
+                  <SelectItem value="priority">Priority</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -277,51 +393,59 @@ export function TasksPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12"></TableHead>
-                  <TableHead>Task</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Assignee</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Due Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tasks?.map((task) => (
-                  <TableRow key={task.id}>
-                    <TableCell>
-                      <Checkbox
-                        checked={task.completed}
-                        onCheckedChange={(checked) =>
-                          toggleMutation.mutate({ id: task.id, completed: !!checked })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <div className={task.completed ? 'line-through text-gray-400' : ''}>
-                        {task.title}
-                      </div>
-                    </TableCell>
-                    <TableCell>{task.projectName}</TableCell>
-                    <TableCell>{task.assignee}</TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[task.status]}>
-                        {task.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={priorityColors[task.priority]}>
-                        {task.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{formatDate(task.dueDate)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="grid gap-4 md:grid-cols-4">
+              {groupedByStatus.map((col) => (
+                <div key={col.key} className="rounded-lg border border-gray-200 bg-white shadow-sm">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-gray-400" />
+                      <span className="font-semibold text-gray-800">{col.label}</span>
+                    </div>
+                    <Badge variant="outline">{col.tasks.length}</Badge>
+                  </div>
+                  <div className="space-y-3 p-3 min-h-[240px]">
+                    {col.tasks.length === 0 ? (
+                      <div className="text-sm text-gray-400 text-center py-8">No tasks</div>
+                    ) : (
+                      col.tasks.map((task) => (
+                        <div key={task.id} className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm">
+                          <div className="flex items-start justify-between">
+                            <div className="font-semibold text-gray-900">{task.title}</div>
+                            <Checkbox
+                              checked={task.completed}
+                              onCheckedChange={(checked) =>
+                                toggleMutation.mutate({ id: task.id, completed: !!checked })
+                              }
+                            />
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1 line-clamp-2">{task.description}</p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
+                            {task.projectName && <Badge variant="secondary">{task.projectName}</Badge>}
+                            <Badge variant={priorityColors[task.priority]}>{task.priority}</Badge>
+                            <Badge variant={statusColors[task.status] || 'secondary'}>
+                              {task.status === 'in_progress' ? 'in-progress' : task.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <Clock3 className="h-4 w-4" />
+                              {task.assignee || 'Unassigned'}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-4 w-4" />
+                              {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
+                            </span>
+                          </div>
+                          <div className="mt-2">
+                            <Progress value={task.completed ? 100 : task.status === 'in-progress' ? 50 : 10} />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

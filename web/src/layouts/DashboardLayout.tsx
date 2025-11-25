@@ -75,6 +75,7 @@ export function DashboardLayout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notificationCount] = useState(3);
 
   const handleLogout = () => {
@@ -95,24 +96,45 @@ export function DashboardLayout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 bg-slate-900/95 backdrop-blur border-r border-slate-800 transform transition-transform duration-200 ease-in-out lg:translate-x-0 rounded-r-3xl overflow-x-hidden',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          'fixed inset-y-0 left-0 z-50 bg-slate-900/95 backdrop-blur border-r border-slate-800 transform transition-transform duration-200 ease-in-out lg:translate-x-0 rounded-r-3xl overflow-hidden',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          sidebarCollapsed ? 'w-20' : 'w-64'
         )}
       >
         {/* Sidebar header */}
         <div className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 opacity-95" />
-          <div className="relative flex items-center justify-between h-16 px-6 text-white">
-            <div>
-              <h1 className="text-xl font-bold">BuilderOS</h1>
+          <div className={cn('relative flex items-center h-16 px-4 text-white transition-all', sidebarCollapsed ? 'justify-center' : 'justify-between')}>
+            <div className="flex items-center gap-2">
+              <div className="h-10 w-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-lg font-bold shadow-inner">
+                BO
+              </div>
+              {!sidebarCollapsed && (
+                <div>
+                  <h1 className="text-2xl font-extrabold tracking-tight">BuilderOS</h1>
+                  <p className="text-xs text-white/70">Project Control Hub</p>
+                </div>
+              )}
             </div>
-            <Badge className="bg-white/15 text-white border-white/20">v1.0.0</Badge>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="lg:hidden p-2 rounded-md hover:bg-white/10 transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            {!sidebarCollapsed && (
+              <Badge className="bg-white/15 text-white border-white/20">v1.0.0</Badge>
+            )}
+            <div className="flex items-center gap-2">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="hidden lg:inline-flex text-white hover:bg-white/10"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              >
+                {sidebarCollapsed ? <ChevronDown className="h-4 w-4 rotate-90" /> : <ChevronDown className="h-4 w-4 -rotate-90" />}
+              </Button>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="lg:hidden p-2 rounded-md hover:bg-white/10 transition-colors text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -137,13 +159,13 @@ export function DashboardLayout() {
                 >
                   <span
                     className={cn(
-                      'mr-3 h-9 w-9 rounded-full inline-flex items-center justify-center text-sm font-semibold',
+                      'h-10 w-10 rounded-2xl inline-flex items-center justify-center text-sm font-semibold',
                       isActive ? 'bg-white text-slate-900 shadow-sm' : 'bg-slate-800 text-slate-300'
                     )}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-5 w-5" />
                   </span>
-                  {item.name}
+                  {!sidebarCollapsed && <span className="ml-3">{item.name}</span>}
                 </Link>
               );
             })}
@@ -153,7 +175,7 @@ export function DashboardLayout() {
       </aside>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className={cn(sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64')}>
         {/* Top header */}
         <header className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-slate-200">
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
