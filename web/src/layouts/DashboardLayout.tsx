@@ -105,20 +105,18 @@ export function DashboardLayout() {
         <div className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 opacity-95" />
           <div className={cn('relative flex items-center h-16 px-4 text-white transition-all', sidebarCollapsed ? 'justify-center' : 'justify-between')}>
-            <div className="flex items-center gap-2">
-              <div className="h-10 w-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-lg font-bold shadow-inner">
-                BO
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-2xl bg-white/15 border border-white/30 flex items-center justify-center shadow-inner">
+                <div className="h-7 w-7 rounded-xl bg-gradient-to-br from-indigo-400 to-cyan-300 flex items-center justify-center text-slate-900 font-bold">
+                  B
+                </div>
               </div>
               {!sidebarCollapsed && (
                 <div>
                   <h1 className="text-2xl font-extrabold tracking-tight">BuilderOS</h1>
-                  <p className="text-xs text-white/70">Project Control Hub</p>
                 </div>
               )}
             </div>
-            {!sidebarCollapsed && (
-              <Badge className="bg-white/15 text-white border-white/20">v1.0.0</Badge>
-            )}
             <div className="flex items-center gap-2">
               <Button
                 size="icon"

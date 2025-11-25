@@ -73,6 +73,7 @@ export function InvoicesPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -96,11 +97,12 @@ export function InvoicesPage() {
   });
 
   const { data: invoicesData } = useQuery({
-    queryKey: ['invoices', searchTerm, statusFilter],
+    queryKey: ['invoices', searchTerm, statusFilter, projectFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (projectFilter !== 'all') params.append('projectId', projectFilter);
       return apiClient.get<{ invoices: Invoice[] }>(`/invoices?${params}`);
     },
   });
@@ -236,6 +238,19 @@ export function InvoicesPage() {
 
   const filteredInvoices = useMemo(() => {
     return invoices;
+  }, [invoices]);
+
+  const projectSummaries = useMemo(() => {
+    const grouped: Record<string, { id: string; name: string; count: number; total: number }> = {};
+    invoices.forEach(inv => {
+      const key = inv.projectId || inv.projectName || 'none';
+      if (!grouped[key]) {
+        grouped[key] = { id: inv.projectId || '', name: inv.projectName || 'No project', count: 0, total: 0 };
+      }
+      grouped[key].count += 1;
+      grouped[key].total += inv.amount || 0;
+    });
+    return Object.values(grouped).sort((a, b) => b.total - a.total);
   }, [invoices]);
 
   const totalAmount = filteredInvoices.reduce((sum, inv) => sum + inv.amount, 0);
@@ -472,6 +487,39 @@ export function InvoicesPage() {
         </Card>
       </div>
 
+      {/* Project quick filter cards */}
+      <div className="grid gap-3 md:grid-cols-3">
+        {projectSummaries.map((proj) => (
+          <Card
+            key={proj.id || proj.name}
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => setProjectFilter(proj.id || 'all')}
+          >
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">
+                {proj.name}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{formatCurrency(proj.total)}</div>
+                <p className="text-xs text-gray-500">{proj.count} invoice(s)</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setProjectFilter('all');
+                }}
+              >
+                Clear
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       {/* Filters and Table */}
       <Card>
         <CardHeader>
@@ -495,6 +543,17 @@ export function InvoicesPage() {
                 <SelectItem value="unpaid">Unpaid</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={projectFilter} onValueChange={setProjectFilter}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Filter by project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                {projectsData?.projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
