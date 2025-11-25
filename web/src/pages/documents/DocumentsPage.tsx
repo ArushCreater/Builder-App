@@ -32,8 +32,9 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Separator } from '../../components/ui/separator';
-import { Search, FileText, Download, Eye, Upload, Folder, Grid, List } from 'lucide-react';
+import { Search, FileText, Download, Eye, Upload, Folder, Grid, List, Trash2 } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
+import { useToast } from '../../components/ui/use-toast';
 
 interface DocumentRow {
   id: string;
@@ -46,6 +47,7 @@ interface DocumentRow {
   uploadedBy: string;
   uploadedAt: string;
   url: string;
+  key?: string;
 }
 
 interface ProjectLite {
@@ -66,6 +68,7 @@ type ViewMode = 'all' | 'folders';
 
 export function DocumentsPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
@@ -73,14 +76,15 @@ export function DocumentsPage() {
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     category: '',
     projectId: '',
     projectName: '',
+    folder: '',
   });
   const [fileMeta, setFileMeta] = useState<{ name: string; size: string } | null>(null);
-  const [fileUrl, setFileUrl] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: projectsData } = useQuery({
@@ -107,23 +111,49 @@ export function DocumentsPage() {
       setIsUploadDialogOpen(false);
       setFormData({ name: '', category: '', projectId: '', projectName: '' });
       setFileMeta(null);
-      setFileUrl('');
+      setSelectedFile(null);
     },
+    onError: () => toast({ title: 'Upload failed', description: 'Could not save document record', variant: 'destructive' }),
   });
 
-  const handleUpload = (e: React.FormEvent) => {
+  const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     const project = projectsData?.projects.find(p => p.id === formData.projectId);
-    uploadMutation.mutate({
-      name: formData.name || fileMeta?.name || 'Document',
-      category: (formData.category || 'other') as DocumentRow['category'],
-      projectId: formData.projectId || undefined,
-      projectName: formData.projectName || project?.name,
-      type: fileMeta?.name?.split('.').pop() || 'file',
-      size: fileMeta?.size || 'N/A',
-      uploadedBy: 'You',
-      url: fileUrl || '#',
-    });
+    if (!selectedFile) {
+      toast({ title: 'Select a file', description: 'Choose a file to upload', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const fd = new FormData();
+      fd.append('file', selectedFile);
+      const uploadResp = await apiClient.post<{ url: string; key: string; name: string; size: number; type: string }>(
+        '/documents/upload',
+        fd,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        }
+      );
+
+      const sizeLabel =
+        uploadResp.size > 1024 * 1024
+          ? `${(uploadResp.size / 1024 / 1024).toFixed(1)} MB`
+          : `${Math.max(1, Math.round(uploadResp.size / 1024))} KB`;
+
+      uploadMutation.mutate({
+        name: formData.name || uploadResp.name,
+        category: (formData.category || 'other') as DocumentRow['category'],
+        projectId: formData.projectId || undefined,
+        projectName: formData.projectName || project?.name,
+        type: uploadResp.type || selectedFile.type || 'file',
+        size: sizeLabel,
+        uploadedBy: 'You',
+        url: uploadResp.url,
+        key: uploadResp.key,
+      });
+    } catch (err) {
+      toast({ title: 'Upload failed', description: 'Check file size or try again', variant: 'destructive' });
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,17 +169,10 @@ export function DocumentsPage() {
     const prettySize =
       sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${Math.max(sizeKb, 1).toFixed(0)} KB`;
     setFileMeta({ name: file.name, size: prettySize });
+    setSelectedFile(file);
     if (!formData.name) {
       setFormData((prev) => ({ ...prev, name: file.name }));
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result;
-      if (typeof result === 'string') {
-        setFileUrl(result);
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -388,6 +411,14 @@ export function DocumentsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label>Subfolder (optional)</Label>
+                  <Input
+                    placeholder="e.g. contracts/2024"
+                    value={formData.folder}
+                    onChange={(e) => setFormData({ ...formData, folder: e.target.value })}
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
@@ -541,6 +572,13 @@ export function DocumentsPage() {
                   projectMap={projectMap}
                   onPreview={setPreviewDoc}
                   onDownload={handleDownload}
+                  onDelete={(doc) => {
+                    if (doc.id) {
+                      apiClient.delete(`/documents/${doc.id}`).then(() => {
+                        queryClient.invalidateQueries({ queryKey: ['documents'] });
+                      });
+                    }
+                  }}
                 />
               </TabsContent>
               <TabsContent value="all">
@@ -549,6 +587,13 @@ export function DocumentsPage() {
                   projectMap={projectMap}
                   onPreview={setPreviewDoc}
                   onDownload={handleDownload}
+                  onDelete={(doc) => {
+                    if (doc.id) {
+                      apiClient.delete(`/documents/${doc.id}`).then(() => {
+                        queryClient.invalidateQueries({ queryKey: ['documents'] });
+                      });
+                    }
+                  }}
                 />
               </TabsContent>
             </Tabs>
@@ -595,11 +640,13 @@ function DocumentsTable({
   projectMap,
   onPreview,
   onDownload,
+  onDelete,
 }: {
   documents: DocumentRow[];
   projectMap: Map<string, string>;
   onPreview: (doc: DocumentRow) => void;
   onDownload: (doc: DocumentRow) => void;
+  onDelete: (doc: DocumentRow) => void;
 }) {
   return (
     <Table>
@@ -631,7 +678,7 @@ function DocumentsTable({
             </TableCell>
             <TableCell>{doc.type}</TableCell>
             <TableCell>{doc.size}</TableCell>
-            <TableCell>{doc.projectName || projectMap.get(doc.projectId || '') || '—'}</TableCell>
+            <TableCell>{doc.projectName || projectMap.get(doc.projectId || '') || '-'}</TableCell>
             <TableCell>{doc.uploadedBy}</TableCell>
             <TableCell>{formatDate(doc.uploadedAt)}</TableCell>
             <TableCell>
@@ -641,6 +688,9 @@ function DocumentsTable({
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => onDownload(doc)}>
                   <Download className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => onDelete(doc)}>
+                  <Trash2 className="h-4 w-4 text-red-600" />
                 </Button>
               </div>
             </TableCell>

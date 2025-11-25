@@ -3,16 +3,26 @@ const morgan = require('morgan');
 const cors = require('cors');
 const { randomUUID } = require('crypto');
 const { Pool } = require('pg');
+const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const multer = require('multer');
 
 const app = express();
 const port = process.env.PORT || 8081;
 const dbUrl = process.env.DATABASE_URL;
 const BODY_LIMIT = process.env.BODY_LIMIT || '12mb';
+const REGION = process.env.AWS_REGION || 'ap-southeast-2';
+const FILES_BUCKET = process.env.FILES_BUCKET || process.env.FILES_BUCKET_NAME || 'builder-app-dev-files-saving-guppy';
 
 let pool;
 if (dbUrl) {
   pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
 }
+
+const s3 = new S3Client({ region: REGION });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+});
 
 // CORS handling based on env
 const allowedOriginsEnv = process.env.CORS_ALLOWED_ORIGINS || '';
@@ -734,6 +744,8 @@ app.post('/api/projects/:id/documents', (req, res) => {
     uploadedBy: body.uploadedBy || 'System',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    url: body.url,
+    key: body.key,
   };
   projectDocuments[req.params.id] = projectDocuments[req.params.id] || [];
   projectDocuments[req.params.id].push(doc);
@@ -1428,20 +1440,74 @@ app.post('/api/daily-logs', (req, res) => {
 
 // Documents
 app.get('/api/documents', (req, res) => {
-  const { search, category, projectId } = req.query;
-  let list = [...documents];
-  if (projectId) list = list.filter(d => d.projectId === projectId);
-  if (category) list = list.filter(d => d.category === category);
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      d =>
-        d.name.toLowerCase().includes(q) ||
-        (d.projectName || '').toLowerCase().includes(q) ||
-        d.category.toLowerCase().includes(q)
-    );
-  }
-  res.json({ documents: list });
+  const { search, category, projectId, folder } = req.query;
+  const prefixProject = projectId ? String(projectId) : 'unassigned';
+  const prefixFolder = folder ? String(folder).replace(/^\//, '') : '';
+  const prefix = `documents/${prefixProject}/${prefixFolder}`;
+
+  const extToCategory = (key = '') => {
+    const ext = key.split('.').pop()?.toLowerCase() || '';
+    if (['pdf'].includes(ext)) return 'plans';
+    if (['doc', 'docx'].includes(ext)) return 'contract';
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return 'photo';
+    return 'other';
+  };
+
+  const toDoc = (obj, projName) => ({
+    id: obj.Key,
+    name: obj.Key?.split('/').pop() || 'File',
+    type: obj.Key?.split('.').pop() || 'file',
+    category: extToCategory(obj.Key),
+    size: `${Math.max(1, Math.round((obj.Size || 0) / 1024))} KB`,
+    projectId: projectId || undefined,
+    projectName: projName || '',
+    uploadedBy: 'S3',
+    uploadedAt: obj.LastModified || new Date().toISOString(),
+    url: `https://${FILES_BUCKET}.s3.${REGION}.amazonaws.com/${obj.Key}`,
+    key: obj.Key,
+  });
+
+  const projectName = projectId ? (projects.find(p => p.id === projectId)?.name || '') : '';
+
+  s3
+    .send(
+      new ListObjectsV2Command({
+        Bucket: FILES_BUCKET,
+        Prefix: prefix,
+      })
+    )
+    .then(data => {
+      let list = (data.Contents || [])
+        .filter(item => item.Key && !item.Key.endsWith('/'))
+        .map(obj => toDoc(obj, projectName));
+      if (category) list = list.filter(d => d.category === category);
+      if (search) {
+        const q = String(search).toLowerCase();
+        list = list.filter(
+          d =>
+            d.name.toLowerCase().includes(q) ||
+            (d.projectName || '').toLowerCase().includes(q) ||
+            d.category.toLowerCase().includes(q)
+        );
+      }
+      res.json({ documents: list });
+    })
+    .catch(() => {
+      // fallback to in-memory
+      let list = [...documents];
+      if (projectId) list = list.filter(d => d.projectId === projectId);
+      if (category) list = list.filter(d => d.category === category);
+      if (search) {
+        const q = String(search).toLowerCase();
+        list = list.filter(
+          d =>
+            d.name.toLowerCase().includes(q) ||
+            (d.projectName || '').toLowerCase().includes(q) ||
+            d.category.toLowerCase().includes(q)
+        );
+      }
+      res.json({ documents: list });
+    });
 });
 
 app.post('/api/documents', (req, res) => {
@@ -1457,6 +1523,7 @@ app.post('/api/documents', (req, res) => {
     uploadedBy: body.uploadedBy || 'System',
     uploadedAt: new Date().toISOString(),
     url: body.url || '#',
+    key: body.key,
   };
   documents.push(doc);
   res.json({ document: doc });
@@ -1464,9 +1531,54 @@ app.post('/api/documents', (req, res) => {
 
 app.delete('/api/documents/:id', (req, res) => {
   const idx = documents.findIndex(d => d.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = documents.splice(idx, 1);
-  res.json({ document: removed });
+  if (idx !== -1) {
+    const [removed] = documents.splice(idx, 1);
+    if (removed.key) {
+      s3
+        .send(new DeleteObjectCommand({ Bucket: FILES_BUCKET, Key: removed.key }))
+        .catch(() => null);
+    }
+    return res.json({ document: removed });
+  }
+
+  // If not in-memory, try direct S3 delete using id as key
+  const key = req.params.id;
+  s3
+    .send(new DeleteObjectCommand({ Bucket: FILES_BUCKET, Key: key }))
+    .then(() => res.json({ document: { id: key } }))
+    .catch(() => res.status(404).json({ message: 'Not found' }));
+});
+
+app.post('/api/documents/upload', upload.single('file'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ message: 'No file uploaded' });
+  const projectId = req.body.projectId || 'unassigned';
+  const folder = (req.body.folder || '').replace(/^\//, '');
+  const basePrefix = `documents/${projectId}/${folder}`;
+  const key = `${basePrefix}/${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: FILES_BUCKET,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        ACL: 'public-read',
+      })
+    );
+    const url = `https://${FILES_BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
+    res.json({
+      key,
+      url,
+      name: file.originalname,
+      size: file.size,
+      type: file.mimetype,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('S3 upload failed', err);
+    res.status(500).json({ message: 'Upload failed' });
+  }
 });
 
 // Project doc pages (lightweight wiki/notes per project)
