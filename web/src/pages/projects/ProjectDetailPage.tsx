@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -28,7 +28,19 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { ArrowLeft, Calendar, FileText, Edit, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Calendar,
+  FileText,
+  Edit,
+  Plus,
+  Trash2,
+  Clock,
+  MapPin,
+  LayoutPanelTop,
+  BookOpen,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
 interface Project {
@@ -91,6 +103,25 @@ interface Document {
   updatedAt: string;
 }
 
+interface ScheduleEvent {
+  id: string;
+  title: string;
+  projectId?: string;
+  projectName?: string;
+  type?: string;
+  startDate?: string;
+  endDate?: string;
+  assignee?: string;
+  location?: string;
+}
+
+interface DocPage {
+  id: string;
+  title: string;
+  content: string;
+  images: string[];
+}
+
 export function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -98,6 +129,12 @@ export function ProjectDetailPage() {
   const queryClient = useQueryClient();
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [isDocDialogOpen, setIsDocDialogOpen] = useState(false);
+  const [docSearch, setDocSearch] = useState('');
+  const [docPages, setDocPages] = useState<DocPage[]>([
+    { id: 'page-1', title: 'Site notes', content: 'Add your site notes here...', images: [] },
+  ]);
+  const [selectedPageId, setSelectedPageId] = useState<string>('page-1');
+  const [pageImageUrl, setPageImageUrl] = useState('');
   const [taskForm, setTaskForm] = useState({
     title: '',
     description: '',
@@ -151,10 +188,24 @@ export function ProjectDetailPage() {
     queryFn: () => apiClient.get<{ documents: Document[] }>(`/projects/${id}/documents`),
   });
 
+  const { data: scheduleData } = useQuery({
+    queryKey: ['project-schedule', id],
+    queryFn: () => apiClient.get<{ events: ScheduleEvent[] }>(`/schedule/events?projectId=${id}`),
+  });
+
   const project = projectData?.project;
   const tasks = tasksData?.tasks || [];
   const budgetItems = budgetData?.items || [];
   const documents = documentsData?.documents || [];
+  const scheduleEvents = scheduleData?.events || [];
+
+  const filteredDocPages = useMemo(() => {
+    if (!docSearch) return docPages;
+    const q = docSearch.toLowerCase();
+    return docPages.filter(p => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q));
+  }, [docPages, docSearch]);
+
+  const selectedPage = filteredDocPages.find(p => p.id === selectedPageId) || filteredDocPages[0];
   useEffect(() => {
     if (project?.progress !== undefined && project.progress !== null) {
       setProgressValue(Math.round(project.progress));
@@ -556,9 +607,12 @@ export function ProjectDetailPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList>
+        <TabsList className="flex flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="tasks">Tasks ({tasks.length})</TabsTrigger>
+          <TabsTrigger value="schedule">Schedule</TabsTrigger>
+          <TabsTrigger value="plan">Plan</TabsTrigger>
+          <TabsTrigger value="docs">Docs</TabsTrigger>
           <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="files">Files ({documents.length})</TabsTrigger>
         </TabsList>
@@ -715,6 +769,193 @@ export function ProjectDetailPage() {
               );
             })}
           </div>
+        </TabsContent>
+
+        <TabsContent value="schedule" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-blue-600" /> Linked Schedule
+              </CardTitle>
+              <Badge variant="secondary">{scheduleEvents.length} items</Badge>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {scheduleEvents.length === 0 && (
+                <p className="text-sm text-gray-500">No events yet. Add schedule items from the Schedule page.</p>
+              )}
+              {scheduleEvents.map((ev) => (
+                <div key={ev.id} className="rounded-xl border border-gray-100 p-3 flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-gray-900">{ev.title}</p>
+                    <p className="text-xs text-gray-500 flex items-center gap-2">
+                      <MapPin className="h-3 w-3" /> {ev.location || 'On site'}
+                    </p>
+                  </div>
+                  <div className="text-right text-sm text-gray-700 flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-gray-500" />
+                    {ev.startDate ? formatDate(ev.startDate) : 'TBD'}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="plan" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <LayoutPanelTop className="h-4 w-4 text-indigo-600" /> Project Plan (Gantt style)
+              </CardTitle>
+              <Badge variant="secondary">Timeline</Badge>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {scheduleEvents.length === 0 && (
+                <p className="text-sm text-gray-500">No scheduled tasks yet.</p>
+              )}
+              <div className="space-y-3">
+                {scheduleEvents.map((ev) => {
+                  const start = ev.startDate ? new Date(ev.startDate) : new Date();
+                  const end = ev.endDate ? new Date(ev.endDate) : start;
+                  const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                  return (
+                    <div key={ev.id} className="space-y-2">
+                      <div className="flex items-center justify-between text-sm text-gray-700">
+                        <span className="font-semibold">{ev.title}</span>
+                        <span>{formatDate(start.toISOString())} - {formatDate(end.toISOString())}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
+                        <div
+                          className="h-3 bg-gradient-to-r from-blue-500 to-indigo-500"
+                          style={{ width: `${Math.min(days * 10, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="docs" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-blue-600" /> Project Docs
+              </CardTitle>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Search pages..."
+                  value={docSearch}
+                  onChange={(e) => setDocSearch(e.target.value)}
+                  className="w-[200px]"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const newPage: DocPage = {
+                      id: crypto.randomUUID(),
+                      title: `Page ${docPages.length + 1}`,
+                      content: 'Start writing...',
+                      images: [],
+                    };
+                    setDocPages([newPage, ...docPages]);
+                    setSelectedPageId(newPage.id);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> New Page
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500">Pages</p>
+                <div className="space-y-2 max-h-[380px] overflow-auto pr-1">
+                  {filteredDocPages.map((page) => (
+                    <button
+                      key={page.id}
+                      className={`w-full text-left rounded-lg border p-3 transition hover:border-blue-300 ${
+                        selectedPageId === page.id ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200'
+                      }`}
+                      onClick={() => setSelectedPageId(page.id)}
+                    >
+                      <p className="font-semibold text-gray-900">{page.title}</p>
+                      <p className="text-xs text-gray-500 line-clamp-2">{page.content}</p>
+                    </button>
+                  ))}
+                  {filteredDocPages.length === 0 && (
+                    <p className="text-sm text-gray-500">No pages match that search.</p>
+                  )}
+                </div>
+              </div>
+              <div className="md:col-span-2 space-y-3">
+                {selectedPage ? (
+                  <>
+                    <Input
+                      value={selectedPage.title}
+                      onChange={(e) => {
+                        setDocPages((prev) =>
+                          prev.map((p) => (p.id === selectedPage.id ? { ...p, title: e.target.value } : p))
+                        );
+                      }}
+                      className="text-xl font-semibold"
+                    />
+                    <textarea
+                      className="w-full min-h-[220px] rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+                      value={selectedPage.content}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDocPages((prev) =>
+                          prev.map((p) => (p.id === selectedPage.id ? { ...p, content: value } : p))
+                        );
+                      }}
+                      placeholder="Type notes, decisions, links... basic rich text style"
+                    />
+                    <div className="rounded-xl border border-dashed border-gray-300 p-3 space-y-3 bg-gray-50">
+                      <div className="flex items-center gap-2">
+                        <ImageIcon className="h-4 w-4 text-blue-600" />
+                        <p className="text-sm font-semibold text-gray-900">Attach image (URL)</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="https://example.com/image.png"
+                          value={pageImageUrl}
+                          onChange={(e) => setPageImageUrl(e.target.value)}
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            if (!pageImageUrl) return;
+                            setDocPages((prev) =>
+                              prev.map((p) =>
+                                p.id === selectedPage.id ? { ...p, images: [...p.images, pageImageUrl] } : p
+                              )
+                            );
+                            setPageImageUrl('');
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {selectedPage.images.map((img) => (
+                          <div key={img} className="relative overflow-hidden rounded-lg border border-gray-200">
+                            <img src={img} alt="doc img" className="h-24 w-full object-cover" />
+                          </div>
+                        ))}
+                        {selectedPage.images.length === 0 && (
+                          <p className="text-xs text-gray-500">No images yet.</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500">Select or create a page to start editing.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="budget" className="space-y-4">

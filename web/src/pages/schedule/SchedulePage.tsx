@@ -64,6 +64,8 @@ export function SchedulePage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -217,6 +219,25 @@ export function SchedulePage() {
     const widthPct = Math.max(5, ((endMs - startMs) / span) * 100 || 5);
     return { left: `${leftPct}%`, width: `${widthPct}%` };
   };
+
+  const daysInMonth = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+    const prefix = Array.from({ length: start.getDay() }, () => null);
+    const days = Array.from({ length: end.getDate() }, (_, i) => new Date(year, month, i + 1));
+    return [...prefix, ...days];
+  }, [currentMonth]);
+
+  const goMonth = (delta: number) => {
+    const next = new Date(currentMonth);
+    next.setMonth(currentMonth.getMonth() + delta);
+    setCurrentMonth(next);
+  };
+
+  const eventsForDay = (dateStr: string) =>
+    filteredEvents.filter(e => e.startDate === dateStr || e.endDate === dateStr);
 
   return (
     <div className="space-y-6">
@@ -473,6 +494,71 @@ export function SchedulePage() {
                   );
                 })
               )}
+            </div>
+          ) : view === 'calendar' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-lg font-semibold">
+                  {currentMonth.toLocaleString('default', { month: 'long' })} {currentMonth.getFullYear()}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => goMonth(-1)}>Prev</Button>
+                  <Button variant="outline" size="sm" onClick={() => goMonth(1)}>Next</Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 gap-2 text-center text-xs text-gray-500">
+                {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                  <div key={d} className="font-semibold">{d}</div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-2">
+                {daysInMonth.map((day, idx) => {
+                  if (!day) return <div key={`pad-${idx}`} />;
+                  const dateStr = day.toISOString().split('T')[0];
+                  const hasEvents = eventsForDay(dateStr).length > 0;
+                  const isSelected = selectedDate === dateStr;
+                  return (
+                    <button
+                      key={dateStr}
+                      onClick={() => setSelectedDate(dateStr)}
+                      className={`rounded-lg border p-2 text-left transition-all ${
+                        isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-gray-800">{day.getDate()}</span>
+                        {hasEvents && <span className="h-2 w-2 rounded-full bg-indigo-500" />}
+                      </div>
+                      {hasEvents && (
+                        <div className="mt-1 text-xs text-gray-600 line-clamp-2">
+                          {eventsForDay(dateStr).map(e => e.title).join(', ')}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                  {selectedDate ? `Events on ${formatDate(selectedDate)}` : 'Events'}
+                </h3>
+                <div className="space-y-3">
+                  {eventsForDay(selectedDate).length === 0 && (
+                    <div className="text-sm text-gray-500">No events for this day.</div>
+                  )}
+                  {eventsForDay(selectedDate).map(event => (
+                    <div key={event.id} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-gray-900">{event.title}</div>
+                        <Badge variant={typeBadges[event.type].variant}>{typeBadges[event.type].label}</Badge>
+                      </div>
+                      <div className="text-xs text-gray-500">{event.projectName || 'No project'}</div>
+                      <div className="text-xs text-gray-600 mt-1">{event.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">

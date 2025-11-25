@@ -15,6 +15,11 @@ import {
   Calendar,
   Target,
   ShieldAlert,
+  Sparkles,
+  FileText,
+  CalendarRange,
+  Briefcase,
+  ArrowRight,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { formatCurrency, formatRelativeTime } from '../../lib/utils';
@@ -70,16 +75,29 @@ const revenueChartData = [
 ];
 
 export function DashboardHome() {
-  // Fetch projects from AWS API
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
     queryKey: ['dashboard-projects'],
     queryFn: () => apiClient.get<{ projects: any[] }>('/projects'),
   });
 
-  // Fetch leads from AWS API
   const { data: leadsData, isLoading: leadsLoading } = useQuery({
     queryKey: ['dashboard-leads'],
     queryFn: () => apiClient.get<{ leads: any[] }>('/leads'),
+  });
+
+  const { data: tasksData } = useQuery({
+    queryKey: ['dashboard-tasks'],
+    queryFn: () => apiClient.get<{ tasks: any[] }>('/tasks'),
+  });
+
+  const { data: invoicesData } = useQuery({
+    queryKey: ['dashboard-invoices'],
+    queryFn: () => apiClient.get<{ invoices: any[] }>('/invoices'),
+  });
+
+  const { data: eventsData } = useQuery({
+    queryKey: ['dashboard-events'],
+    queryFn: () => apiClient.get<{ events: any[] }>('/schedule/events'),
   });
 
   const statsLoading = projectsLoading || leadsLoading;
@@ -88,6 +106,10 @@ export function DashboardHome() {
   const projects = projectsData?.projects || [];
   const leads = leadsData?.leads || [];
 
+  const tasks = tasksData?.tasks || [];
+  const invoices = invoicesData?.invoices || [];
+  const events = eventsData?.events || [];
+
   const stats: DashboardStats = {
     totalProjects: projects.length,
     activeProjects: projects.filter((p: any) => p.status === 'IN_PROGRESS').length,
@@ -95,8 +117,8 @@ export function DashboardHome() {
     totalLeads: leads.length,
     totalRevenue: projects.reduce((sum: number, p: any) => sum + (p.actualCost || 0), 0),
     revenueGrowth: 12.5, // TODO: Calculate from historical data
-    completedTasks: 0, // TODO: Fetch from tasks endpoint when available
-    pendingTasks: 0, // TODO: Fetch from tasks endpoint when available
+    completedTasks: tasks.filter((t: any) => t.status === 'done').length,
+    pendingTasks: tasks.filter((t: any) => t.status !== 'done').length,
     overdueProjects: projects.filter((p: any) => p.endDate && new Date(p.endDate) < new Date()).length,
     atRiskBudget: projects.filter((p: any) => {
       const est = Number(p.estimatedBudget || 0);
@@ -186,6 +208,13 @@ export function DashboardHome() {
       bgColor: 'bg-yellow-50',
       growth: stats?.revenueGrowth,
     },
+    {
+      title: 'Open Invoices',
+      value: invoices.filter((i: any) => i.status !== 'paid').length || 0,
+      icon: FileText,
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50',
+    },
   ];
 
   const alerts = [
@@ -225,10 +254,11 @@ export function DashboardHome() {
           </div>
           <div className="flex items-center gap-3">
             <Button className="rounded-full bg-white text-slate-900 hover:bg-slate-100 px-5 border border-white/20 shadow">
-              Create milestone
+              Quick create
             </Button>
-            <Button variant="outline" className="rounded-full border-white/25 text-white bg-white/10 hover:bg-white/15">
-              Share status
+            <Button variant="outline" className="rounded-full border-white/25 text-white bg-white/10 hover:bg-white/15 flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              Generate report
             </Button>
           </div>
         </div>
@@ -312,7 +342,6 @@ export function DashboardHome() {
 
       {/* Active Projects and Recent Activity */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Active Projects */}
         <Card className="border border-slate-200 shadow-sm bg-white lg:col-span-2">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Active Projects</CardTitle>
@@ -409,8 +438,8 @@ export function DashboardHome() {
         </Card>
       </div>
 
-      {/* Tasks Summary */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      {/* Tasks Summary & Operations */}
+      <div className="grid gap-6 xl:grid-cols-4">
         <Card className="border border-slate-200 shadow-sm bg-white">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Tasks Summary</CardTitle>
@@ -463,6 +492,65 @@ export function DashboardHome() {
           </CardContent>
         </Card>
 
+        <Card className="border border-slate-200 shadow-sm bg-white xl:col-span-2">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Cashflow & Invoices</CardTitle>
+            <Badge className="bg-amber-50 text-amber-700 border-amber-100">
+              {invoices.length} total
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-gray-100 p-4">
+                <p className="text-xs text-gray-500">Outstanding</p>
+                <p className="text-2xl font-semibold">
+                  {formatCurrency(
+                    invoices.filter((i: any) => i.status !== 'paid').reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
+                  )}
+                </p>
+                <p className="text-xs text-amber-600 font-semibold mt-1">
+                  {invoices.filter((i: any) => i.status !== 'paid').length} open
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 p-4">
+                <p className="text-xs text-gray-500">Paid this month</p>
+                <p className="text-2xl font-semibold">
+                  {formatCurrency(
+                    invoices
+                      .filter((i: any) => i.status === 'paid')
+                      .reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
+                  )}
+                </p>
+                <p className="text-xs text-green-600 font-semibold mt-1">Cleared</p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 p-4">
+                <p className="text-xs text-gray-500">Next due</p>
+                <p className="text-lg font-semibold">
+                  {invoices.find((i: any) => i.dueDate)?.dueDate
+                    ? new Date(invoices.find((i: any) => i.dueDate).dueDate).toLocaleDateString()
+                    : '—'}
+                </p>
+                <p className="text-xs text-gray-500">Across all projects</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {invoices.slice(0, 4).map((inv: any) => (
+                <div key={inv.id} className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2 w-full md:w-[48%]">
+                  <div>
+                    <p className="text-sm font-semibold">{inv.invoiceNumber}</p>
+                    <p className="text-xs text-gray-500">{inv.projectName}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold">{formatCurrency(inv.amount || 0)}</p>
+                    <Badge variant={inv.status === 'paid' ? 'success' : 'secondary'}>{inv.status}</Badge>
+                  </div>
+                </div>
+              ))}
+              {invoices.length === 0 && <p className="text-sm text-gray-500">No invoices yet.</p>}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="border border-slate-200 shadow-sm bg-white">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Upcoming Deadlines</CardTitle>
@@ -490,6 +578,58 @@ export function DashboardHome() {
                 <p className="text-sm text-gray-500">No deadlines scheduled.</p>
               )}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Schedule + Quick actions */}
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="border border-slate-200 shadow-sm bg-white xl:col-span-2">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Schedule Highlights</CardTitle>
+            <Badge className="bg-blue-50 text-blue-700 border-blue-100 flex items-center gap-1">
+              <CalendarRange className="h-4 w-4" /> {events.length} events
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {events
+              .slice(0, 6)
+              .map((e: any) => (
+                <div key={e.id} className="flex items-center justify-between rounded-xl border border-gray-100 p-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{e.title}</p>
+                    <p className="text-xs text-gray-500">{e.projectName || 'Unassigned'} • {e.type}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <Calendar className="h-4 w-4 text-gray-500" />
+                    {e.startDate ? new Date(e.startDate).toLocaleDateString() : '—'}
+                  </div>
+                </div>
+              ))}
+            {events.length === 0 && <p className="text-sm text-gray-500">No scheduled items.</p>}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Quick Actions</CardTitle>
+            <Badge className="bg-slate-50 text-slate-700 border-slate-100">Shortcuts</Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {[
+              { label: 'Create project', icon: Briefcase },
+              { label: 'Log a document', icon: FileText },
+              { label: 'Schedule event', icon: CalendarRange },
+              { label: 'Add task', icon: CheckCircle2 },
+            ].map((item) => (
+              <Button key={item.label} variant="outline" className="w-full justify-between">
+                <div className="flex items-center gap-2">
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </div>
+                <ArrowRight className="h-4 w-4 text-gray-400" />
+              </Button>
+            ))}
           </CardContent>
         </Card>
       </div>

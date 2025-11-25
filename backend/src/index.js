@@ -234,25 +234,38 @@ const documents = [
     category: 'contract',
     size: '2.3 MB',
     projectName: 'Sunrise Apartments',
+    projectId: 'p-1',
     uploadedBy: 'Admin User',
     uploadedAt: '2024-02-01',
+    url: '#',
+  },
+  {
+    id: 'doc-2',
+    name: 'Floorplan.dwg',
+    type: 'dwg',
+    category: 'plans',
+    size: '5.1 MB',
+    projectName: 'Downtown Office',
+    projectId: 'p-2',
+    uploadedBy: 'PM User',
+    uploadedAt: '2024-02-05',
     url: '#',
   },
 ];
 
 const bids = [
-  { id: 'b-1', vendor: 'ABC Electrical', amount: 55000, status: 'submitted', scope: 'Electrical rough-in' },
-  { id: 'b-2', vendor: 'Prime Plumbing', amount: 42000, status: 'review', scope: 'Plumbing rough-in' },
+  { id: 'b-1', vendor: 'ABC Electrical', amount: 55000, status: 'submitted', scope: 'Electrical rough-in', projectName: 'Sunrise Apartments', projectId: 'p-1', submittedDate: '2024-03-01', validUntil: '2024-03-20', contact: 'estimator@abcelectrical.com' },
+  { id: 'b-2', vendor: 'Prime Plumbing', amount: 42000, status: 'review', scope: 'Plumbing rough-in', projectName: 'Downtown Office', projectId: 'p-2', submittedDate: '2024-03-02', validUntil: '2024-03-18', contact: 'pm@primeplumbing.com' },
 ];
 
 const inspections = [
-  { id: 'i-1', title: 'Framing Inspection', status: 'scheduled', date: '2024-06-01' },
-  { id: 'i-2', title: 'Electrical Inspection', status: 'pending', date: '2024-06-15' },
+  { id: 'i-1', title: 'Framing Inspection', type: 'framing', status: 'scheduled', date: '2024-06-01', projectName: 'Sunrise Apartments', projectId: 'p-1', inspector: 'City Inspector' },
+  { id: 'i-2', title: 'Electrical Inspection', type: 'electrical', status: 'pending', date: '2024-06-15', projectName: 'Downtown Office', projectId: 'p-2', inspector: 'Safety First' },
 ];
 
 const equipment = [
-  { id: 'e-1', name: 'Excavator', status: 'in_use', location: 'Site A', lastService: '2024-02-10' },
-  { id: 'e-2', name: 'Scissor Lift', status: 'available', location: 'Yard', lastService: '2024-01-20' },
+  { id: 'e-1', name: 'Excavator', type: 'heavy', status: 'in_use', location: 'Site A', lastService: '2024-02-10', nextMaintenance: '2024-04-15', projectId: 'p-1', projectName: 'Sunrise Apartments', purchaseDate: '2023-06-01', purchasePrice: 75000 },
+  { id: 'e-2', name: 'Scissor Lift', type: 'lift', status: 'available', location: 'Yard', lastService: '2024-01-20', nextMaintenance: '2024-03-20', purchaseDate: '2023-01-15', purchasePrice: 32000 },
 ];
 
 const messages = [
@@ -1358,8 +1371,21 @@ app.post('/api/daily-logs', (req, res) => {
 });
 
 // Documents
-app.get('/api/documents', (_req, res) => {
-  res.json({ documents });
+app.get('/api/documents', (req, res) => {
+  const { search, category, projectId } = req.query;
+  let list = [...documents];
+  if (projectId) list = list.filter(d => d.projectId === projectId);
+  if (category) list = list.filter(d => d.category === category);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      d =>
+        d.name.toLowerCase().includes(q) ||
+        (d.projectName || '').toLowerCase().includes(q) ||
+        d.category.toLowerCase().includes(q)
+    );
+  }
+  res.json({ documents: list });
 });
 
 app.post('/api/documents', (req, res) => {
@@ -1371,17 +1397,38 @@ app.post('/api/documents', (req, res) => {
     category: body.category || 'other',
     size: body.size || 'N/A',
     projectName: body.projectName || '',
+    projectId: body.projectId,
     uploadedBy: body.uploadedBy || 'System',
     uploadedAt: new Date().toISOString(),
     url: body.url || '#',
   };
   documents.push(doc);
-  res.json(doc);
+  res.json({ document: doc });
+});
+
+app.delete('/api/documents/:id', (req, res) => {
+  const idx = documents.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = documents.splice(idx, 1);
+  res.json({ document: removed });
 });
 
 // Bids
-app.get('/api/bids', (_req, res) => {
-  res.json({ bids });
+app.get('/api/bids', (req, res) => {
+  const { search, status, projectId } = req.query;
+  let list = [...bids];
+  if (projectId) list = list.filter(b => b.projectId === projectId);
+  if (status) list = list.filter(b => b.status === status);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      b =>
+        b.vendor.toLowerCase().includes(q) ||
+        (b.projectName || '').toLowerCase().includes(q) ||
+        (b.scope || '').toLowerCase().includes(q)
+    );
+  }
+  res.json({ bids: list });
 });
 
 app.post('/api/bids', (req, res) => {
@@ -1392,31 +1439,129 @@ app.post('/api/bids', (req, res) => {
     amount: parseFloat(body.amount) || 0,
     status: body.status || 'submitted',
     scope: body.scope || '',
+    projectName: body.projectName || '',
+    projectId: body.projectId,
+    submittedDate: body.submittedDate || new Date().toISOString().split('T')[0],
+    validUntil: body.validUntil || '',
+    contact: body.contact || '',
   };
-  bids.push(bid);
-  res.json(bid);
+  bids.unshift(bid);
+  res.json({ bid });
+});
+
+app.put('/api/bids/:id', (req, res) => {
+  const body = req.body || {};
+  const bid = bids.find(b => b.id === req.params.id);
+  if (!bid) return res.status(404).json({ message: 'Not found' });
+  Object.assign(bid, {
+    vendor: body.vendor ?? bid.vendor,
+    amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : bid.amount,
+    status: body.status ?? bid.status,
+    scope: body.scope ?? bid.scope,
+    projectName: body.projectName ?? bid.projectName,
+    projectId: body.projectId ?? bid.projectId,
+    submittedDate: body.submittedDate ?? bid.submittedDate,
+    validUntil: body.validUntil ?? bid.validUntil,
+    contact: body.contact ?? bid.contact,
+  });
+  res.json({ bid });
+});
+
+app.patch('/api/bids/:id', (req, res) => {
+  const body = req.body || {};
+  const bid = bids.find(b => b.id === req.params.id);
+  if (!bid) return res.status(404).json({ message: 'Not found' });
+  if (body.status) bid.status = body.status;
+  if (body.amount !== undefined) bid.amount = parseFloat(body.amount) || bid.amount;
+  res.json({ bid });
+});
+
+app.delete('/api/bids/:id', (req, res) => {
+  const idx = bids.findIndex(b => b.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = bids.splice(idx, 1);
+  res.json({ bid: removed });
 });
 
 // Inspections
-app.get('/api/inspections', (_req, res) => {
-  res.json({ inspections });
+app.get('/api/inspections', (req, res) => {
+  const { search, status, projectId } = req.query;
+  let list = [...inspections];
+  if (projectId) list = list.filter(i => i.projectId === projectId);
+  if (status) list = list.filter(i => i.status === status);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      i =>
+        (i.title || '').toLowerCase().includes(q) ||
+        (i.type || '').toLowerCase().includes(q) ||
+        (i.projectName || '').toLowerCase().includes(q)
+    );
+  }
+  res.json({ inspections: list });
 });
 
 app.post('/api/inspections', (req, res) => {
   const body = req.body || {};
   const inspection = {
     id: randomUUID(),
-    title: body.title || 'Inspection',
+    title: body.title || body.type || 'Inspection',
+    type: body.type || 'general',
     status: body.status || 'scheduled',
-    date: body.date || '',
+    date: body.date || body.scheduledDate || '',
+    scheduledDate: body.scheduledDate || body.date || '',
+    projectName: body.projectName || '',
+    projectId: body.projectId,
+    inspector: body.inspector || '',
+    notes: body.notes || '',
+    completedDate: body.completedDate || '',
   };
-  inspections.push(inspection);
-  res.json(inspection);
+  inspections.unshift(inspection);
+  res.json({ inspection });
+});
+
+app.put('/api/inspections/:id', (req, res) => {
+  const body = req.body || {};
+  const inspection = inspections.find(i => i.id === req.params.id);
+  if (!inspection) return res.status(404).json({ message: 'Not found' });
+  Object.assign(inspection, {
+    title: body.title ?? inspection.title,
+    type: body.type ?? inspection.type,
+    status: body.status ?? inspection.status,
+    date: body.date ?? inspection.date,
+    scheduledDate: body.scheduledDate ?? inspection.scheduledDate,
+    projectName: body.projectName ?? inspection.projectName,
+    projectId: body.projectId ?? inspection.projectId,
+    inspector: body.inspector ?? inspection.inspector,
+    notes: body.notes ?? inspection.notes,
+    completedDate: body.completedDate ?? inspection.completedDate,
+  });
+  res.json({ inspection });
+});
+
+app.delete('/api/inspections/:id', (req, res) => {
+  const idx = inspections.findIndex(i => i.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = inspections.splice(idx, 1);
+  res.json({ inspection: removed });
 });
 
 // Equipment
-app.get('/api/equipment', (_req, res) => {
-  res.json({ equipment });
+app.get('/api/equipment', (req, res) => {
+  const { search, status, projectId } = req.query;
+  let list = [...equipment];
+  if (projectId) list = list.filter(e => e.projectId === projectId);
+  if (status) list = list.filter(e => e.status === status);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      e =>
+        e.name.toLowerCase().includes(q) ||
+        (e.projectName || '').toLowerCase().includes(q) ||
+        (e.location || '').toLowerCase().includes(q)
+    );
+  }
+  res.json({ equipment: list });
 });
 
 app.post('/api/equipment', (req, res) => {
@@ -1424,12 +1569,46 @@ app.post('/api/equipment', (req, res) => {
   const item = {
     id: randomUUID(),
     name: body.name || 'Equipment',
+    type: body.type || 'general',
     status: body.status || 'available',
     location: body.location || '',
+    projectId: body.projectId,
+    projectName: body.projectName || '',
+    assignedTo: body.assignedTo || '',
+    purchaseDate: body.purchaseDate || '',
+    purchasePrice: body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : 0,
     lastService: body.lastService || '',
+    nextMaintenance: body.nextMaintenance || '',
   };
-  equipment.push(item);
-  res.json(item);
+  equipment.unshift(item);
+  res.json({ equipment: item });
+});
+
+app.put('/api/equipment/:id', (req, res) => {
+  const body = req.body || {};
+  const item = equipment.find(e => e.id === req.params.id);
+  if (!item) return res.status(404).json({ message: 'Not found' });
+  Object.assign(item, {
+    name: body.name ?? item.name,
+    type: body.type ?? item.type,
+    status: body.status ?? item.status,
+    location: body.location ?? item.location,
+    projectId: body.projectId ?? item.projectId,
+    projectName: body.projectName ?? item.projectName,
+    assignedTo: body.assignedTo ?? item.assignedTo,
+    purchaseDate: body.purchaseDate ?? item.purchaseDate,
+    purchasePrice: body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : item.purchasePrice,
+    lastService: body.lastService ?? item.lastService,
+    nextMaintenance: body.nextMaintenance ?? item.nextMaintenance,
+  });
+  res.json({ equipment: item });
+});
+
+app.delete('/api/equipment/:id', (req, res) => {
+  const idx = equipment.findIndex(e => e.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = equipment.splice(idx, 1);
+  res.json({ equipment: removed });
 });
 
 // Messages
