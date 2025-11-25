@@ -109,7 +109,7 @@ export function DocumentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setIsUploadDialogOpen(false);
-      setFormData({ name: '', category: '', projectId: '', projectName: '' });
+      setFormData({ name: '', category: '', projectId: '', projectName: '', folder: '' });
       setFileMeta(null);
       setSelectedFile(null);
     },
