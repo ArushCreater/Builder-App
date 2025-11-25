@@ -1552,7 +1552,7 @@ app.delete('/api/documents/:id', (req, res) => {
 app.post('/api/documents/upload', upload.single('file'), async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ message: 'No file uploaded' });
-  const projectId = req.body.projectId || 'unassigned';
+  const projectId = req.body.projectId || 'global';
   const folder = (req.body.folder || '').replace(/^\//, '');
   const basePrefix = `documents/${projectId}/${folder}`;
   const key = `${basePrefix}/${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;

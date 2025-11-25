@@ -18,7 +18,6 @@ import {
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { useToast } from '../../components/ui/use-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table,
@@ -42,6 +41,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
+import { useToast } from '../../components/ui/use-toast';
 
 interface Project {
   id: string;
@@ -129,6 +129,8 @@ export function ProjectDetailPage() {
   const queryClient = useQueryClient();
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [isDocDialogOpen, setIsDocDialogOpen] = useState(false);
+  const [folderPath, setFolderPath] = useState('');
+  const [projectFile, setProjectFile] = useState<File | null>(null);
   const [docSearch, setDocSearch] = useState('');
   const [docPages, setDocPages] = useState<DocPage[]>([
     { id: 'page-1', title: 'Site notes', content: 'Add your site notes here...', images: [] },
@@ -149,6 +151,8 @@ export function ProjectDetailPage() {
     category: 'other',
     fileSize: '',
     mimeType: '',
+    url: '',
+    key: '',
   });
   const docFileRef = useRef<HTMLInputElement | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -256,7 +260,7 @@ export function ProjectDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-documents', id] });
       setIsDocDialogOpen(false);
-      setDocForm({ name: '', type: 'file', category: 'other', fileSize: '', mimeType: '' });
+      setDocForm({ name: '', type: 'file', category: 'other', fileSize: '', mimeType: '', url: '', key: '' });
       toast({ title: 'File added' });
     },
     onError: () => toast({ title: 'Error', description: 'Could not upload file', variant: 'destructive' }),
@@ -1025,117 +1029,128 @@ export function ProjectDetailPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Documents</CardTitle>
-                <Dialog open={isDocDialogOpen} onOpenChange={setIsDocDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" onClick={() => setIsDocDialogOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Upload File
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        docMutation.mutate({
-                          ...docForm,
-                          fileSize: docForm.fileSize ? parseFloat(docForm.fileSize) : 0,
-                        });
-                      }}
-                    >
-                      <DialogHeader>
-                        <DialogTitle>Upload File</DialogTitle>
-                        <DialogDescription>Add a document for this project</DialogDescription>
-                      </DialogHeader>
-                      <div className="grid gap-4 py-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="d-name">Name</Label>
-                          <Input
-                            id="d-name"
-                            value={docForm.name}
-                            onChange={(e) => setDocForm({ ...docForm, name: e.target.value })}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="d-file">File</Label>
-                          <div className="flex items-center gap-3">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => docFileRef.current?.click()}
-                            >
-                              Choose File
-                            </Button>
-                            {docForm.name && <span className="text-sm text-gray-600">{docForm.name}</span>}
-                          </div>
-                          <input
-                            id="d-file"
-                            type="file"
-                            ref={docFileRef}
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                setDocForm({
-                                  ...docForm,
-                                  name: file.name,
-                                  fileSize: file.size.toString(),
-                                  mimeType: file.type,
-                                });
-                              }
-                            }}
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
+                <div className="flex gap-2">
+                  <Dialog open={isDocDialogOpen} onOpenChange={setIsDocDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" onClick={() => setIsDocDialogOpen(true)}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add File
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-xl">
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!projectFile) {
+                            toast({ title: 'Select a file', description: 'Choose a file to upload', variant: 'destructive' });
+                            return;
+                          }
+                          try {
+                            const fd = new FormData();
+                            fd.append('file', projectFile);
+                            fd.append('projectId', id || '');
+                            fd.append('folder', folderPath || '');
+                            const uploadResp = await apiClient.post<{ url: string; key: string; name: string; size: number; type: string }>(
+                              '/documents/upload',
+                              fd,
+                              { headers: { 'Content-Type': 'multipart/form-data' } }
+                            );
+                            docMutation.mutate({
+                              name: docForm.name || uploadResp.name,
+                              category: docForm.category,
+                              type: uploadResp.type || projectFile.type || 'file',
+                              fileSize: uploadResp.size,
+                              mimeType: uploadResp.type,
+                              url: uploadResp.url,
+                              key: uploadResp.key,
+                              projectId: id,
+                              projectName: project?.name,
+                            });
+                            setIsDocDialogOpen(false);
+                            setProjectFile(null);
+                            setFolderPath('');
+                            setDocForm({ name: '', type: 'file', category: 'other', fileSize: '', mimeType: '', url: '', key: '' });
+                            queryClient.invalidateQueries({ queryKey: ['project-documents', id] });
+                          } catch (err) {
+                            toast({ title: 'Upload failed', description: 'Please try again', variant: 'destructive' });
+                          }
+                        }}
+                      >
+                        <DialogHeader>
+                          <DialogTitle>Upload File</DialogTitle>
+                          <DialogDescription>Add a document for this project</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
                           <div className="space-y-2">
-                            <Label htmlFor="d-type">Type</Label>
+                            <Label htmlFor="d-name">Name</Label>
                             <Input
-                              id="d-type"
-                              value={docForm.type}
-                              onChange={(e) => setDocForm({ ...docForm, type: e.target.value })}
+                              id="d-name"
+                              value={docForm.name}
+                              onChange={(e) => setDocForm({ ...docForm, name: e.target.value })}
+                              placeholder={projectFile?.name || 'Document name'}
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="d-category">Category</Label>
-                            <Input
-                              id="d-category"
-                              value={docForm.category}
-                              onChange={(e) => setDocForm({ ...docForm, category: e.target.value })}
-                            />
+                            <Label>File</Label>
+                            <div className="flex items-center gap-3">
+                              <Button type="button" variant="outline" onClick={() => docFileRef.current?.click()}>
+                                Choose File
+                              </Button>
+                              {projectFile && <span className="text-sm text-gray-600">{projectFile.name}</span>}
+                            </div>
+                            <input
+                              ref={docFileRef}
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  setProjectFile(file);
+                            setDocForm((prev) => ({ ...prev, name: prev.name || file.name, mimeType: file.type }));
+                          }
+                        }}
+                      />
+                    </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Category</Label>
+                              <Input
+                                value={docForm.category}
+                                onChange={(e) => setDocForm({ ...docForm, category: e.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Subfolder</Label>
+                              <Input
+                                placeholder="e.g. contracts/2024"
+                                value={folderPath}
+                                onChange={(e) => setFolderPath(e.target.value)}
+                              />
+                            </div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="d-size">File Size (bytes)</Label>
-                            <Input
-                              id="d-size"
-                              type="number"
-                              value={docForm.fileSize}
-                              onChange={(e) => setDocForm({ ...docForm, fileSize: e.target.value })}
-                              placeholder="bytes"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="d-mime">MIME Type</Label>
-                            <Input
-                              id="d-mime"
-                              value={docForm.mimeType}
-                              onChange={(e) => setDocForm({ ...docForm, mimeType: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setIsDocDialogOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button type="submit" disabled={docMutation.isPending}>
-                          {docMutation.isPending ? 'Uploading...' : 'Upload'}
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                        <DialogFooter>
+                          <Button type="button" variant="outline" onClick={() => setIsDocDialogOpen(false)}>
+                            Cancel
+                          </Button>
+                          <Button type="submit" disabled={docMutation.isPending}>
+                            {docMutation.isPending ? 'Uploading...' : 'Upload'}
+                          </Button>
+                        </DialogFooter>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setFolderPath(prev => prev || 'new-folder');
+                      toast({ title: 'Folder ready', description: 'Set your subfolder in the upload form.' });
+                    }}
+                  >
+                    New Folder
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>

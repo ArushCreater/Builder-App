@@ -32,7 +32,7 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Separator } from '../../components/ui/separator';
-import { Search, FileText, Download, Eye, Upload, Folder, Grid, List, Trash2, FolderPlus } from 'lucide-react';
+import { Search, FileText, Download, Eye, Upload, Folder, Grid, List, Trash2 } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
 
@@ -129,6 +129,8 @@ export function DocumentsPage() {
     try {
       const fd = new FormData();
       fd.append('file', selectedFile);
+      fd.append('projectId', formData.projectId || '');
+      fd.append('folder', formData.folder || '');
       const uploadResp = await apiClient.post<{ url: string; key: string; name: string; size: number; type: string }>(
         '/documents/upload',
         fd,
@@ -319,154 +321,6 @@ export function DocumentsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Documents</h1>
           <p className="text-gray-500 mt-1">Organize files by project, folders, and views.</p>
         </div>
-        <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Upload className="mr-2 h-4 w-4" />
-              Upload Document
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <form onSubmit={handleUpload}>
-              <DialogHeader>
-                <DialogTitle>Upload Document</DialogTitle>
-                <DialogDescription>Drop a file and tag it to a project folder.</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50/80 hover:border-blue-400 transition-all duration-200 p-4 cursor-pointer"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner">
-                      <Upload className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">Drag & drop files here</p>
-                      <p className="text-sm text-gray-500">or click to browse from your computer</p>
-                      {fileMeta && (
-                        <p className="mt-1 text-sm text-gray-700">
-                          Selected: {fileMeta.name} ({fileMeta.size})
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    onChange={handleFileInputChange}
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Name</Label>
-                    <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleChange}
-                      placeholder="Document name"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="category">Category</Label>
-                    <Select value={formData.category} onValueChange={(val) => setFormData({ ...formData, category: val })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="contract">Contract</SelectItem>
-                        <SelectItem value="plans">Plans</SelectItem>
-                        <SelectItem value="permit">Permit</SelectItem>
-                        <SelectItem value="invoice">Invoice</SelectItem>
-                        <SelectItem value="photo">Photo</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="project">Project folder</Label>
-                  <Select
-                    value={formData.projectId || 'none'}
-                    onValueChange={(val) => {
-                      if (val === 'none') {
-                        setFormData({ ...formData, projectId: '', projectName: '' });
-                        return;
-                      }
-                      const proj = projectsData?.projects.find(p => p.id === val);
-                      setFormData({ ...formData, projectId: val, projectName: proj?.name || '' });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Assign to project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No project</SelectItem>
-                      {projectsData?.projects.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Subfolder (optional)</Label>
-                  <Input
-                    placeholder="e.g. contracts/2024"
-                    value={formData.folder}
-                    onChange={(e) => setFormData({ ...formData, folder: e.target.value })}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={uploadMutation.isPending}>
-                  {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline">
-              <FolderPlus className="mr-2 h-4 w-4" />
-              New Folder
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create Folder</DialogTitle>
-              <DialogDescription>Creates a nested folder inside the project directory.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3 py-2">
-              <Label htmlFor="folderName">Folder path</Label>
-              <Input
-                id="folderName"
-                placeholder="e.g. specs/2024"
-                value={newFolder}
-                onChange={(e) => setNewFolder(e.target.value)}
-              />
-            </div>
-            <DialogFooter className="flex gap-2">
-              <Button variant="outline" onClick={() => setIsFolderDialogOpen(false)}>Cancel</Button>
-              <Button
-                onClick={() => {
-                  setFormData((prev) => ({ ...prev, folder: newFolder }));
-                  setIsFolderDialogOpen(false);
-                }}
-              >
-                Save
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -598,10 +452,155 @@ export function DocumentsPage() {
                         : folderEntries.find(f => f.id === selectedFolder)?.name || 'Select a folder'}
                     </h3>
                   </div>
-                  <Button variant="outline" onClick={() => setIsUploadDialogOpen(true)}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Add file
-                  </Button>
+                  <div className="flex gap-2">
+                    <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline">
+                          New Folder
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Create Folder</DialogTitle>
+                          <DialogDescription>Creates a nested folder inside the selected project.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 py-2">
+                          <Label htmlFor="folderName">Folder path</Label>
+                          <Input
+                            id="folderName"
+                            placeholder="e.g. specs/2024"
+                            value={newFolder}
+                            onChange={(e) => setNewFolder(e.target.value)}
+                          />
+                        </div>
+                        <DialogFooter className="flex gap-2">
+                          <Button variant="outline" onClick={() => setIsFolderDialogOpen(false)}>Cancel</Button>
+                          <Button
+                            onClick={() => {
+                              setFormData((prev) => ({ ...prev, folder: newFolder }));
+                              setIsFolderDialogOpen(false);
+                            }}
+                          >
+                            Save
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                    <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Add file
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-2xl">
+                        <form onSubmit={handleUpload}>
+                          <DialogHeader>
+                            <DialogTitle>Upload Document</DialogTitle>
+                            <DialogDescription>Drop a file and tag it to a project folder.</DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-4 py-4">
+                            <div
+                              onDrop={handleDrop}
+                              onDragOver={handleDragOver}
+                              className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50/80 hover:border-blue-400 transition-all duration-200 p-4 cursor-pointer"
+                              onClick={() => fileInputRef.current?.click()}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner">
+                                  <Upload className="h-6 w-6" />
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-gray-900">Drag & drop files here</p>
+                                  <p className="text-sm text-gray-500">or click to browse from your computer</p>
+                                  {fileMeta && (
+                                    <p className="mt-1 text-sm text-gray-700">
+                                      Selected: {fileMeta.name} ({fileMeta.size})
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <input
+                                ref={fileInputRef}
+                                type="file"
+                                className="hidden"
+                                onChange={handleFileInputChange}
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="name">Name</Label>
+                                <Input
+                                  id="name"
+                                  name="name"
+                                  value={formData.name}
+                                  onChange={handleChange}
+                                  placeholder="Document name"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="category">Category</Label>
+                                <Select value={formData.category} onValueChange={(val) => setFormData({ ...formData, category: val })}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select category" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="contract">Contract</SelectItem>
+                                    <SelectItem value="plans">Plans</SelectItem>
+                                    <SelectItem value="permit">Permit</SelectItem>
+                                    <SelectItem value="invoice">Invoice</SelectItem>
+                                    <SelectItem value="photo">Photo</SelectItem>
+                                    <SelectItem value="other">Other</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="project">Project folder</Label>
+                              <Select
+                                value={formData.projectId || 'none'}
+                                onValueChange={(val) => {
+                                  if (val === 'none') {
+                                    setFormData({ ...formData, projectId: '', projectName: '', folder: '' });
+                                    return;
+                                  }
+                                  const proj = projectsData?.projects.find(p => p.id === val);
+                                  setFormData({ ...formData, projectId: val, projectName: proj?.name || '' });
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Assign to project" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">No project</SelectItem>
+                                  {projectsData?.projects.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Subfolder (optional)</Label>
+                              <Input
+                                placeholder="e.g. contracts/2024"
+                                value={formData.folder}
+                                onChange={(e) => setFormData({ ...formData, folder: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
+                              Cancel
+                            </Button>
+                            <Button type="submit" disabled={uploadMutation.isPending}>
+                              {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
+                            </Button>
+                          </DialogFooter>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
                 <DocumentsTable
                   documents={visibleDocuments}
