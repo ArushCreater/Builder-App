@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Card, CardContent, CardHeader } from '../../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import {
   Table,
   TableBody,
@@ -24,8 +24,15 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Palette } from 'lucide-react';
+import { Plus, Search, Palette, Edit, Trash2 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 
 interface Selection {
   id: string;
@@ -36,6 +43,7 @@ interface Selection {
   cost: number;
   status: 'pending' | 'approved' | 'ordered' | 'installed';
   projectName: string;
+  projectId?: string;
   clientName: string;
   dueDate: string;
 }
@@ -51,7 +59,10 @@ export function SelectionsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     category: '',
     item: '',
@@ -59,19 +70,28 @@ export function SelectionsPage() {
     choice: '',
     cost: '',
     projectName: '',
+    projectId: '',
     clientName: '',
     dueDate: '',
+    status: 'pending' as Selection['status'],
   });
 
   const { data: selectionsData, isLoading } = useQuery({
-    queryKey: ['selections', searchTerm],
+    queryKey: ['selections', searchTerm, statusFilter, projectFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (projectFilter !== 'all') params.append('projectId', projectFilter);
       return apiClient.get<{ selections: Selection[] }>(`/selections?${params}`);
     },
   });
   const selections = selectionsData?.selections || [];
+
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects', 'selections'],
+    queryFn: () => apiClient.get<{ projects: Array<{ id: string; name: string }> }>('/projects'),
+  });
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Selection>) => apiClient.post('/selections', data),
@@ -85,8 +105,10 @@ export function SelectionsPage() {
         choice: '',
         cost: '',
         projectName: '',
+        projectId: '',
         clientName: '',
         dueDate: '',
+        status: 'pending',
       });
       toast({
         title: 'Success',
@@ -104,10 +126,16 @@ export function SelectionsPage() {
 
   const handleCreateSelection = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate({
+    const payload = {
       ...formData,
       cost: parseFloat(formData.cost),
-    });
+      projectId: formData.projectId || undefined,
+    };
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, data: payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,6 +143,58 @@ export function SelectionsPage() {
       ...formData,
       [e.target.name]: e.target.value,
     });
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: { id: string; data: Partial<Selection> }) =>
+      apiClient.put(`/selections/${payload.id}`, payload.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['selections'] });
+      setIsCreateDialogOpen(false);
+      setEditingId(null);
+      setFormData({
+        category: '',
+        item: '',
+        description: '',
+        choice: '',
+        cost: '',
+        projectName: '',
+        projectId: '',
+        clientName: '',
+        dueDate: '',
+        status: 'pending',
+      });
+      toast({ title: 'Updated', description: 'Selection updated successfully' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Update failed', variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/selections/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['selections'] });
+      toast({ title: 'Deleted', description: 'Selection removed' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Delete failed', variant: 'destructive' }),
+  });
+
+  const filtered = useMemo(() => selections, [selections]);
+
+  const handleEdit = (selection: Selection) => {
+    setEditingId(selection.id);
+    setFormData({
+      category: selection.category,
+      item: selection.item,
+      description: selection.description,
+      choice: selection.choice,
+      cost: selection.cost.toString(),
+      projectName: selection.projectName,
+      projectId: selection.projectId || '',
+      clientName: selection.clientName,
+      dueDate: selection.dueDate,
+      status: selection.status,
+    });
+    setIsCreateDialogOpen(true);
   };
 
   return (
@@ -199,13 +279,27 @@ export function SelectionsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="projectName">Project</Label>
-                    <Input
-                      id="projectName"
-                      name="projectName"
-                      value={formData.projectName}
-                      onChange={handleChange}
-                      required
-                    />
+                    <Select
+                      value={formData.projectId || 'none'}
+                      onValueChange={(value) => {
+                        if (value === 'none') {
+                          setFormData({ ...formData, projectId: '', projectName: '' });
+                          return;
+                        }
+                        const proj = projectsData?.projects.find(p => p.id === value);
+                        setFormData({ ...formData, projectId: value, projectName: proj?.name || '' });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No project</SelectItem>
+                        {projectsData?.projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="clientName">Client</Label>
@@ -243,16 +337,84 @@ export function SelectionsPage() {
         </Dialog>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">Total Selections</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{filtered.length}</div>
+            <p className="text-xs text-gray-500">Across all projects</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">Pending</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">
+              {filtered.filter(s => s.status === 'pending').length}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">Approved</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {filtered.filter(s => s.status === 'approved').length}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-500">Value</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(filtered.reduce((sum, s) => sum + (s.cost || 0), 0))}</div>
+            <p className="text-xs text-gray-500">Total of selected items</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search selections..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search selections..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Select value={projectFilter} onValueChange={setProjectFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Projects</SelectItem>
+                  {projectsData?.projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="ordered">Ordered</SelectItem>
+                  <SelectItem value="installed">Installed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -272,10 +434,11 @@ export function SelectionsPage() {
                   <TableHead>Cost</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Due Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {selections?.map((selection) => (
+                {filtered?.map((selection) => (
                   <TableRow key={selection.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -294,6 +457,32 @@ export function SelectionsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{formatDate(selection.dueDate)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center gap-2 justify-end">
+                        <Select
+                          value={selection.status}
+                          onValueChange={(value) =>
+                            updateMutation.mutate({ id: selection.id, data: { status: value as Selection['status'] } })
+                          }
+                        >
+                          <SelectTrigger className="w-[120px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="approved">Approved</SelectItem>
+                            <SelectItem value="ordered">Ordered</SelectItem>
+                            <SelectItem value="installed">Installed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button size="icon" variant="ghost" onClick={() => handleEdit(selection)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(selection.id)}>
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

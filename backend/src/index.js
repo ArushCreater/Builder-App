@@ -214,8 +214,8 @@ const materials = [
 ];
 
 const selections = [
-  { id: 's-1', category: 'Cabinetry', item: 'Kitchen Cabinets', description: 'Shaker style', choice: 'Matte White', cost: 4500, status: 'pending', projectName: 'Sunrise Apartments', clientName: 'John Smith', dueDate: '2024-05-01' },
-  { id: 's-2', category: 'Flooring', item: 'Flooring', description: 'Engineered timber', choice: 'Oak', cost: 8200, status: 'approved', projectName: 'Downtown Office', clientName: 'Jane Doe', dueDate: '2024-04-15' },
+  { id: 's-1', category: 'Cabinetry', item: 'Kitchen Cabinets', description: 'Shaker style', choice: 'Matte White', cost: 4500, status: 'pending', projectName: 'Sunrise Apartments', projectId: 'p-1', clientName: 'John Smith', dueDate: '2024-05-01' },
+  { id: 's-2', category: 'Flooring', item: 'Flooring', description: 'Engineered timber', choice: 'Oak', cost: 8200, status: 'approved', projectName: 'Downtown Office', projectId: 'p-2', clientName: 'Jane Doe', dueDate: '2024-04-15' },
 ];
 
 const dailyLogs = [
@@ -1268,8 +1268,22 @@ app.delete('/api/materials/:id', (req, res) => {
 });
 
 // Selections
-app.get('/api/selections', (_req, res) => {
-  res.json({ selections });
+app.get('/api/selections', (req, res) => {
+  const { search, status, projectId } = req.query;
+  let list = [...selections];
+  if (projectId) list = list.filter(s => s.projectId === projectId);
+  if (status) list = list.filter(s => s.status === status);
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      s =>
+        s.category.toLowerCase().includes(q) ||
+        s.item.toLowerCase().includes(q) ||
+        (s.projectName || '').toLowerCase().includes(q) ||
+        s.clientName.toLowerCase().includes(q)
+    );
+  }
+  res.json({ selections: list });
 });
 
 app.post('/api/selections', (req, res) => {
@@ -1283,11 +1297,38 @@ app.post('/api/selections', (req, res) => {
     cost: parseFloat(body.cost) || 0,
     status: body.status || 'pending',
     projectName: body.projectName || '',
+    projectId: body.projectId,
     clientName: body.clientName || '',
     dueDate: body.dueDate || '',
   };
-  selections.push(selection);
-  res.json(selection);
+  selections.unshift(selection);
+  res.json({ selection });
+});
+
+app.put('/api/selections/:id', (req, res) => {
+  const body = req.body || {};
+  const selection = selections.find(s => s.id === req.params.id);
+  if (!selection) return res.status(404).json({ message: 'Not found' });
+  Object.assign(selection, {
+    category: body.category ?? selection.category,
+    item: body.item ?? selection.item,
+    description: body.description ?? selection.description,
+    choice: body.choice ?? selection.choice,
+    cost: body.cost !== undefined ? parseFloat(body.cost) || 0 : selection.cost,
+    status: body.status ?? selection.status,
+    projectName: body.projectName ?? selection.projectName,
+    projectId: body.projectId ?? selection.projectId,
+    clientName: body.clientName ?? selection.clientName,
+    dueDate: body.dueDate ?? selection.dueDate,
+  });
+  res.json({ selection });
+});
+
+app.delete('/api/selections/:id', (req, res) => {
+  const idx = selections.findIndex(s => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = selections.splice(idx, 1);
+  res.json({ selection: removed });
 });
 
 // Daily Logs
