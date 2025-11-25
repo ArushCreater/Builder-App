@@ -1580,7 +1580,9 @@ app.get('/documents', listDocuments);
 app.post('/api/documents', createDocument);
 app.post('/documents', createDocument);
 
+app.delete('/api/documents', deleteDocument);
 app.delete('/api/documents/:id', deleteDocument);
+app.delete('/documents', deleteDocument);
 app.delete('/documents/:id', deleteDocument);
 
 const handleDocumentUpload = async (req, res) => {
