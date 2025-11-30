@@ -14,6 +14,7 @@ import RegisterPage from './pages/auth/RegisterPage'
 import DashboardHome from './pages/dashboard/DashboardHome'
 import LeadsPage from './pages/leads/LeadsPage'
 import LeadDetailPage from './pages/leads/LeadDetailPage'
+import ContactsPage from './pages/contacts/ContactsPage'
 import ProposalsPage from './pages/proposals/ProposalsPage'
 import ProjectsPage from './pages/projects/ProjectsPage'
 import ProjectDetailPage from './pages/projects/ProjectDetailPage'
@@ -77,6 +78,7 @@ function App() {
             {/* Leads & Sales */}
             <Route path="/leads" element={<LeadsPage />} />
             <Route path="/leads/:id" element={<LeadDetailPage />} />
+            <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/proposals" element={<ProposalsPage />} />
 
             {/* Projects */}

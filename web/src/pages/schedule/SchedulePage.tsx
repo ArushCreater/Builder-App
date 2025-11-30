@@ -75,7 +75,7 @@ export function SchedulePage() {
     end: string;
     startX: number;
   } | null>(null);
-  const CELL_WIDTH = 80; // px per day in the Gantt grid for predictable interaction
+  const CELL_WIDTH = 72; // px per day in the Gantt grid for predictable interaction and tighter view
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -571,18 +571,18 @@ export function SchedulePage() {
               )}
             </div>
           ) : view === 'gantt' ? (
-            <div className="space-y-4">
+            <div className="space-y-4 fade-in">
               {ganttItems.length === 0 ? (
                 <div className="text-center text-gray-500 py-12">No timelines yet. Add events or set project dates.</div>
               ) : (
-                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="border border-gray-200 rounded-xl overflow-hidden shadow-md">
                   <div className="flex border-b border-gray-100 bg-gray-50 text-xs text-gray-600">
-                    <div className="w-64 px-3 py-2 font-semibold">Item</div>
+                    <div className="w-64 px-3 py-3 font-semibold">Item</div>
                     <div className="flex-1 overflow-x-auto">
                       <div className="min-w-[900px]">
                         <div className="grid" style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${CELL_WIDTH}px)` }}>
                           {timelineDays.map((d) => (
-                            <div key={d} className="px-2 py-2 text-center border-l border-gray-100">
+                            <div key={d} className="px-2 py-2 text-center border-l border-gray-100 bg-white">
                               {new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                             </div>
                           ))}
@@ -591,7 +591,7 @@ export function SchedulePage() {
                     </div>
                   </div>
                   <div className="flex">
-                    <div className="w-64 border-r border-gray-100">
+                    <div className="w-64 border-r border-gray-100 bg-white">
                       {ganttItems.map((item) => (
                         <div key={item.id} className="px-3 py-3 border-b border-gray-100">
                           <div className="font-semibold text-sm text-gray-900">{item.label}</div>
@@ -599,7 +599,7 @@ export function SchedulePage() {
                         </div>
                       ))}
                     </div>
-                    <div className="flex-1 overflow-x-auto" ref={ganttRef}>
+                    <div className="flex-1 overflow-x-auto bg-white" ref={ganttRef}>
                       <div className="relative min-w-[900px]">
                         <div className="grid" style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${CELL_WIDTH}px)` }}>
                           {timelineDays.map((d) => (
@@ -628,12 +628,13 @@ export function SchedulePage() {
                             const today = new Date().toISOString().split('T')[0];
                             const todayIdx = timelineDays.findIndex(d => d === today);
                             return (
-                              <div key={item.id} className="absolute left-0 right-0" style={{ top }}>
+                              <div key={item.id} className="absolute left-0 right-0 slide-up" style={{ top }}>
                                 <div
-                                  className="absolute h-10 rounded-md bg-gradient-to-r from-blue-500 to-indigo-500 shadow-sm flex items-center text-xs text-white px-3 gap-2 cursor-grab"
+                                  className="absolute h-10 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 shadow-lg flex items-center text-xs text-white px-3 gap-2 cursor-grab ring-1 ring-white/40"
                                   style={{
                                     left: `calc(${bar.left} * ${CELL_WIDTH}px)`,
                                     width: `calc(${bar.width} * ${CELL_WIDTH}px)`,
+                                    transition: 'transform 120ms ease, box-shadow 120ms ease',
                                   }}
                                   onMouseDown={(e) => handleBarMouseDown(e, item.id, 'move', item.start, item.end)}
                                 >

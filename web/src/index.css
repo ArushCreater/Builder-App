@@ -67,3 +67,33 @@
     background: rgba(59, 130, 246, 0.25);
   }
 }
+
+/* Smooth select corners and hover states */
+.shad-select-content,
+.shad-select-item {
+  border-radius: 12px !important;
+}
+
+.shad-select-item[data-highlighted='true'],
+.shad-select-item:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(14, 165, 233, 0.14));
+}
+
+/* General fade/slide animations */
+.fade-in {
+  animation: fadeIn 200ms ease-out forwards;
+}
+
+.slide-up {
+  animation: slideUp 240ms ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

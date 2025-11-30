@@ -68,6 +68,12 @@ const statusColumns: { key: Task['status']; label: string }[] = [
   { key: 'completed', label: 'Completed' },
 ];
 
+const normalizeStatus = (status?: string): Task['status'] => {
+  if (status === 'in_progress') return 'in-progress';
+  if (status === 'done') return 'completed';
+  return (status as Task['status']) || 'todo';
+};
+
 export function TasksPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -220,10 +226,7 @@ export function TasksPage() {
   const groupedByStatus = statusColumns.map(col => ({
     key: col.key,
     label: col.label,
-    tasks: filtered.filter(t => {
-      const status = t.status === 'in_progress' ? 'in-progress' : t.status === 'done' ? 'completed' : t.status;
-      return status === col.key;
-    }),
+    tasks: filtered.filter(t => normalizeStatus(t.status) === col.key),
   }));
 
   return (
@@ -427,7 +430,21 @@ export function TasksPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-4">
               {groupedByStatus.map((col) => (
-                <div key={col.key} className="rounded-lg border border-gray-200 bg-white shadow-sm">
+                <div
+                  key={col.key}
+                  className="rounded-lg border border-gray-200 bg-white shadow-sm"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const taskId = e.dataTransfer.getData('text/plain');
+                    if (taskId) {
+                      updateMutation.mutate({
+                        id: taskId,
+                        data: { status: col.key, completed: col.key === 'completed' },
+                      });
+                    }
+                  }}
+                >
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                     <div className="flex items-center gap-2">
                       <Filter className="h-4 w-4 text-gray-400" />
@@ -440,7 +457,12 @@ export function TasksPage() {
                       <div className="text-sm text-gray-400 text-center py-8">No tasks</div>
                     ) : (
                       col.tasks.map((task) => (
-                        <div key={task.id} className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm">
+                        <div
+                          key={task.id}
+                          className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm cursor-move"
+                          draggable
+                          onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
+                        >
                           <div className="flex items-start justify-between">
                             <div className="font-semibold text-gray-900">{task.title}</div>
                             <Checkbox
@@ -454,8 +476,8 @@ export function TasksPage() {
                           <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
                             {task.projectName && <Badge variant="secondary">{task.projectName}</Badge>}
                             <Badge variant={priorityColors[task.priority]}>{task.priority}</Badge>
-                            <Badge variant={statusColors[task.status] || 'secondary'}>
-                              {task.status === 'in_progress' ? 'in-progress' : task.status}
+                            <Badge variant={statusColors[normalizeStatus(task.status)] || 'secondary'}>
+                              {normalizeStatus(task.status)}
                             </Badge>
                           </div>
                           <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
@@ -469,7 +491,18 @@ export function TasksPage() {
                             </span>
                           </div>
                           <div className="mt-2 flex items-center justify-between">
-                            <Progress value={task.completed ? 100 : task.status === 'in-progress' ? 50 : 10} className="w-[70%]" />
+                            <Progress
+                              value={
+                                task.completed
+                                  ? 100
+                                  : normalizeStatus(task.status) === 'in-progress'
+                                    ? 50
+                                    : normalizeStatus(task.status) === 'review'
+                                      ? 75
+                                      : 10
+                              }
+                              className="w-[70%]"
+                            />
                             <Button
                               size="sm"
                               variant="outline"
@@ -483,7 +516,7 @@ export function TasksPage() {
                                   projectId: task.projectId || '',
                                   projectName: task.projectName || '',
                                   dueDate: task.dueDate || '',
-                                  status: task.status,
+                                  status: normalizeStatus(task.status),
                                 });
                               }}
                             >

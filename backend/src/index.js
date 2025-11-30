@@ -282,6 +282,31 @@ const equipment = [
   { id: 'e-2', name: 'Scissor Lift', type: 'lift', status: 'available', location: 'Yard', lastService: '2024-01-20', nextMaintenance: '2024-03-20', purchaseDate: '2023-01-15', purchasePrice: 32000 },
 ];
 
+const contacts = [
+  {
+    id: 'c-1',
+    name: 'Alex Turner',
+    phone: '+61 400 111 222',
+    email: 'alex@turnerco.com',
+    company: 'Turner Co.',
+    officeNumber: '02 8000 1234',
+    address: '12 Market St, Sydney',
+    designation: 'Owner',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'c-2',
+    name: 'Priya Singh',
+    phone: '+61 412 987 654',
+    email: 'priya@designhub.com',
+    company: 'DesignHub',
+    officeNumber: '03 9600 5555',
+    address: '55 Collins St, Melbourne',
+    designation: 'Architect',
+    createdAt: new Date().toISOString(),
+  },
+];
+
 const messages = [
   { id: 'msg-1', sender: 'Admin', content: 'Kickoff meeting at 9am tomorrow', timestamp: '2024-03-01T08:00:00Z' },
   { id: 'msg-2', sender: 'PM', content: 'Materials delivery confirmed for Friday', timestamp: '2024-03-01T10:30:00Z' },
@@ -692,42 +717,57 @@ app.put('/api/projects/:id/tasks/:taskId', (req, res) => {
   }
 
   pool
-    .query(
-      `UPDATE tasks SET
-        title=$1, description=$2, status=$3, priority=$4, assignee=$5, due_date=$6, project_name=$7, updated_at=now()
-       WHERE id=$8 AND project_id=$9
-       RETURNING *`,
-      [
-        body.title,
-        body.description,
-        body.status,
-        body.priority,
-        body.assignedTo,
-        body.dueDate || null,
-        body.projectName,
-        req.params.taskId,
-        req.params.id,
-      ]
-    )
+    .query('SELECT * FROM tasks WHERE id = $1 AND project_id = $2', [req.params.taskId, req.params.id])
     .then(result => {
-      const row = result.rows[0];
-      if (!row) return res.status(404).json({ message: 'Not found' });
-      res.json({
-        task: {
-          id: row.id,
-          projectId: row.project_id,
-          projectName: row.project_name,
-          title: row.title,
-          description: row.description,
-          status: row.status,
-          priority: row.priority,
-          assignedTo: row.assignee,
-          dueDate: row.due_date,
-          createdBy: 'System',
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        },
-      });
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      const next = {
+        title: body.title ?? current.title,
+        description: body.description ?? current.description,
+        status: body.status ?? current.status,
+        priority: body.priority ?? current.priority,
+        assignee: body.assignedTo ?? current.assignee,
+        due_date: body.dueDate ?? current.due_date,
+        project_name: body.projectName ?? current.project_name,
+      };
+      return pool
+        .query(
+          `UPDATE tasks SET
+            title=$1, description=$2, status=$3, priority=$4, assignee=$5, due_date=$6, project_name=$7, updated_at=now()
+           WHERE id=$8 AND project_id=$9
+           RETURNING *`,
+          [
+            next.title,
+            next.description,
+            next.status,
+            next.priority,
+            next.assignee,
+            next.due_date,
+            next.project_name,
+            req.params.taskId,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => {
+          const row = updateResult.rows[0];
+          if (!row) return res.status(404).json({ message: 'Not found' });
+          res.json({
+            task: {
+              id: row.id,
+              projectId: row.project_id,
+              projectName: row.project_name,
+              title: row.title,
+              description: row.description,
+              status: row.status,
+              priority: row.priority,
+              assignedTo: row.assignee,
+              dueDate: row.due_date,
+              createdBy: 'System',
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            },
+          });
+        });
     })
     .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
@@ -1236,6 +1276,62 @@ app.delete('/api/tasks/:id', (req, res) => {
       res.json({ task: row });
     })
     .catch(() => res.status(500).json({ message: 'Delete failed' }));
+});
+
+// Contacts
+app.get('/api/contacts', (req, res) => {
+  const { search } = req.query;
+  let list = [...contacts];
+  if (search) {
+    const q = String(search).toLowerCase();
+    list = list.filter(
+      c =>
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
+        (c.company || '').toLowerCase().includes(q)
+    );
+  }
+  res.json({ contacts: list });
+});
+
+app.post('/api/contacts', (req, res) => {
+  const body = req.body || {};
+  const contact = {
+    id: randomUUID(),
+    name: body.name || 'Untitled',
+    phone: body.phone,
+    email: body.email,
+    company: body.company,
+    officeNumber: body.officeNumber,
+    address: body.address,
+    designation: body.designation,
+    createdAt: new Date().toISOString(),
+  };
+  contacts.unshift(contact);
+  res.json({ contact });
+});
+
+app.put('/api/contacts/:id', (req, res) => {
+  const body = req.body || {};
+  const contact = contacts.find(c => c.id === req.params.id);
+  if (!contact) return res.status(404).json({ message: 'Not found' });
+  Object.assign(contact, {
+    name: body.name ?? contact.name,
+    phone: body.phone ?? contact.phone,
+    email: body.email ?? contact.email,
+    company: body.company ?? contact.company,
+    officeNumber: body.officeNumber ?? contact.officeNumber,
+    address: body.address ?? contact.address,
+    designation: body.designation ?? contact.designation,
+  });
+  res.json({ contact });
+});
+
+app.delete('/api/contacts/:id', (req, res) => {
+  const idx = contacts.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: 'Not found' });
+  const [removed] = contacts.splice(idx, 1);
+  res.json({ contact: removed });
 });
 
 // Users

@@ -51,6 +51,7 @@ interface NavItem {
 const navigation: NavItem[] = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Leads', path: '/leads', icon: Users },
+  { name: 'Contacts', path: '/contacts', icon: Users },
   { name: 'Projects', path: '/projects', icon: FolderKanban },
   { name: 'Tasks', path: '/tasks', icon: ClipboardList },
   { name: 'Proposals', path: '/proposals', icon: FileText },
@@ -97,9 +98,10 @@ export function DashboardLayout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 bg-slate-900/95 backdrop-blur border-r border-slate-800 transform transition-transform duration-200 ease-in-out lg:translate-x-0 rounded-r-3xl overflow-hidden',
+          'fixed inset-y-0 left-0 z-50 bg-slate-900/95 backdrop-blur border-r border-slate-800 transform transition-all duration-300 ease-out lg:translate-x-0 rounded-r-3xl overflow-hidden will-change-transform',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-          sidebarCollapsed ? 'w-20' : 'w-64'
+          sidebarCollapsed ? 'w-20' : 'w-64',
+          'shadow-2xl shadow-black/40'
         )}
       >
         {/* Sidebar header */}
@@ -138,7 +140,7 @@ export function DashboardLayout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 pr-1">
+        <nav className="flex-1 overflow-y-auto py-4 pr-1 transition-all duration-300 ease-out">
           <div className="px-3 space-y-1">
             {navigation.map((item) => {
               const Icon = item.icon;
@@ -150,15 +152,15 @@ export function DashboardLayout() {
                   to={item.path}
                   onClick={() => setSidebarOpen(false)}
                   className={cn(
-                    'flex items-center px-3 py-2 text-sm font-semibold rounded-lg transition-all',
+                    'flex items-center px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ease-out',
                     isActive
-                      ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
-                      : 'text-slate-200 hover:bg-slate-800/80 hover:text-white'
+                      ? 'bg-slate-800 text-white border border-slate-700 shadow-lg'
+                      : 'text-slate-200 hover:bg-slate-800/80 hover:text-white hover:translate-x-1'
                   )}
                 >
                   <span
                     className={cn(
-                      'h-10 w-10 rounded-2xl inline-flex items-center justify-center text-sm font-semibold',
+                      'h-10 w-10 rounded-2xl inline-flex items-center justify-center text-sm font-semibold transition-all duration-200',
                       isActive ? 'bg-white text-slate-900 shadow-sm' : 'bg-slate-800 text-slate-300'
                     )}
                   >

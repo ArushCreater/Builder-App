@@ -742,11 +742,20 @@ export function ProjectDetailPage() {
               </DialogContent>
             </Dialog>
           </div>
-          <div className="grid md:grid-cols-3 gap-4">
-            {['todo', 'in_progress', 'done'].map((column) => {
-              const columnTasks = tasks.filter((t) => t.status === column);
+          <div className="grid md:grid-cols-4 gap-4">
+            {['todo', 'in-progress', 'review', 'completed'].map((column) => {
+              const columnTasks = tasks.filter((t) => {
+                const normalized = t.status === 'in_progress' ? 'in-progress' : t.status === 'done' ? 'completed' : t.status;
+                return normalized === column;
+              });
               const title =
-                column === 'todo' ? 'To Do' : column === 'in_progress' ? 'In Progress' : 'Done';
+                column === 'todo'
+                  ? 'To Do'
+                  : column === 'in-progress'
+                    ? 'In Progress'
+                    : column === 'review'
+                      ? 'Review'
+                      : 'Completed';
               return (
                 <div
                   key={column}

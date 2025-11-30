@@ -33,10 +33,10 @@ New-Item -ItemType Directory -Path $staging | Out-Null
 Push-Location $AppPath
 try {
 Write-Host "Installing dependencies..."
-npm install --no-fund --no-audit
+cmd /c "npm install --no-fund --no-audit"
 
 Write-Host "Building app (if build script exists)..."
-npm run build --if-present
+cmd /c "npm run build --if-present"
 }
 finally {
   Pop-Location
