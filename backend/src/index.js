@@ -200,6 +200,68 @@ async function ensureTables() {
         created_at timestamptz DEFAULT now()
       );
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS bids (
+        id uuid PRIMARY KEY,
+        vendor text,
+        amount numeric,
+        status text,
+        scope text,
+        project_name text,
+        project_id text,
+        submitted_date date,
+        valid_until date,
+        contact text,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS inspections (
+        id uuid PRIMARY KEY,
+        title text,
+        type text,
+        status text,
+        date date,
+        scheduled_date date,
+        project_name text,
+        project_id text,
+        inspector text,
+        notes text,
+        completed_date date,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS equipment (
+        id uuid PRIMARY KEY,
+        name text,
+        type text,
+        status text,
+        location text,
+        project_id text,
+        project_name text,
+        assigned_to text,
+        purchase_date date,
+        purchase_price numeric,
+        last_service date,
+        next_maintenance date,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sold_properties (
+        id uuid PRIMARY KEY,
+        project_name text,
+        buyer text,
+        sale_price numeric,
+        profit numeric,
+        close_date date,
+        status text,
+        handoff_notes text,
+        address text,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
   } finally {
     client.release();
   }
@@ -373,6 +435,8 @@ const equipment = [
   { id: 'e-1', name: 'Excavator', type: 'heavy', status: 'in_use', location: 'Site A', lastService: '2024-02-10', nextMaintenance: '2024-04-15', projectId: 'p-1', projectName: 'Sunrise Apartments', purchaseDate: '2023-06-01', purchasePrice: 75000 },
   { id: 'e-2', name: 'Scissor Lift', type: 'lift', status: 'available', location: 'Yard', lastService: '2024-01-20', nextMaintenance: '2024-03-20', purchaseDate: '2023-01-15', purchasePrice: 32000 },
 ];
+
+const sold = [];
 
 const contacts = [
   {
@@ -2094,19 +2158,44 @@ app.delete('/api/projects/:id/doc-pages/:pageId', (req, res) => {
 // Bids
 app.get('/api/bids', (req, res) => {
   const { search, status, projectId } = req.query;
-  let list = [...bids];
-  if (projectId) list = list.filter(b => b.projectId === projectId);
-  if (status) list = list.filter(b => b.status === status);
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      b =>
-        b.vendor.toLowerCase().includes(q) ||
-        (b.projectName || '').toLowerCase().includes(q) ||
-        (b.scope || '').toLowerCase().includes(q)
-    );
+  if (!pool) {
+    let list = [...bids];
+    if (projectId) list = list.filter(b => b.projectId === projectId);
+    if (status) list = list.filter(b => b.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        b =>
+          b.vendor.toLowerCase().includes(q) ||
+          (b.projectName || '').toLowerCase().includes(q) ||
+          (b.scope || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ bids: list });
   }
-  res.json({ bids: list });
+
+  const clauses = [];
+  const values = [];
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(
+      `(LOWER(vendor) LIKE $${clauses.length + 1} OR LOWER(scope) LIKE $${clauses.length + 1} OR LOWER(project_name) LIKE $${clauses.length + 1})`
+    );
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  pool
+    .query(`SELECT * FROM bids ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ bids: result.rows }))
+    .catch(() => res.json({ bids }));
 });
 
 app.post('/api/bids', (req, res) => {
@@ -2118,65 +2207,171 @@ app.post('/api/bids', (req, res) => {
     status: body.status || 'submitted',
     scope: body.scope || '',
     projectName: body.projectName || '',
-    projectId: body.projectId,
+    projectId: body.projectId || '',
     submittedDate: body.submittedDate || new Date().toISOString().split('T')[0],
     validUntil: body.validUntil || '',
     contact: body.contact || '',
   };
-  bids.unshift(bid);
-  res.json({ bid });
+  if (!pool) {
+    bids.unshift(bid);
+    return res.json({ bid });
+  }
+  pool
+    .query(
+      `INSERT INTO bids (id, vendor, amount, status, scope, project_name, project_id, submitted_date, valid_until, contact)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       RETURNING *`,
+      [
+        bid.id,
+        bid.vendor,
+        bid.amount,
+        bid.status,
+        bid.scope,
+        bid.projectName,
+        bid.projectId,
+        bid.submittedDate,
+        bid.validUntil,
+        bid.contact,
+      ]
+    )
+    .then(result => res.json({ bid: result.rows[0] }))
+    .catch(() => res.json({ bid }));
 });
 
 app.put('/api/bids/:id', (req, res) => {
   const body = req.body || {};
-  const bid = bids.find(b => b.id === req.params.id);
-  if (!bid) return res.status(404).json({ message: 'Not found' });
-  Object.assign(bid, {
-    vendor: body.vendor ?? bid.vendor,
-    amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : bid.amount,
-    status: body.status ?? bid.status,
-    scope: body.scope ?? bid.scope,
-    projectName: body.projectName ?? bid.projectName,
-    projectId: body.projectId ?? bid.projectId,
-    submittedDate: body.submittedDate ?? bid.submittedDate,
-    validUntil: body.validUntil ?? bid.validUntil,
-    contact: body.contact ?? bid.contact,
-  });
-  res.json({ bid });
+  if (!pool) {
+    const bid = bids.find(b => b.id === req.params.id);
+    if (!bid) return res.status(404).json({ message: 'Not found' });
+    Object.assign(bid, {
+      vendor: body.vendor ?? bid.vendor,
+      amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : bid.amount,
+      status: body.status ?? bid.status,
+      scope: body.scope ?? bid.scope,
+      projectName: body.projectName ?? bid.projectName,
+      projectId: body.projectId ?? bid.projectId,
+      submittedDate: body.submittedDate ?? bid.submittedDate,
+      validUntil: body.validUntil ?? bid.validUntil,
+      contact: body.contact ?? bid.contact,
+    });
+    return res.json({ bid });
+  }
+
+  pool
+    .query('SELECT * FROM bids WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE bids SET
+             vendor=$1, amount=$2, status=$3, scope=$4, project_name=$5, project_id=$6, submitted_date=$7, valid_until=$8, contact=$9
+           WHERE id=$10
+           RETURNING *`,
+          [
+            body.vendor ?? current.vendor,
+            body.amount !== undefined ? parseFloat(body.amount) || 0 : current.amount,
+            body.status ?? current.status,
+            body.scope ?? current.scope,
+            body.projectName ?? current.project_name,
+            body.projectId ?? current.project_id,
+            body.submittedDate ?? current.submitted_date,
+            body.validUntil ?? current.valid_until,
+            body.contact ?? current.contact,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ bid: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.patch('/api/bids/:id', (req, res) => {
   const body = req.body || {};
-  const bid = bids.find(b => b.id === req.params.id);
-  if (!bid) return res.status(404).json({ message: 'Not found' });
-  if (body.status) bid.status = body.status;
-  if (body.amount !== undefined) bid.amount = parseFloat(body.amount) || bid.amount;
-  res.json({ bid });
+  if (!pool) {
+    const bid = bids.find(b => b.id === req.params.id);
+    if (!bid) return res.status(404).json({ message: 'Not found' });
+    if (body.status) bid.status = body.status;
+    if (body.amount !== undefined) bid.amount = parseFloat(body.amount) || bid.amount;
+    return res.json({ bid });
+  }
+
+  pool
+    .query('SELECT * FROM bids WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE bids SET status=$1, amount=$2 WHERE id=$3 RETURNING *`,
+          [
+            body.status ?? current.status,
+            body.amount !== undefined ? parseFloat(body.amount) || 0 : current.amount,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ bid: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/bids/:id', (req, res) => {
-  const idx = bids.findIndex(b => b.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = bids.splice(idx, 1);
-  res.json({ bid: removed });
+  if (!pool) {
+    const idx = bids.findIndex(b => b.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = bids.splice(idx, 1);
+    return res.json({ bid: removed });
+  }
+
+  pool
+    .query('DELETE FROM bids WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ bid: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Inspections
 app.get('/api/inspections', (req, res) => {
   const { search, status, projectId } = req.query;
-  let list = [...inspections];
-  if (projectId) list = list.filter(i => i.projectId === projectId);
-  if (status) list = list.filter(i => i.status === status);
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      i =>
-        (i.title || '').toLowerCase().includes(q) ||
-        (i.type || '').toLowerCase().includes(q) ||
-        (i.projectName || '').toLowerCase().includes(q)
-    );
+  if (!pool) {
+    let list = [...inspections];
+    if (projectId) list = list.filter(i => i.projectId === projectId);
+    if (status) list = list.filter(i => i.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        i =>
+          (i.title || '').toLowerCase().includes(q) ||
+          (i.type || '').toLowerCase().includes(q) ||
+          (i.projectName || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ inspections: list });
   }
-  res.json({ inspections: list });
+
+  const clauses = [];
+  const values = [];
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(`(LOWER(title) LIKE $${clauses.length + 1} OR LOWER(type) LIKE $${clauses.length + 1} OR LOWER(project_name) LIKE $${clauses.length + 1})`);
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  pool
+    .query(`SELECT * FROM inspections ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ inspections: result.rows }))
+    .catch(() => res.json({ inspections }));
 });
 
 app.post('/api/inspections', (req, res) => {
@@ -2189,57 +2384,171 @@ app.post('/api/inspections', (req, res) => {
     date: body.date || body.scheduledDate || '',
     scheduledDate: body.scheduledDate || body.date || '',
     projectName: body.projectName || '',
-    projectId: body.projectId,
+    projectId: body.projectId || '',
     inspector: body.inspector || '',
     notes: body.notes || '',
     completedDate: body.completedDate || '',
   };
-  inspections.unshift(inspection);
-  res.json({ inspection });
+  if (!pool) {
+    inspections.unshift(inspection);
+    return res.json({ inspection });
+  }
+
+  pool
+    .query(
+      `INSERT INTO inspections (id, title, type, status, date, scheduled_date, project_name, project_id, inspector, notes, completed_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING *`,
+      [
+        inspection.id,
+        inspection.title,
+        inspection.type,
+        inspection.status,
+        inspection.date,
+        inspection.scheduledDate,
+        inspection.projectName,
+        inspection.projectId,
+        inspection.inspector,
+        inspection.notes,
+        inspection.completedDate,
+      ]
+    )
+    .then(result => res.json({ inspection: result.rows[0] }))
+    .catch(() => res.json({ inspection }));
 });
 
 app.put('/api/inspections/:id', (req, res) => {
   const body = req.body || {};
-  const inspection = inspections.find(i => i.id === req.params.id);
-  if (!inspection) return res.status(404).json({ message: 'Not found' });
-  Object.assign(inspection, {
-    title: body.title ?? inspection.title,
-    type: body.type ?? inspection.type,
-    status: body.status ?? inspection.status,
-    date: body.date ?? inspection.date,
-    scheduledDate: body.scheduledDate ?? inspection.scheduledDate,
-    projectName: body.projectName ?? inspection.projectName,
-    projectId: body.projectId ?? inspection.projectId,
-    inspector: body.inspector ?? inspection.inspector,
-    notes: body.notes ?? inspection.notes,
-    completedDate: body.completedDate ?? inspection.completedDate,
-  });
-  res.json({ inspection });
+  if (!pool) {
+    const inspection = inspections.find(i => i.id === req.params.id);
+    if (!inspection) return res.status(404).json({ message: 'Not found' });
+    Object.assign(inspection, {
+      title: body.title ?? inspection.title,
+      type: body.type ?? inspection.type,
+      status: body.status ?? inspection.status,
+      date: body.date ?? inspection.date,
+      scheduledDate: body.scheduledDate ?? inspection.scheduledDate,
+      projectName: body.projectName ?? inspection.projectName,
+      projectId: body.projectId ?? inspection.projectId,
+      inspector: body.inspector ?? inspection.inspector,
+      notes: body.notes ?? inspection.notes,
+      completedDate: body.completedDate ?? inspection.completedDate,
+    });
+    return res.json({ inspection });
+  }
+
+  pool
+    .query('SELECT * FROM inspections WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE inspections SET
+             title=$1, type=$2, status=$3, date=$4, scheduled_date=$5, project_name=$6, project_id=$7, inspector=$8, notes=$9, completed_date=$10
+           WHERE id=$11
+           RETURNING *`,
+          [
+            body.title ?? current.title,
+            body.type ?? current.type,
+            body.status ?? current.status,
+            body.date ?? current.date,
+            body.scheduledDate ?? current.scheduled_date,
+            body.projectName ?? current.project_name,
+            body.projectId ?? current.project_id,
+            body.inspector ?? current.inspector,
+            body.notes ?? current.notes,
+            body.completedDate ?? current.completed_date,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ inspection: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
+});
+
+app.patch('/api/inspections/:id', (req, res) => {
+  const body = req.body || {};
+  if (!pool) {
+    const inspection = inspections.find(i => i.id === req.params.id);
+    if (!inspection) return res.status(404).json({ message: 'Not found' });
+    if (body.status) inspection.status = body.status;
+    if (body.completedDate) inspection.completedDate = body.completedDate;
+    return res.json({ inspection });
+  }
+
+  pool
+    .query('SELECT * FROM inspections WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE inspections SET status=$1, completed_date=$2 WHERE id=$3 RETURNING *`,
+          [body.status ?? current.status, body.completedDate ?? current.completed_date, req.params.id]
+        )
+        .then(updateResult => res.json({ inspection: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/inspections/:id', (req, res) => {
-  const idx = inspections.findIndex(i => i.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = inspections.splice(idx, 1);
-  res.json({ inspection: removed });
+  if (!pool) {
+    const idx = inspections.findIndex(i => i.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = inspections.splice(idx, 1);
+    return res.json({ inspection: removed });
+  }
+
+  pool
+    .query('DELETE FROM inspections WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ inspection: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Equipment
 app.get('/api/equipment', (req, res) => {
   const { search, status, projectId } = req.query;
-  let list = [...equipment];
-  if (projectId) list = list.filter(e => e.projectId === projectId);
-  if (status) list = list.filter(e => e.status === status);
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      e =>
-        e.name.toLowerCase().includes(q) ||
-        (e.projectName || '').toLowerCase().includes(q) ||
-        (e.location || '').toLowerCase().includes(q)
-    );
+  if (!pool) {
+    let list = [...equipment];
+    if (projectId) list = list.filter(e => e.projectId === projectId);
+    if (status) list = list.filter(e => e.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        e =>
+          e.name.toLowerCase().includes(q) ||
+          (e.projectName || '').toLowerCase().includes(q) ||
+          (e.location || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ equipment: list });
   }
-  res.json({ equipment: list });
+
+  const clauses = [];
+  const values = [];
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(`(LOWER(name) LIKE $${clauses.length + 1} OR LOWER(project_name) LIKE $${clauses.length + 1} OR LOWER(location) LIKE $${clauses.length + 1})`);
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  pool
+    .query(`SELECT * FROM equipment ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ equipment: result.rows }))
+    .catch(() => res.json({ equipment }));
 });
 
 app.post('/api/equipment', (req, res) => {
@@ -2250,7 +2559,7 @@ app.post('/api/equipment', (req, res) => {
     type: body.type || 'general',
     status: body.status || 'available',
     location: body.location || '',
-    projectId: body.projectId,
+    projectId: body.projectId || '',
     projectName: body.projectName || '',
     assignedTo: body.assignedTo || '',
     purchaseDate: body.purchaseDate || '',
@@ -2258,35 +2567,242 @@ app.post('/api/equipment', (req, res) => {
     lastService: body.lastService || '',
     nextMaintenance: body.nextMaintenance || '',
   };
-  equipment.unshift(item);
-  res.json({ equipment: item });
+  if (!pool) {
+    equipment.unshift(item);
+    return res.json({ equipment: item });
+  }
+
+  pool
+    .query(
+      `INSERT INTO equipment (id, name, type, status, location, project_id, project_name, assigned_to, purchase_date, purchase_price, last_service, next_maintenance)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING *`,
+      [
+        item.id,
+        item.name,
+        item.type,
+        item.status,
+        item.location,
+        item.projectId,
+        item.projectName,
+        item.assignedTo,
+        item.purchaseDate,
+        item.purchasePrice,
+        item.lastService,
+        item.nextMaintenance,
+      ]
+    )
+    .then(result => res.json({ equipment: result.rows[0] }))
+    .catch(() => res.json({ equipment: item }));
 });
 
 app.put('/api/equipment/:id', (req, res) => {
   const body = req.body || {};
-  const item = equipment.find(e => e.id === req.params.id);
-  if (!item) return res.status(404).json({ message: 'Not found' });
-  Object.assign(item, {
-    name: body.name ?? item.name,
-    type: body.type ?? item.type,
-    status: body.status ?? item.status,
-    location: body.location ?? item.location,
-    projectId: body.projectId ?? item.projectId,
-    projectName: body.projectName ?? item.projectName,
-    assignedTo: body.assignedTo ?? item.assignedTo,
-    purchaseDate: body.purchaseDate ?? item.purchaseDate,
-    purchasePrice: body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : item.purchasePrice,
-    lastService: body.lastService ?? item.lastService,
-    nextMaintenance: body.nextMaintenance ?? item.nextMaintenance,
-  });
-  res.json({ equipment: item });
+  if (!pool) {
+    const item = equipment.find(e => e.id === req.params.id);
+    if (!item) return res.status(404).json({ message: 'Not found' });
+    Object.assign(item, {
+      name: body.name ?? item.name,
+      type: body.type ?? item.type,
+      status: body.status ?? item.status,
+      location: body.location ?? item.location,
+      projectId: body.projectId ?? item.projectId,
+      projectName: body.projectName ?? item.projectName,
+      assignedTo: body.assignedTo ?? item.assignedTo,
+      purchaseDate: body.purchaseDate ?? item.purchaseDate,
+      purchasePrice: body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : item.purchasePrice,
+      lastService: body.lastService ?? item.lastService,
+      nextMaintenance: body.nextMaintenance ?? item.nextMaintenance,
+    });
+    return res.json({ equipment: item });
+  }
+
+  pool
+    .query('SELECT * FROM equipment WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE equipment SET
+             name=$1, type=$2, status=$3, location=$4, project_id=$5, project_name=$6, assigned_to=$7, purchase_date=$8, purchase_price=$9, last_service=$10, next_maintenance=$11
+           WHERE id=$12
+           RETURNING *`,
+          [
+            body.name ?? current.name,
+            body.type ?? current.type,
+            body.status ?? current.status,
+            body.location ?? current.location,
+            body.projectId ?? current.project_id,
+            body.projectName ?? current.project_name,
+            body.assignedTo ?? current.assigned_to,
+            body.purchaseDate ?? current.purchase_date,
+            body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : current.purchase_price,
+            body.lastService ?? current.last_service,
+            body.nextMaintenance ?? current.next_maintenance,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ equipment: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/equipment/:id', (req, res) => {
-  const idx = equipment.findIndex(e => e.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = equipment.splice(idx, 1);
-  res.json({ equipment: removed });
+  if (!pool) {
+    const idx = equipment.findIndex(e => e.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = equipment.splice(idx, 1);
+    return res.json({ equipment: removed });
+  }
+
+  pool
+    .query('DELETE FROM equipment WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ equipment: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
+});
+
+// Manage Sold (sold properties)
+app.get('/api/sold', (req, res) => {
+  const { search, status } = req.query;
+  if (!pool) {
+    let list = [...sold];
+    if (status) list = list.filter(s => s.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        s =>
+          (s.projectName || '').toLowerCase().includes(q) ||
+          (s.buyer || '').toLowerCase().includes(q) ||
+          (s.address || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ sold: list });
+  }
+
+  const clauses = [];
+  const values = [];
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(`(LOWER(project_name) LIKE $${clauses.length + 1} OR LOWER(buyer) LIKE $${clauses.length + 1} OR LOWER(address) LIKE $${clauses.length + 1})`);
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  pool
+    .query(`SELECT * FROM sold_properties ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ sold: result.rows }))
+    .catch(() => res.json({ sold }));
+});
+
+app.post('/api/sold', (req, res) => {
+  const body = req.body || {};
+  const record = {
+    id: randomUUID(),
+    projectName: body.projectName || '',
+    buyer: body.buyer || '',
+    salePrice: parseFloat(body.salePrice) || 0,
+    profit: parseFloat(body.profit) || 0,
+    closeDate: body.closeDate || '',
+    status: body.status || 'pending',
+    handoffNotes: body.handoffNotes || '',
+    address: body.address || '',
+  };
+  if (!pool) {
+    sold.unshift(record);
+    return res.json({ sold: record });
+  }
+
+  pool
+    .query(
+      `INSERT INTO sold_properties (id, project_name, buyer, sale_price, profit, close_date, status, handoff_notes, address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING *`,
+      [
+        record.id,
+        record.projectName,
+        record.buyer,
+        record.salePrice,
+        record.profit,
+        record.closeDate,
+        record.status,
+        record.handoffNotes,
+        record.address,
+      ]
+    )
+    .then(result => res.json({ sold: result.rows[0] }))
+    .catch(() => res.json({ sold: record }));
+});
+
+app.put('/api/sold/:id', (req, res) => {
+  const body = req.body || {};
+  if (!pool) {
+    const record = sold.find(s => s.id === req.params.id);
+    if (!record) return res.status(404).json({ message: 'Not found' });
+    Object.assign(record, {
+      projectName: body.projectName ?? record.projectName,
+      buyer: body.buyer ?? record.buyer,
+      salePrice: body.salePrice !== undefined ? parseFloat(body.salePrice) || 0 : record.salePrice,
+      profit: body.profit !== undefined ? parseFloat(body.profit) || 0 : record.profit,
+      closeDate: body.closeDate ?? record.closeDate,
+      status: body.status ?? record.status,
+      handoffNotes: body.handoffNotes ?? record.handoffNotes,
+      address: body.address ?? record.address,
+    });
+    return res.json({ sold: record });
+  }
+
+  pool
+    .query('SELECT * FROM sold_properties WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE sold_properties SET
+             project_name=$1, buyer=$2, sale_price=$3, profit=$4, close_date=$5, status=$6, handoff_notes=$7, address=$8
+           WHERE id=$9
+           RETURNING *`,
+          [
+            body.projectName ?? current.project_name,
+            body.buyer ?? current.buyer,
+            body.salePrice !== undefined ? parseFloat(body.salePrice) || 0 : current.sale_price,
+            body.profit !== undefined ? parseFloat(body.profit) || 0 : current.profit,
+            body.closeDate ?? current.close_date,
+            body.status ?? current.status,
+            body.handoffNotes ?? current.handoff_notes,
+            body.address ?? current.address,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ sold: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
+});
+
+app.delete('/api/sold/:id', (req, res) => {
+  if (!pool) {
+    const idx = sold.findIndex(s => s.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = sold.splice(idx, 1);
+    return res.json({ sold: removed });
+  }
+
+  pool
+    .query('DELETE FROM sold_properties WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ sold: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Messages
