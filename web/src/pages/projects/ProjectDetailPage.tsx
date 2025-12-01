@@ -174,15 +174,17 @@ export function ProjectDetailPage() {
     url: '',
     key: '',
   });
-  const [invoiceForm, setInvoiceForm] = useState({
-    invoiceNumber: '',
-    clientName: '',
-    amount: '',
-    status: 'draft',
-    dueDate: '',
-    issueDate: '',
-    description: '',
-  });
+const [invoiceForm, setInvoiceForm] = useState({
+  invoiceNumber: '',
+  clientName: '',
+  amount: '',
+  status: 'draft',
+  dueDate: '',
+  issueDate: '',
+  description: '',
+});
+const [depositDialogOpen, setDepositDialogOpen] = useState(false);
+const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const docFileRef = useRef<HTMLInputElement | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -239,7 +241,17 @@ export function ProjectDetailPage() {
   const project = projectData?.project;
   const tasks = tasksData?.tasks || [];
   const budgetItems = budgetData?.items || [];
-  const invoices = invoicesData?.invoices || [];
+  const invoices = useMemo(
+    () =>
+      (invoicesData?.invoices || []).map((inv: any) => ({
+        ...inv,
+        issueDate: inv.issueDate || inv.issue_date || '',
+        dueDate: inv.dueDate || inv.due_date || '',
+        clientName: inv.clientName || inv.client_name || '',
+        description: inv.description || inv.description_text || inv.description || '',
+      })),
+    [invoicesData?.invoices]
+  );
   const materials = materialsData?.materials || [];
   const documents = documentsData?.documents || [];
   const scheduleEvents = scheduleData?.events || [];
@@ -348,10 +360,24 @@ export function ProjectDetailPage() {
     mutationFn: (data: any) => apiClient.post<{ invoice: Invoice }>('/invoices', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-invoices', id] });
+      setDepositDialogOpen(false);
+      setEditingInvoice(null);
       setInvoiceForm({ invoiceNumber: '', clientName: '', amount: '', status: 'draft', dueDate: '', issueDate: '', description: '' });
       toast({ title: 'Deposit saved' });
     },
     onError: () => toast({ title: 'Error', description: 'Could not save deposit', variant: 'destructive' }),
+  });
+
+  const invoiceUpdateMutation = useMutation({
+    mutationFn: (data: any) => apiClient.put<{ invoice: Invoice }>(`/invoices/${editingInvoice?.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-invoices', id] });
+      setDepositDialogOpen(false);
+      setEditingInvoice(null);
+      setInvoiceForm({ invoiceNumber: '', clientName: '', amount: '', status: 'draft', dueDate: '', issueDate: '', description: '' });
+      toast({ title: 'Deposit updated' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not update deposit', variant: 'destructive' }),
   });
 
   const progressMutation = useMutation({
@@ -922,11 +948,27 @@ export function ProjectDetailPage() {
               <h3 className="text-lg font-semibold text-gray-900">Project Deposits</h3>
               <p className="text-sm text-gray-500">Track deposits from clients or lenders and sync with budget.</p>
             </div>
-            <Dialog>
+            <Dialog
+              open={depositDialogOpen}
+              onOpenChange={(open) => {
+                setDepositDialogOpen(open);
+                if (!open) {
+                  setEditingInvoice(null);
+                  setInvoiceForm({ invoiceNumber: '', clientName: '', amount: '', status: 'draft', dueDate: '', issueDate: '', description: '' });
+                }
+              }}
+            >
               <DialogTrigger asChild>
-                <Button size="sm">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingInvoice(null);
+                    setInvoiceForm({ invoiceNumber: '', clientName: '', amount: '', status: 'draft', dueDate: '', issueDate: '', description: '' });
+                    setDepositDialogOpen(true);
+                  }}
+                >
                   <Plus className="mr-2 h-4 w-4" />
-                  Add Invoice
+                  Add Deposit
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg">
@@ -934,7 +976,7 @@ export function ProjectDetailPage() {
                   onSubmit={(e) => {
                     e.preventDefault();
                     const amount = parseFloat(invoiceForm.amount) || 0;
-                    invoiceMutation.mutate({
+                    const payload = {
                       invoiceNumber: invoiceForm.invoiceNumber || `INV-${Date.now()}`,
                       projectId: id,
                       projectName: project?.name,
@@ -945,11 +987,16 @@ export function ProjectDetailPage() {
                       issueDate: invoiceForm.issueDate,
                       description: invoiceForm.description,
                       type: 'deposit',
-                    });
+                    };
+                    if (editingInvoice) {
+                      invoiceUpdateMutation.mutate(payload);
+                    } else {
+                      invoiceMutation.mutate(payload);
+                    }
                   }}
                 >
                   <DialogHeader>
-                    <DialogTitle>Add Deposit</DialogTitle>
+                    <DialogTitle>{editingInvoice ? 'Edit Deposit' : 'Add Deposit'}</DialogTitle>
                     <DialogDescription>Record a deposit from a client or bank.</DialogDescription>
                   </DialogHeader>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-3">
@@ -1021,8 +1068,10 @@ export function ProjectDetailPage() {
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button type="submit" disabled={invoiceMutation.isPending}>
-                      {invoiceMutation.isPending ? 'Saving...' : 'Save'}
+                    <Button type="submit" disabled={invoiceMutation.isPending || invoiceUpdateMutation.isPending}>
+                      {editingInvoice
+                        ? invoiceUpdateMutation.isPending ? 'Saving...' : 'Update'
+                        : invoiceMutation.isPending ? 'Saving...' : 'Save'}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -1047,6 +1096,7 @@ export function ProjectDetailPage() {
                     <TableHead>Issue</TableHead>
                     <TableHead>Due</TableHead>
                     <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1070,6 +1120,27 @@ export function ProjectDetailPage() {
                       <TableCell>{inv.issueDate ? formatDate(inv.issueDate) : '-'}</TableCell>
                       <TableCell>{inv.dueDate ? formatDate(inv.dueDate) : '-'}</TableCell>
                       <TableCell className="max-w-[200px] truncate">{inv.description || '-'}</TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingInvoice(inv);
+                            setInvoiceForm({
+                              invoiceNumber: inv.invoiceNumber,
+                              clientName: inv.clientName,
+                              amount: String(inv.amount || ''),
+                              status: inv.status as any,
+                              dueDate: inv.dueDate || '',
+                              issueDate: inv.issueDate || '',
+                              description: inv.description || '',
+                            });
+                            setDepositDialogOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
