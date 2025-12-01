@@ -59,6 +59,7 @@ interface Invoice {
   fileName?: string;
   fileType?: string;
   createdAt: string;
+  type?: string;
 }
 
 const statusColors = {
@@ -103,6 +104,7 @@ export function InvoicesPage() {
       if (searchTerm) params.append('search', searchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (projectFilter !== 'all') params.append('projectId', projectFilter);
+      params.append('type', 'invoice');
       return apiClient.get<{ invoices: Invoice[] }>(`/invoices?${params}`);
     },
   });
@@ -230,6 +232,7 @@ export function InvoicesPage() {
       dueDate: formData.dueDate,
       issueDate: formData.issueDate,
       description: formData.description,
+      type: 'invoice',
       fileUrl: uploadedFile?.url,
       fileName: uploadedFile?.name,
       fileType: uploadedFile?.type,

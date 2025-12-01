@@ -218,7 +218,7 @@ export function ProjectDetailPage() {
 
   const { data: invoicesData } = useQuery({
     queryKey: ['project-invoices', id],
-    queryFn: () => apiClient.get<{ invoices: Invoice[] }>(`/invoices?projectId=${id}`),
+    queryFn: () => apiClient.get<{ invoices: Invoice[] }>(`/invoices?projectId=${id}&type=deposit`),
   });
 
   const { data: materialsData } = useQuery({
@@ -244,7 +244,7 @@ export function ProjectDetailPage() {
   const documents = documentsData?.documents || [];
   const scheduleEvents = scheduleData?.events || [];
 
-  const invoiceTotals = useMemo(() => {
+  const depositTotals = useMemo(() => {
     const total = invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
     const paid = invoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + (inv.amount || 0), 0);
     return { total, paid };
@@ -257,8 +257,8 @@ export function ProjectDetailPage() {
   }, [materials, project?.actualCost]);
 
   const budgetBaseline = useMemo(() => {
-    return Math.max(project?.estimatedBudget || 0, invoiceTotals.total, expenseTotals.total, 1);
-  }, [project?.estimatedBudget, invoiceTotals.total, expenseTotals.total]);
+    return Math.max(project?.estimatedBudget || 0, depositTotals.total, expenseTotals.total, 1);
+  }, [project?.estimatedBudget, depositTotals.total, expenseTotals.total]);
   const combinedPlanItems = useMemo(() => {
     const events = scheduleEvents.map(ev => ({
       id: ev.id,
@@ -349,9 +349,9 @@ export function ProjectDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-invoices', id] });
       setInvoiceForm({ invoiceNumber: '', clientName: '', amount: '', status: 'draft', dueDate: '', issueDate: '', description: '' });
-      toast({ title: 'Invoice saved' });
+      toast({ title: 'Deposit saved' });
     },
-    onError: () => toast({ title: 'Error', description: 'Could not save invoice', variant: 'destructive' }),
+    onError: () => toast({ title: 'Error', description: 'Could not save deposit', variant: 'destructive' }),
   });
 
   const progressMutation = useMutation({
@@ -703,7 +703,7 @@ export function ProjectDetailPage() {
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
           <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="docs">Docs</TabsTrigger>
-          <TabsTrigger value="invoices">Invoices ({invoices.length})</TabsTrigger>
+          <TabsTrigger value="invoices">Deposits ({invoices.length})</TabsTrigger>
           <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="files">Files ({documents.length})</TabsTrigger>
         </TabsList>
@@ -726,18 +726,18 @@ export function ProjectDetailPage() {
               <div className="relative h-6 rounded-lg bg-gray-100 overflow-hidden border border-gray-200">
                 <div
                   className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 to-blue-600"
-                  style={{ width: `${Math.min(100, (invoiceTotals.total / budgetBaseline) * 100)}%` }}
+                  style={{ width: `${Math.min(100, (depositTotals.total / budgetBaseline) * 100)}%` }}
                 />
                 <div
                   className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-500 to-rose-500 opacity-80"
                   style={{ width: `${Math.min(100, (expenseTotals.total / budgetBaseline) * 100)}%` }}
                 />
-                {expenseTotals.total > invoiceTotals.total && (
+                {expenseTotals.total > depositTotals.total && (
                   <div
                     className="absolute inset-y-[2px] border-2 border-dotted border-blue-300 rounded"
                     style={{
-                      left: `${(invoiceTotals.total / budgetBaseline) * 100}%`,
-                      width: `${Math.min(100, ((expenseTotals.total - invoiceTotals.total) / budgetBaseline) * 100)}%`,
+                      left: `${(depositTotals.total / budgetBaseline) * 100}%`,
+                      width: `${Math.min(100, ((expenseTotals.total - depositTotals.total) / budgetBaseline) * 100)}%`,
                     }}
                   />
                 )}
@@ -748,16 +748,16 @@ export function ProjectDetailPage() {
                   <p className="font-semibold">{formatCurrency(project.estimatedBudget)}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Invoiced</p>
-                  <p className="font-semibold text-blue-600">{formatCurrency(invoiceTotals.total)}</p>
+                  <p className="text-gray-500">Deposits</p>
+                  <p className="font-semibold text-blue-600">{formatCurrency(depositTotals.total)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Expenses</p>
                   <p className="font-semibold text-rose-600">{formatCurrency(expenseTotals.total)}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Remaining invoiced</p>
-                  <p className="font-semibold text-amber-600">{formatCurrency(invoiceTotals.total - expenseTotals.total)}</p>
+                  <p className="text-gray-500">Remaining deposits</p>
+                  <p className="font-semibold text-amber-600">{formatCurrency(depositTotals.total - expenseTotals.total)}</p>
                 </div>
               </div>
             </CardContent>
@@ -919,7 +919,7 @@ export function ProjectDetailPage() {
         <TabsContent value="invoices" className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Project Invoices</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Project Deposits</h3>
               <p className="text-sm text-gray-500">Track deposits from clients or lenders and sync with budget.</p>
             </div>
             <Dialog>
@@ -944,16 +944,17 @@ export function ProjectDetailPage() {
                       dueDate: invoiceForm.dueDate,
                       issueDate: invoiceForm.issueDate,
                       description: invoiceForm.description,
+                      type: 'deposit',
                     });
                   }}
                 >
                   <DialogHeader>
-                    <DialogTitle>Add Invoice</DialogTitle>
+                    <DialogTitle>Add Deposit</DialogTitle>
                     <DialogDescription>Record a deposit from a client or bank.</DialogDescription>
                   </DialogHeader>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-3">
                     <div className="space-y-2">
-                      <Label>Invoice #</Label>
+                      <Label>Deposit #</Label>
                       <Input
                         value={invoiceForm.invoiceNumber}
                         onChange={(e) => setInvoiceForm({ ...invoiceForm, invoiceNumber: e.target.value })}
@@ -1031,8 +1032,8 @@ export function ProjectDetailPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Deposits & Invoices</CardTitle>
-                <Badge variant="secondary">Total: {formatCurrency(invoiceTotals.total)}</Badge>
+                <CardTitle>Deposits</CardTitle>
+                <Badge variant="secondary">Total: {formatCurrency(depositTotals.total)}</Badge>
               </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">

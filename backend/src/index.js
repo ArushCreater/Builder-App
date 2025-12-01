@@ -33,12 +33,15 @@ const allowedOrigins = allowedOriginsEnv
   .filter(Boolean);
 const allowAll = allowedOrigins.includes('*') || allowedOrigins.length === 0;
 
+const isDevOrigin = (origin = '') => origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
+const isVercelOrigin = (origin = '') => origin.includes('.vercel.app');
+
 const corsOptions = {
   origin: allowAll
     ? (origin, callback) => callback(null, origin || '*')
     : (origin, callback) => {
         if (!origin) return callback(null, false);
-        if (allowedOrigins.includes(origin)) return callback(null, origin);
+        if (allowedOrigins.includes(origin) || isDevOrigin(origin) || isVercelOrigin(origin)) return callback(null, origin);
         return callback(new Error('Not allowed by CORS'));
       },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -165,8 +168,10 @@ async function ensureTables() {
         file_url text,
         file_name text,
         file_type text,
+        type text,
         created_at timestamptz DEFAULT now()
       );
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS type text;
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -494,6 +499,7 @@ const invoices = [
     dueDate: '2024-01-15',
     issueDate: '2024-01-01',
     description: 'Foundation and framing work',
+    type: 'invoice',
     createdAt: '2024-01-01T10:00:00Z',
   },
   {
@@ -507,6 +513,7 @@ const invoices = [
     dueDate: '2024-02-28',
     issueDate: '2024-02-01',
     description: 'Electrical and plumbing installation',
+    type: 'invoice',
     createdAt: '2024-02-01T10:00:00Z',
   },
 ];
@@ -3043,11 +3050,12 @@ app.delete('/api/proposals/:id', (req, res) => {
 
 // Invoices
 app.get('/api/invoices', (req, res) => {
-  const { search, status, projectId } = req.query;
+  const { search, status, projectId, type } = req.query;
   if (!pool) {
     let list = [...invoices];
     if (projectId) list = list.filter(i => i.projectId === projectId);
     if (status) list = list.filter(i => i.status === status);
+    if (type) list = list.filter(i => i.type === type);
     if (search) {
       const q = String(search).toLowerCase();
       list = list.filter(
@@ -3069,6 +3077,10 @@ app.get('/api/invoices', (req, res) => {
   if (status) {
     clauses.push(`status = $${clauses.length + 1}`);
     values.push(status);
+  }
+  if (type) {
+    clauses.push(`type = $${clauses.length + 1}`);
+    values.push(type);
   }
   if (search) {
     clauses.push(`(LOWER(invoice_number) LIKE $${clauses.length + 1} OR LOWER(client_name) LIKE $${clauses.length + 1})`);
@@ -3097,6 +3109,7 @@ app.post('/api/invoices', (req, res) => {
     fileUrl: body.fileUrl,
     fileName: body.fileName,
     fileType: body.fileType,
+    type: body.type || 'invoice',
     createdAt: new Date().toISOString(),
   };
   if (!pool) {
@@ -3105,8 +3118,8 @@ app.post('/api/invoices', (req, res) => {
   }
   pool
     .query(
-      `INSERT INTO invoices (id, invoice_number, project_id, project_name, client_name, amount, status, due_date, issue_date, description, file_url, file_name, file_type, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      `INSERT INTO invoices (id, invoice_number, project_id, project_name, client_name, amount, status, due_date, issue_date, description, file_url, file_name, file_type, type, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         invoice.id,
@@ -3122,6 +3135,7 @@ app.post('/api/invoices', (req, res) => {
         invoice.fileUrl,
         invoice.fileName,
         invoice.fileType,
+        invoice.type,
         invoice.createdAt,
       ]
     )
@@ -3147,6 +3161,7 @@ app.put('/api/invoices/:id', (req, res) => {
       fileUrl: body.fileUrl ?? invoice.fileUrl,
       fileName: body.fileName ?? invoice.fileName,
       fileType: body.fileType ?? invoice.fileType,
+      type: body.type ?? invoice.type,
     });
     return res.json({ invoice });
   }
@@ -3169,8 +3184,9 @@ app.put('/api/invoices/:id', (req, res) => {
              description=$9,
              file_url=$10,
              file_name=$11,
-             file_type=$12
-           WHERE id=$13
+             file_type=$12,
+             type=$13
+           WHERE id=$14
            RETURNING *`,
           [
             body.invoiceNumber ?? current.invoice_number,
@@ -3185,6 +3201,7 @@ app.put('/api/invoices/:id', (req, res) => {
             body.fileUrl ?? current.file_url,
             body.fileName ?? current.file_name,
             body.fileType ?? current.file_type,
+            body.type ?? current.type,
             req.params.id,
           ]
         )

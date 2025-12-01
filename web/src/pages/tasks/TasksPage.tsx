@@ -428,107 +428,115 @@ export function TasksPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {groupedByStatus.map((col) => (
-                <div
-                  key={col.key}
-                  className="rounded-lg border border-gray-200 bg-white shadow-sm"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const taskId = e.dataTransfer.getData('text/plain');
-                    if (taskId) {
-                      updateMutation.mutate({
-                        id: taskId,
-                        data: { status: col.key, completed: col.key === 'completed' },
-                      });
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <Filter className="h-4 w-4 text-gray-400" />
-                      <span className="font-semibold text-gray-800">{col.label}</span>
+            <div className="overflow-x-auto pb-2">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 min-w-[960px] sm:min-w-0">
+                {groupedByStatus.map((col) => (
+                  <div
+                    key={col.key}
+                    className="rounded-lg border border-gray-200 bg-white shadow-sm"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const taskId = e.dataTransfer.getData('text/plain');
+                      if (taskId) {
+                        updateMutation.mutate({
+                          id: taskId,
+                          data: { status: col.key, completed: col.key === 'completed' },
+                        });
+                      }
+                    }}
+                  >
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <Filter className="h-4 w-4 text-gray-400" />
+                        <span className="font-semibold text-gray-800">{col.label}</span>
+                      </div>
+                      <Badge variant="outline">{col.tasks.length}</Badge>
                     </div>
-                    <Badge variant="outline">{col.tasks.length}</Badge>
+                    <div className="space-y-3 p-3 min-h-[240px]">
+                      {col.tasks.length === 0 ? (
+                        <div className="text-sm text-gray-400 text-center py-8">No tasks</div>
+                      ) : (
+                        col.tasks.map((task) => (
+                          <div
+                            key={task.id}
+                            className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm cursor-move"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/plain', task.id);
+                              const img = new Image();
+                              img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+                              e.dataTransfer.setDragImage(img, 0, 0);
+                              e.dataTransfer.effectAllowed = 'move';
+                            }}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="font-semibold text-gray-900">{task.title}</div>
+                              <Checkbox
+                                checked={task.completed}
+                                onCheckedChange={(checked) =>
+                                  toggleMutation.mutate({ id: task.id, completed: !!checked })
+                                }
+                              />
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1 line-clamp-2">{task.description}</p>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
+                              {task.projectName && <Badge variant="secondary">{task.projectName}</Badge>}
+                              <Badge variant={priorityColors[task.priority]}>{task.priority}</Badge>
+                              <Badge variant={statusColors[normalizeStatus(task.status)] || 'secondary'}>
+                                {normalizeStatus(task.status)}
+                              </Badge>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                              <span className="flex items-center gap-1">
+                                <Clock3 className="h-4 w-4" />
+                                {task.assignee || 'Unassigned'}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-4 w-4" />
+                                {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
+                              </span>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between">
+                              <Progress
+                                value={
+                                  task.completed
+                                    ? 100
+                                    : normalizeStatus(task.status) === 'in-progress'
+                                      ? 50
+                                      : normalizeStatus(task.status) === 'review'
+                                        ? 75
+                                        : 10
+                                }
+                                className="w-[70%]"
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setViewTask(task);
+                                  setViewForm({
+                                    title: task.title,
+                                    description: task.description,
+                                    priority: task.priority,
+                                    assignee: task.assignee,
+                                    projectId: task.projectId || '',
+                                    projectName: task.projectName || '',
+                                    dueDate: task.dueDate || '',
+                                    status: normalizeStatus(task.status),
+                                  });
+                                }}
+                              >
+                                View
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
-                  <div className="space-y-3 p-3 min-h-[240px]">
-                    {col.tasks.length === 0 ? (
-                      <div className="text-sm text-gray-400 text-center py-8">No tasks</div>
-                    ) : (
-                      col.tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm cursor-move"
-                          draggable
-                          onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="font-semibold text-gray-900">{task.title}</div>
-                            <Checkbox
-                              checked={task.completed}
-                              onCheckedChange={(checked) =>
-                                toggleMutation.mutate({ id: task.id, completed: !!checked })
-                              }
-                            />
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1 line-clamp-2">{task.description}</p>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
-                            {task.projectName && <Badge variant="secondary">{task.projectName}</Badge>}
-                            <Badge variant={priorityColors[task.priority]}>{task.priority}</Badge>
-                            <Badge variant={statusColors[normalizeStatus(task.status)] || 'secondary'}>
-                              {normalizeStatus(task.status)}
-                            </Badge>
-                          </div>
-                          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                            <span className="flex items-center gap-1">
-                              <Clock3 className="h-4 w-4" />
-                              {task.assignee || 'Unassigned'}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
-                            </span>
-                          </div>
-                          <div className="mt-2 flex items-center justify-between">
-                            <Progress
-                              value={
-                                task.completed
-                                  ? 100
-                                  : normalizeStatus(task.status) === 'in-progress'
-                                    ? 50
-                                    : normalizeStatus(task.status) === 'review'
-                                      ? 75
-                                      : 10
-                              }
-                              className="w-[70%]"
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setViewTask(task);
-                                setViewForm({
-                                  title: task.title,
-                                  description: task.description,
-                                  priority: task.priority,
-                                  assignee: task.assignee,
-                                  projectId: task.projectId || '',
-                                  projectName: task.projectName || '',
-                                  dueDate: task.dueDate || '',
-                                  status: normalizeStatus(task.status),
-                                });
-                              }}
-                            >
-                              View
-                            </Button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </CardContent>

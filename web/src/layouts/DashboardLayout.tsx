@@ -109,7 +109,7 @@ export function DashboardLayout() {
           'fixed inset-y-0 left-0 z-50 bg-slate-900/95 backdrop-blur border-r border-slate-800 transform transition-all duration-400 ease-out lg:translate-x-0 rounded-r-3xl overflow-hidden will-change-transform',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
           sidebarCollapsed ? 'w-20' : 'w-72',
-          'shadow-2xl shadow-black/40'
+          'shadow-2xl shadow-black/40 flex flex-col'
         )}
         style={{ transitionProperty: 'transform,width' }}
       >
@@ -149,7 +149,7 @@ export function DashboardLayout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 pr-1 transition-all duration-300 ease-out">
+        <nav className="flex-1 overflow-y-auto py-4 pr-1 transition-all duration-300 ease-out pb-28">
           <div className="px-3 space-y-1">
             {navigation.map((item) => {
               const Icon = item.icon;
