@@ -3095,16 +3095,22 @@ app.get('/api/invoices', (req, res) => {
 
 app.post('/api/invoices', (req, res) => {
   const body = req.body || {};
+  const invoiceNumber = body.invoiceNumber && String(body.invoiceNumber).trim()
+    ? body.invoiceNumber
+    : `INV-${Date.now()}`;
+  const projectName = body.projectName || body.project_name || '';
+  const dueDate = body.dueDate || body.due_date || null;
+  const issueDate = body.issueDate || body.issue_date || null;
   const invoice = {
     id: randomUUID(),
-    invoiceNumber: body.invoiceNumber || `INV-${Date.now()}`,
+    invoiceNumber,
     projectId: body.projectId,
-    projectName: body.projectName || '',
+    projectName,
     clientName: body.clientName || '',
     amount: parseFloat(body.amount) || 0,
     status: body.status || 'draft',
-    dueDate: body.dueDate || '',
-    issueDate: body.issueDate || '',
+    dueDate,
+    issueDate,
     description: body.description || '',
     fileUrl: body.fileUrl,
     fileName: body.fileName,
@@ -3148,15 +3154,18 @@ app.put('/api/invoices/:id', (req, res) => {
   if (!pool) {
     const invoice = invoices.find(i => i.id === req.params.id);
     if (!invoice) return res.status(404).json({ message: 'Not found' });
+    const invoiceNumber = body.invoiceNumber && String(body.invoiceNumber).trim()
+      ? body.invoiceNumber
+      : invoice.invoiceNumber || `INV-${Date.now()}`;
     Object.assign(invoice, {
-      invoiceNumber: body.invoiceNumber ?? invoice.invoiceNumber,
+      invoiceNumber,
       projectId: body.projectId ?? invoice.projectId,
       projectName: body.projectName ?? invoice.projectName,
       clientName: body.clientName ?? invoice.clientName,
       amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : invoice.amount,
       status: body.status ?? invoice.status,
-      dueDate: body.dueDate ?? invoice.dueDate,
-      issueDate: body.issueDate ?? invoice.issueDate,
+      dueDate: body.dueDate === '' ? invoice.dueDate : body.dueDate ?? invoice.dueDate,
+      issueDate: body.issueDate === '' ? invoice.issueDate : body.issueDate ?? invoice.issueDate,
       description: body.description ?? invoice.description,
       fileUrl: body.fileUrl ?? invoice.fileUrl,
       fileName: body.fileName ?? invoice.fileName,
@@ -3170,6 +3179,12 @@ app.put('/api/invoices/:id', (req, res) => {
     .then(result => {
       const current = result.rows[0];
       if (!current) return res.status(404).json({ message: 'Not found' });
+      const nextInvoiceNumber = body.invoiceNumber && String(body.invoiceNumber).trim()
+        ? body.invoiceNumber
+        : current.invoice_number || `INV-${Date.now()}`;
+      const nextProjectName = body.projectName ?? current.project_name;
+      const nextDue = body.dueDate === '' ? current.due_date : body.dueDate ?? current.due_date;
+      const nextIssue = body.issueDate === '' ? current.issue_date : body.issueDate ?? current.issue_date;
       return pool
         .query(
           `UPDATE invoices SET
@@ -3189,14 +3204,14 @@ app.put('/api/invoices/:id', (req, res) => {
            WHERE id=$14
            RETURNING *`,
           [
-            body.invoiceNumber ?? current.invoice_number,
+            nextInvoiceNumber,
             body.projectId ?? current.project_id,
-            body.projectName ?? current.project_name,
+            nextProjectName,
             body.clientName ?? current.client_name,
             body.amount !== undefined ? parseFloat(body.amount) || 0 : current.amount,
             body.status ?? current.status,
-            body.dueDate ?? current.due_date,
-            body.issueDate ?? current.issue_date,
+            nextDue,
+            nextIssue,
             body.description ?? current.description,
             body.fileUrl ?? current.file_url,
             body.fileName ?? current.file_name,

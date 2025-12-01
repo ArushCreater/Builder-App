@@ -87,7 +87,19 @@ export function BidsPage() {
       return apiClient.get<{ bids: Bid[] }>(`/bids?${params}`);
     },
   });
-  const bidRows = bids?.bids || [];
+  const bidRows = useMemo(
+    () =>
+      (bids?.bids || []).map((b: any) => ({
+        ...b,
+        projectId: b.projectId || b.project_id || '',
+        projectName: b.projectName || b.project_name || '',
+        category: b.category || b.scope || '',
+        submittedDate: b.submittedDate || b.submitted_date || '',
+        validUntil: b.validUntil || b.valid_until || '',
+        amount: Number(b.amount ?? 0),
+      })),
+    [bids?.bids]
+  );
 
   const { data: projectsData } = useQuery({
     queryKey: ['projects', 'bids'],
@@ -136,10 +148,16 @@ export function BidsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedProject = formData.projectId
+      ? projectsData?.projects.find((p) => p.id === formData.projectId)
+      : undefined;
     const payload = {
       ...formData,
       amount: parseFloat(formData.amount) || 0,
       projectId: formData.projectId || undefined,
+      projectName: formData.projectName || selectedProject?.name || '',
+      submittedDate: formData.submittedDate || undefined,
+      validUntil: formData.validUntil || undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, data: payload });
@@ -152,14 +170,14 @@ export function BidsPage() {
     setEditingId(bid.id);
     setFormData({
       projectId: bid.projectId || '',
-      projectName: bid.projectName,
+      projectName: bid.projectName || '',
       vendor: bid.vendor,
       contact: bid.contact || '',
       category: bid.category,
       amount: bid.amount.toString(),
       status: bid.status,
-      submittedDate: bid.submittedDate,
-      validUntil: bid.validUntil,
+      submittedDate: bid.submittedDate || '',
+      validUntil: bid.validUntil || '',
       notes: bid.notes || '',
       scope: bid.scope || '',
     });
@@ -418,15 +436,15 @@ export function BidsPage() {
                       </div>
                     </TableCell>
                     <TableCell>{bid.vendor}</TableCell>
-                    <TableCell>{bid.category}</TableCell>
+                    <TableCell>{bid.category || '—'}</TableCell>
                     <TableCell className="font-medium">{formatCurrency(bid.amount)}</TableCell>
                     <TableCell>
-                      <Badge variant={statusColors[bid.status]}>
+                      <Badge variant={statusColors[bid.status as Bid['status']]}>
                         {bid.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>{formatDate(bid.submittedDate)}</TableCell>
-                    <TableCell>{formatDate(bid.validUntil)}</TableCell>
+                    <TableCell>{bid.submittedDate ? formatDate(bid.submittedDate) : '—'}</TableCell>
+                    <TableCell>{bid.validUntil ? formatDate(bid.validUntil) : '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center gap-2 justify-end">
                         <Select

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
@@ -85,7 +85,20 @@ export function MaterialsPage() {
       return apiClient.get<{ materials: Material[] }>(`/materials?${params}`);
     },
   });
-  const materials = materialsData?.materials || [];
+  const materials = useMemo(
+    () =>
+      (materialsData?.materials || []).map((m: any) => ({
+        ...m,
+        projectId: m.projectId || m.project_id || '',
+        projectName: m.projectName || m.project_name || '',
+        costPerUnit: Number(m.costPerUnit ?? m.cost_per_unit ?? 0),
+        totalCost:
+          Number(m.totalCost ?? m.total_cost ?? 0) ||
+          (Number(m.quantity ?? 0) * Number(m.costPerUnit ?? m.cost_per_unit ?? 0)),
+        quantity: Number(m.quantity ?? 0),
+      })),
+    [materialsData?.materials]
+  );
 
   const { data: projectsData } = useQuery({
     queryKey: ['projects', 'materials'],
@@ -204,7 +217,26 @@ export function MaterialsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Materials</h1>
           <p className="text-gray-500 mt-1">Manage construction materials and inventory</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <Dialog
+          open={isCreateDialogOpen}
+          onOpenChange={(open) => {
+            setIsCreateDialogOpen(open);
+            if (!open) {
+              setEditingId(null);
+              setFormData({
+                name: '',
+                description: '',
+                quantity: '',
+                unit: '',
+                costPerUnit: '',
+                supplier: '',
+                projectId: '',
+                projectName: '',
+                status: 'ordered',
+              });
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -332,8 +364,14 @@ export function MaterialsPage() {
                 <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Adding...' : 'Add Material'}
+                <Button type="submit" disabled={editingId ? updateMutation.isPending : createMutation.isPending}>
+                  {editingId
+                    ? updateMutation.isPending
+                      ? 'Saving...'
+                      : 'Save Changes'
+                    : createMutation.isPending
+                      ? 'Adding...'
+                      : 'Add Material'}
                 </Button>
               </DialogFooter>
             </form>
@@ -454,7 +492,7 @@ export function MaterialsPage() {
                     <TableCell>{material.supplier}</TableCell>
                     <TableCell>{material.projectName || '—'}</TableCell>
                     <TableCell>
-                      <Badge variant={statusColors[material.status]}>
+                      <Badge variant={statusColors[material.status as Material['status']]}>
                         {material.status}
                       </Badge>
                     </TableCell>

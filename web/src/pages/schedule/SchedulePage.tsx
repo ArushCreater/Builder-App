@@ -58,6 +58,11 @@ const typeBadges: Record<ScheduleEvent['type'], { label: string; variant: 'secon
   delivery: { label: 'Delivery', variant: 'success' },
 };
 
+const normalizeDate = (value?: string | null) => {
+  if (!value) return '';
+  return value.split('T')[0];
+};
+
 export function SchedulePage() {
   const [view, setView] = useState<'calendar' | 'list' | 'gantt'>('calendar');
   const [selectedProject, setSelectedProject] = useState<string>('all');
@@ -156,15 +161,19 @@ export function SchedulePage() {
         title: t.title,
         projectName: t.projectName || 'No project',
         projectId: t.projectId,
-        startDate: t.dueDate || '',
-        endDate: t.dueDate || '',
+        startDate: normalizeDate(t.dueDate) || '',
+        endDate: normalizeDate(t.dueDate) || '',
         type: 'task',
         description: t.description || '',
         assignee: t.assignee || 'Unassigned',
         location: '',
       }));
 
-    const merged = [...events, ...taskEvents];
+    const merged = [...events, ...taskEvents].map(e => ({
+      ...e,
+      startDate: normalizeDate(e.startDate),
+      endDate: normalizeDate(e.endDate) || normalizeDate(e.startDate),
+    }));
     const filtered = merged.filter(e => {
       if (selectedProject !== 'all' && e.projectId !== selectedProject) return false;
       if (typeFilter !== 'all' && e.type !== typeFilter) return false;
@@ -341,7 +350,12 @@ export function SchedulePage() {
   };
 
   const eventsForDay = (dateStr: string) =>
-    filteredEvents.filter(e => e.startDate === dateStr || e.endDate === dateStr);
+    filteredEvents.filter(e => {
+      const start = normalizeDate(e.startDate);
+      const end = normalizeDate(e.endDate || e.startDate);
+      if (!start || !dateStr) return false;
+      return start <= dateStr && dateStr <= end;
+    });
 
   return (
     <div className="space-y-6">
@@ -694,6 +708,8 @@ export function SchedulePage() {
                   const dateStr = day.toISOString().split('T')[0];
                   const hasEvents = eventsForDay(dateStr).length > 0;
                   const isSelected = selectedDate === dateStr;
+                  const dayEvents = eventsForDay(dateStr);
+                  const preview = dayEvents.slice(0, 2);
                   return (
                     <button
                       key={dateStr}
@@ -707,8 +723,28 @@ export function SchedulePage() {
                         {hasEvents && <span className="h-2 w-2 rounded-full bg-indigo-500" />}
                       </div>
                       {hasEvents && (
-                        <div className="mt-1 text-xs text-gray-600 line-clamp-2">
-                          {eventsForDay(dateStr).map(e => e.title).join(', ')}
+                        <div className="mt-2 space-y-1">
+                          {preview.map((e) => (
+                            <div key={e.id} className="flex items-center gap-1 text-xs text-gray-700">
+                              <span
+                                className="h-2 w-2 rounded-full"
+                                style={{
+                                  background:
+                                    e.type === 'meeting'
+                                      ? '#10b981'
+                                      : e.type === 'inspection'
+                                        ? '#f59e0b'
+                                        : e.type === 'delivery'
+                                          ? '#6366f1'
+                                          : '#0ea5e9',
+                                }}
+                              />
+                              <span className="truncate">{e.title}</span>
+                            </div>
+                          ))}
+                          {dayEvents.length > preview.length && (
+                            <div className="text-[10px] text-indigo-600">+{dayEvents.length - preview.length} more</div>
+                          )}
                         </div>
                       )}
                     </button>
@@ -725,13 +761,28 @@ export function SchedulePage() {
                     <div className="text-sm text-gray-500">No events for this day.</div>
                   )}
                   {eventsForDay(selectedDate).map(event => (
-                    <div key={event.id} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                    <div key={event.id} className="rounded-md border border-gray-200 bg-white p-3 shadow-xs">
                       <div className="flex items-center justify-between">
-                        <div className="font-semibold text-gray-900">{event.title}</div>
+                        <div>
+                          <div className="font-semibold text-gray-900">{event.title}</div>
+                          <div className="text-xs text-gray-500">{event.projectName || 'No project'}</div>
+                        </div>
                         <Badge variant={typeBadges[event.type].variant}>{typeBadges[event.type].label}</Badge>
                       </div>
-                      <div className="text-xs text-gray-500">{event.projectName || 'No project'}</div>
-                      <div className="text-xs text-gray-600 mt-1">{event.description}</div>
+                      <div className="flex items-center gap-3 text-xs text-gray-600 mt-2">
+                        <Clock3 className="h-3 w-3" />
+                        <span>
+                          {formatDate(event.startDate)}
+                          {event.startDate !== event.endDate ? ` → ${formatDate(event.endDate)}` : ''}
+                        </span>
+                        {event.location && (
+                          <>
+                            <MapPin className="h-3 w-3" />
+                            <span>{event.location}</span>
+                          </>
+                        )}
+                      </div>
+                      {event.description && <div className="text-xs text-gray-600 mt-2">{event.description}</div>}
                     </div>
                   ))}
                 </div>

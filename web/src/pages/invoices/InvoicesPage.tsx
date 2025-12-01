@@ -110,7 +110,19 @@ export function InvoicesPage() {
       return apiClient.get<{ invoices: Invoice[] }>(`/invoices?${params}`);
     },
   });
-  const invoices = invoicesData?.invoices || [];
+  const invoices = useMemo(() => {
+    return (invoicesData?.invoices || []).map((inv: any) => ({
+      ...inv,
+      invoiceNumber: inv.invoiceNumber || inv.invoice_number || '',
+      projectName: inv.projectName || inv.project_name || '',
+      projectId: inv.projectId || inv.project_id || '',
+      clientName: inv.clientName || inv.client_name || '',
+      issueDate: inv.issueDate || inv.issue_date || '',
+      dueDate: inv.dueDate || inv.due_date || '',
+      description: inv.description || inv.description_text || '',
+      amount: Number(inv.amount ?? 0),
+    }));
+  }, [invoicesData?.invoices]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -239,15 +251,20 @@ export function InvoicesPage() {
 
   const handleCreateInvoice = (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedProject = formData.projectId
+      ? ((projectsData?.projects.find((p) => p.id === formData.projectId) as { id: string; name: string }) ||
+          undefined)
+      : undefined;
+    const invoiceNumber = formData.invoiceNumber || `INV-${Date.now()}`;
     createMutation.mutate({
-      invoiceNumber: formData.invoiceNumber,
+      invoiceNumber,
       projectId: formData.projectId || undefined,
-      projectName: formData.projectName,
+      projectName: formData.projectName || selectedProject?.name || '',
       clientName: formData.clientName,
       amount: parseFloat(formData.amount) || 0,
       status: formData.status,
-      dueDate: formData.dueDate,
-      issueDate: formData.issueDate,
+      dueDate: formData.dueDate || undefined,
+      issueDate: formData.issueDate || undefined,
       description: formData.description,
       type: 'invoice',
       fileUrl: uploadedFile?.url,
@@ -259,15 +276,20 @@ export function InvoicesPage() {
   const handleUpdateInvoice = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingInvoice) return;
+    const selectedProject = formData.projectId
+      ? ((projectsData?.projects.find((p) => p.id === formData.projectId) as { id: string; name: string }) ||
+          undefined)
+      : undefined;
+    const invoiceNumber = formData.invoiceNumber || editingInvoice.invoiceNumber || `INV-${Date.now()}`;
     updateMutation.mutate({
-      invoiceNumber: formData.invoiceNumber,
+      invoiceNumber,
       projectId: formData.projectId || undefined,
-      projectName: formData.projectName,
+      projectName: formData.projectName || selectedProject?.name || editingInvoice.projectName,
       clientName: formData.clientName,
       amount: parseFloat(formData.amount) || 0,
       status: formData.status,
-      dueDate: formData.dueDate,
-      issueDate: formData.issueDate,
+      dueDate: formData.dueDate || undefined,
+      issueDate: formData.issueDate || undefined,
       description: formData.description,
       type: 'invoice',
       fileUrl: uploadedFile?.url,
@@ -432,7 +454,7 @@ export function InvoicesPage() {
                     name="description"
                     value={formData.description}
                     onChange={handleChange}
-                    className="w-full min-h-[80px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full min-h-[80px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                     required
                   />
                 </div>
@@ -603,6 +625,7 @@ export function InvoicesPage() {
                     name="description"
                     value={formData.description}
                     onChange={handleChange}
+                    className="text-gray-900"
                   />
                 </div>
                   <div className="space-y-2">
@@ -794,7 +817,7 @@ export function InvoicesPage() {
                         }
                       >
                         <SelectTrigger className="w-[110px]">
-                          <Badge variant={statusColors[invoice.status]}>
+                          <Badge variant={statusColors[invoice.status as Invoice['status']]}>
                             {invoice.status}
                           </Badge>
                         </SelectTrigger>
@@ -806,8 +829,8 @@ export function InvoicesPage() {
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell>{formatDate(invoice.issueDate)}</TableCell>
-                    <TableCell>{formatDate(invoice.dueDate)}</TableCell>
+                    <TableCell>{invoice.issueDate ? formatDate(invoice.issueDate) : '—'}</TableCell>
+                    <TableCell>{invoice.dueDate ? formatDate(invoice.dueDate) : '—'}</TableCell>
                     <TableCell>
                       {invoice.fileName ? (
                         <div className="flex items-center gap-1 text-sm text-blue-600">
@@ -889,10 +912,10 @@ export function InvoicesPage() {
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Invoice Details</DialogTitle>
+            <DialogTitle className="text-gray-900">Invoice Details</DialogTitle>
           </DialogHeader>
           {selectedInvoice && (
-            <div className="space-y-4">
+            <div className="space-y-5 text-gray-900">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-gray-500">Invoice Number</Label>
@@ -900,7 +923,7 @@ export function InvoicesPage() {
                 </div>
                 <div>
                   <Label className="text-gray-500">Status</Label>
-                  <Badge variant={statusColors[selectedInvoice.status]} className="mt-1">
+                  <Badge variant={statusColors[selectedInvoice.status as Invoice['status']]} className="mt-1">
                     {selectedInvoice.status}
                   </Badge>
                 </div>
@@ -908,11 +931,11 @@ export function InvoicesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-gray-500">Project</Label>
-                  <p className="font-semibold">{selectedInvoice.projectName}</p>
+                  <p className="font-semibold">{selectedInvoice.projectName || '—'}</p>
                 </div>
                 <div>
                   <Label className="text-gray-500">Client</Label>
-                  <p className="font-semibold">{selectedInvoice.clientName}</p>
+                  <p className="font-semibold">{selectedInvoice.clientName || '—'}</p>
                 </div>
               </div>
               <div>
@@ -925,24 +948,26 @@ export function InvoicesPage() {
                 <div>
                   <Label className="text-gray-500">Issue Date</Label>
                   <p className="font-semibold">
-                    {formatDate(selectedInvoice.issueDate)}
+                    {selectedInvoice.issueDate ? formatDate(selectedInvoice.issueDate) : '—'}
                   </p>
                 </div>
                 <div>
                   <Label className="text-gray-500">Due Date</Label>
-                  <p className="font-semibold">{formatDate(selectedInvoice.dueDate)}</p>
+                  <p className="font-semibold">
+                    {selectedInvoice.dueDate ? formatDate(selectedInvoice.dueDate) : '—'}
+                  </p>
                 </div>
               </div>
               <div>
                 <Label className="text-gray-500">Description</Label>
-                <p className="mt-1">{selectedInvoice.description}</p>
+                <p className="mt-1 leading-relaxed">{selectedInvoice.description || '—'}</p>
               </div>
               {selectedInvoice.fileUrl && (
                 <div>
                   <Label className="text-gray-500 mb-2 block">Attached File</Label>
                   {selectedInvoice.fileType?.includes('pdf') ? (
-                    <div className="border rounded-lg p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                    <div className="border rounded-lg p-4 flex items-center justify-between bg-gray-50">
+                      <div className="flex items-center gap-2 text-gray-900">
                         <FileText className="h-8 w-8 text-red-600" />
                         <span className="font-medium">{selectedInvoice.fileName}</span>
                       </div>

@@ -86,7 +86,18 @@ export function SelectionsPage() {
       return apiClient.get<{ selections: Selection[] }>(`/selections?${params}`);
     },
   });
-  const selections = selectionsData?.selections || [];
+  const selections = useMemo(
+    () =>
+      (selectionsData?.selections || []).map((s: any) => ({
+        ...s,
+        projectId: s.projectId || s.project_id || '',
+        projectName: s.projectName || s.project_name || '',
+        clientName: s.clientName || s.client_name || '',
+        dueDate: s.dueDate || s.due_date || '',
+        cost: Number(s.cost ?? 0),
+      })),
+    [selectionsData?.selections]
+  );
 
   const { data: projectsData } = useQuery({
     queryKey: ['projects', 'selections'],
@@ -126,10 +137,15 @@ export function SelectionsPage() {
 
   const handleCreateSelection = (e: React.FormEvent) => {
     e.preventDefault();
+    const selectedProject = formData.projectId
+      ? projectsData?.projects.find((p) => p.id === formData.projectId)
+      : undefined;
     const payload = {
       ...formData,
       cost: parseFloat(formData.cost),
       projectId: formData.projectId || undefined,
+      projectName: formData.projectName || selectedProject?.name || '',
+      dueDate: formData.dueDate || undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, data: payload });
@@ -204,7 +220,27 @@ export function SelectionsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Selections</h1>
           <p className="text-gray-500 mt-1">Track client selections and design choices</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <Dialog
+          open={isCreateDialogOpen}
+          onOpenChange={(open) => {
+            setIsCreateDialogOpen(open);
+            if (!open) {
+              setEditingId(null);
+              setFormData({
+                category: '',
+                item: '',
+                description: '',
+                choice: '',
+                cost: '',
+                projectName: '',
+                projectId: '',
+                clientName: '',
+                dueDate: '',
+                status: 'pending',
+              });
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -328,8 +364,14 @@ export function SelectionsPage() {
                 <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Adding...' : 'Add Selection'}
+                <Button type="submit" disabled={editingId ? updateMutation.isPending : createMutation.isPending}>
+                  {editingId
+                    ? updateMutation.isPending
+                      ? 'Saving...'
+                      : 'Save Changes'
+                    : createMutation.isPending
+                      ? 'Adding...'
+                      : 'Add Selection'}
                 </Button>
               </DialogFooter>
             </form>
@@ -448,15 +490,15 @@ export function SelectionsPage() {
                     </TableCell>
                     <TableCell className="font-medium">{selection.item}</TableCell>
                     <TableCell>{selection.choice}</TableCell>
-                    <TableCell>{selection.projectName}</TableCell>
-                    <TableCell>{selection.clientName}</TableCell>
+                    <TableCell>{selection.projectName || '—'}</TableCell>
+                    <TableCell>{selection.clientName || '—'}</TableCell>
                     <TableCell>{formatCurrency(selection.cost)}</TableCell>
                     <TableCell>
-                      <Badge variant={statusColors[selection.status]}>
+                      <Badge variant={statusColors[selection.status as Selection['status']]}>
                         {selection.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>{formatDate(selection.dueDate)}</TableCell>
+                    <TableCell>{selection.dueDate ? formatDate(selection.dueDate) : '—'}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center gap-2 justify-end">
                         <Select
