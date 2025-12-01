@@ -354,7 +354,7 @@ export function TasksPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: 'Total', value: tasks.length },
           { label: 'In Progress', value: tasks.filter(t => ['in-progress', 'in_progress'].includes(t.status)).length },
@@ -428,7 +428,7 @@ export function TasksPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {groupedByStatus.map((col) => (
                 <div
                   key={col.key}

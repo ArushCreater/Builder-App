@@ -220,14 +220,14 @@ export function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
           <p className="text-gray-500 mt-1">Manage your construction projects</p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               New Project
             </Button>
@@ -425,7 +425,7 @@ export function ProjectsPage() {
           ) : (
             <>
               {viewMode === 'grid' && (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
                   {filtered?.map((project) => (
                     <Card
                       key={project.id}
@@ -520,7 +520,7 @@ export function ProjectsPage() {
               )}
 
               {viewMode === 'board' && (
-                <div className="grid md:grid-cols-3 gap-4">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {(['PLANNING', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED'] as Project['status'][]).map((status) => {
                     const columnProjects = filtered.filter((p) => p.status === status);
                     const titleMap: Record<Project['status'], string> = {

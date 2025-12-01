@@ -470,7 +470,7 @@ export function ProjectDetailPage() {
                     <DialogTitle>Edit Project</DialogTitle>
                     <DialogDescription>Update project details</DialogDescription>
                   </DialogHeader>
-                  <div className="grid grid-cols-2 gap-4 py-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
                     <div className="space-y-2">
                       <Label htmlFor="p-name">Name</Label>
                       <Input
@@ -804,7 +804,7 @@ export function ProjectDetailPage() {
                         onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="t-status">Status</Label>
                         <Input
@@ -823,7 +823,7 @@ export function ProjectDetailPage() {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="t-assignee">Assignee</Label>
                         <Input
@@ -1243,7 +1243,7 @@ export function ProjectDetailPage() {
                           Add
                         </Button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {selectedPage.images.map((img) => (
                           <div key={img} className="relative overflow-hidden rounded-lg border border-gray-200">
                             <img src={img} alt="doc img" className="h-24 w-full object-cover" />
@@ -1393,7 +1393,7 @@ export function ProjectDetailPage() {
                         }}
                       />
                     </div>
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label>Category</Label>
                               <Input

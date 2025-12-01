@@ -72,6 +72,14 @@ const navigation: NavItem[] = [
   { name: 'Settings', path: '/settings', icon: Settings },
 ];
 
+const mobileNav: NavItem[] = [
+  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+  { name: 'Projects', path: '/projects', icon: FolderKanban },
+  { name: 'Tasks', path: '/tasks', icon: ClipboardList },
+  { name: 'Schedule', path: '/schedule', icon: Calendar },
+  { name: 'Docs', path: '/documents', icon: FileText },
+];
+
 export function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -86,7 +94,7 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -177,29 +185,29 @@ export function DashboardLayout() {
       </aside>
 
       {/* Main content */}
-      <div className={cn(sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64')}>
+      <div className={cn('flex-1 flex flex-col transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64')}>
         {/* Top header */}
-        <header className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-slate-200">
-          <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center space-x-3">
+        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 h-auto py-3 px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="lg:hidden p-2 rounded-md hover:bg-gray-100"
               >
                 <Menu className="h-6 w-6" />
               </button>
-              <div className="hidden md:flex items-center">
-                <div className="relative flex items-center">
+              <div className="hidden md:flex items-center flex-1 min-w-[200px]">
+                <div className="relative flex items-center w-full">
                   <Search className="absolute left-3 h-4 w-4 text-gray-400" />
                   <input
-                    className="w-72 rounded-full border border-slate-200 bg-white pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
+                    className="w-full max-w-xs rounded-full border border-slate-200 bg-white pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
                     placeholder="Search projects, tasks, docs..."
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <Button variant="outline" className="hidden sm:inline-flex rounded-full border-slate-200 text-slate-900 bg-white hover:bg-slate-100">
                 <Plus className="h-4 w-4 mr-2" />
                 New Project
@@ -267,10 +275,34 @@ export function DashboardLayout() {
         </header>
 
         {/* Page content */}
-        <main className="py-6 px-4 sm:px-6 lg:px-10 min-h-screen">
+        <main className="py-6 px-4 sm:px-6 lg:px-10 pb-24 min-h-screen">
           <Outlet />
         </main>
       </div>
+
+      {/* Mobile bottom nav */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 shadow-lg">
+        <div className="grid grid-cols-5">
+          {mobileNav.map(item => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setSidebarOpen(false)}
+                className={cn(
+                  'flex flex-col items-center justify-center py-2 text-xs font-semibold transition-colors',
+                  isActive ? 'text-indigo-600' : 'text-slate-600'
+                )}
+              >
+                <Icon className={cn('h-5 w-5 mb-1', isActive ? 'stroke-[2.2]' : 'stroke-[1.7]')} />
+                <span className="text-[11px] leading-tight">{item.name}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
