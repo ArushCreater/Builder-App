@@ -7,7 +7,6 @@ import {
   ToastViewport,
 } from "./toast";
 import { useToast } from "./use-toast";
-import { useEffect, useState } from "react";
 
 export function Toaster() {
   const { toasts } = useToast();

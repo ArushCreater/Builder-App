@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -24,18 +24,9 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Mail, Phone, Eye, Pencil, Trash, User, MoreHorizontal, Calendar, DollarSign, Building } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Eye, Pencil, Trash, User, Calendar, DollarSign, Building } from 'lucide-react';
 import { formatDate, cn } from '../../lib/utils';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
-
+import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 interface Lead {
   id: string;
   firstName: string;

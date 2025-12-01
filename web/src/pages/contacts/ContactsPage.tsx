@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -14,10 +14,9 @@ import {
   DialogTrigger,
 } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
-import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Mail, Phone, MapPin, Trash2, Pencil, MoreVertical, Briefcase, Building2, LayoutGrid, List, Star } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import { Plus, Search, Mail, Phone, MapPin, Trash2, Pencil, Briefcase, Building2, LayoutGrid, List, Star } from 'lucide-react';
+import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 
 interface Contact {
@@ -380,7 +379,7 @@ export function ContactsPage() {
             
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
               <Button
-                variant={view === 'grid' ? 'white' : 'ghost'}
+                variant={view === 'grid' ? 'secondary' : 'ghost'}
                 size="sm"
                 className={`h-7 px-2.5 ${view === 'grid' ? 'shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                 onClick={() => setView('grid')}
@@ -388,7 +387,7 @@ export function ContactsPage() {
                 <LayoutGrid className="h-4 w-4" />
               </Button>
               <Button
-                variant={view === 'list' ? 'white' : 'ghost'}
+                variant={view === 'list' ? 'secondary' : 'ghost'}
                 size="sm"
                 className={`h-7 px-2.5 ${view === 'list' ? 'shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                 onClick={() => setView('list')}

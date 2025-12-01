@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import {
   Select,
@@ -15,10 +15,10 @@ import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
-import { Calendar as CalendarIcon, List, Plus, Clock3, MapPin, GanttChartSquare, Filter, Trash2, Edit, ChevronLeft, ChevronRight, Search, User, ZoomIn, ZoomOut, X } from 'lucide-react';
+import { Calendar as CalendarIcon, List, Plus, Clock3, MapPin, GanttChartSquare, Trash2, Edit, ChevronLeft, ChevronRight, Search, User, ZoomIn, ZoomOut, X } from 'lucide-react';
 import { formatDate, cn } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 
 interface ScheduleEvent {
   id: string;
@@ -250,8 +250,19 @@ export function SchedulePage() {
     setIsDialogOpen(true);
   };
 
-  const ganttItems = useMemo(() => {
-    const combined = [
+  type GanttItem = {
+    id: string;
+    label: string;
+    projectName: string;
+    start: string;
+    end: string;
+    type: ScheduleEvent['type'];
+    assignee: string;
+    isProject?: boolean;
+  };
+
+  const ganttItems: GanttItem[] = useMemo(() => {
+    const combined: GanttItem[] = [
       ...localEvents.map(e => ({
         id: e.id,
         label: e.title,
@@ -713,7 +724,7 @@ export function SchedulePage() {
                     </div>
                     <div className="overflow-y-hidden flex-1"> 
                          <div className="flex flex-col">
-                            {ganttItems.map((item, i) => (
+                            {ganttItems.map((item) => (
                                 <div 
                                     key={item.id} 
                                     className="border-b border-slate-100 px-4 flex items-center justify-between hover:bg-slate-50 group transition-colors"
@@ -756,7 +767,7 @@ export function SchedulePage() {
                                 ))}
                             </div>
                             <div className="flex h-1/2">
-                                {timelineDays.map((d, i) => {
+                                {timelineDays.map((d) => {
                                     const date = new Date(d);
                                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                                     const isToday = d === new Date().toISOString().split('T')[0];
@@ -780,7 +791,7 @@ export function SchedulePage() {
 
                         <div className="relative">
                             <div className="absolute inset-0 flex pointer-events-none">
-                                {timelineDays.map((d, i) => {
+                                {timelineDays.map((d) => {
                                     const date = new Date(d);
                                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                                     const isToday = d === new Date().toISOString().split('T')[0];
@@ -799,7 +810,7 @@ export function SchedulePage() {
                             </div>
 
                             <div className="relative">
-                                {ganttItems.map((item, i) => (
+                                {ganttItems.map((item) => (
                                     <div 
                                         key={item.id} 
                                         className="border-b border-slate-100 w-full relative group hover:bg-slate-50/50 transition-colors"
