@@ -273,8 +273,295 @@ async function ensureTables() {
         created_at timestamptz DEFAULT now()
       );
     `);
+    await seedDemoData(client);
   } finally {
     client.release();
+  }
+}
+
+async function seedDemoData(client) {
+  // Projects
+  const projCount = await client.query('SELECT count(*)::int AS c FROM projects');
+  if (projCount.rows[0].c === 0) {
+    const demoProjects = [
+      {
+        id: 'demo-proj-1',
+        name: 'Harborview Residences',
+        description: '12-story mixed-use tower with retail podium',
+        type: 'residential',
+        status: 'IN_PROGRESS',
+        address: '1 Ocean Ave',
+        city: 'Sydney',
+        state: 'NSW',
+        zip_code: '2000',
+        start_date: '2024-06-01',
+        end_date: '2025-05-15',
+        estimated_budget: 18500000,
+        actual_cost: 6200000,
+        owner_id: 'seed-owner',
+        progress: 38,
+      },
+      {
+        id: 'demo-proj-2',
+        name: 'Northbridge Logistics Hub',
+        description: 'Distribution center with automated racking',
+        type: 'commercial',
+        status: 'PLANNING',
+        address: '88 Industrial Rd',
+        city: 'Melbourne',
+        state: 'VIC',
+        zip_code: '3000',
+        start_date: '2024-09-01',
+        end_date: '2025-12-20',
+        estimated_budget: 9200000,
+        actual_cost: 1200000,
+        owner_id: 'seed-owner',
+        progress: 12,
+      },
+    ];
+    for (const p of demoProjects) {
+      await client.query(
+        `INSERT INTO projects (id, name, description, type, status, address, city, state, zip_code, start_date, end_date, estimated_budget, actual_cost, owner_id, progress)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [
+          p.id,
+          p.name,
+          p.description,
+          p.type,
+          p.status,
+          p.address,
+          p.city,
+          p.state,
+          p.zip_code,
+          p.start_date,
+          p.end_date,
+          p.estimated_budget,
+          p.actual_cost,
+          p.owner_id,
+          p.progress,
+        ]
+      );
+    }
+  }
+
+  // Tasks
+  const taskCount = await client.query('SELECT count(*)::int AS c FROM tasks');
+  if (taskCount.rows[0].c === 0) {
+    const tasksSeed = [
+      {
+        id: 'demo-task-1',
+        title: 'Site prep & utilities',
+        description: 'Trenching and temporary power',
+        status: 'IN_PROGRESS',
+        priority: 'high',
+        assignee: 'Foreman Lee',
+        project_id: 'demo-proj-1',
+        project_name: 'Harborview Residences',
+        due_date: '2024-12-05',
+      },
+      {
+        id: 'demo-task-2',
+        title: 'Core & shell level 4',
+        description: 'Pour slab, set rebar cages',
+        status: 'PLANNING',
+        priority: 'medium',
+        assignee: 'Concrete Crew',
+        project_id: 'demo-proj-1',
+        project_name: 'Harborview Residences',
+        due_date: '2025-01-15',
+      },
+    ];
+    for (const t of tasksSeed) {
+      await client.query(
+        `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          t.id,
+          t.title,
+          t.description,
+          t.status,
+          t.priority,
+          t.assignee,
+          t.project_id,
+          t.project_name,
+          t.due_date,
+        ]
+      );
+    }
+  }
+
+  // Proposals
+  const proposalCount = await client.query('SELECT count(*)::int AS c FROM proposals');
+  if (proposalCount.rows[0].c === 0) {
+    await client.query(
+      `INSERT INTO proposals (id, title, client_name, project_id, project_name, amount, status, valid_until, file_url, file_name, file_type)
+       VALUES
+       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
+       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      [
+        'demo-prop-1',
+        'Facade & glazing package',
+        'Skyline Glass',
+        'demo-proj-1',
+        'Harborview Residences',
+        4800000,
+        'sent',
+        '2025-02-01',
+        null,
+        null,
+        null,
+        'demo-prop-2',
+        'Fire systems and sprinklers',
+        'SafeFlow',
+        'demo-proj-2',
+        'Northbridge Logistics Hub',
+        725000,
+        'draft',
+        '2025-03-15',
+        null,
+        null,
+        null,
+      ]
+    );
+  }
+
+  // Invoices
+  const invoiceCount = await client.query('SELECT count(*)::int AS c FROM invoices');
+  if (invoiceCount.rows[0].c === 0) {
+    await client.query(
+      `INSERT INTO invoices (id, invoice_number, project_id, project_name, client_name, amount, status, due_date, issue_date, description, type)
+       VALUES
+       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
+       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      [
+        'demo-inv-1',
+        'INV-001',
+        'demo-proj-1',
+        'Harborview Residences',
+        'Acme Developments',
+        320000,
+        'paid',
+        '2024-12-20',
+        '2024-12-01',
+        'Progress claim #3 - structure',
+        'invoice',
+        'demo-inv-2',
+        'INV-002',
+        'demo-proj-2',
+        'Northbridge Logistics Hub',
+        'Global Logistics Pty',
+        185000,
+        'unpaid',
+        '2025-01-30',
+        '2025-01-05',
+        'Deposit for racking install',
+        'invoice',
+      ]
+    );
+  }
+
+  // Materials
+  const matCount = await client.query('SELECT count(*)::int AS c FROM materials');
+  if (matCount.rows[0].c === 0) {
+    await client.query(
+      `INSERT INTO materials (id, name, description, quantity, unit, cost_per_unit, total_cost, supplier, project_name, project_id, status)
+       VALUES
+       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
+       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      [
+        'demo-mat-1',
+        'Post-tension cables',
+        'PT kits for levels 3-5',
+        45,
+        'ea',
+        950,
+        42750,
+        'CableCo',
+        'Harborview Residences',
+        'demo-proj-1',
+        'ordered',
+        'demo-mat-2',
+        'HVAC air handlers',
+        'Rooftop AHUs with VFD',
+        4,
+        'units',
+        22000,
+        88000,
+        'CoolAir',
+        'Northbridge Logistics Hub',
+        'demo-proj-2',
+        'in-stock',
+      ]
+    );
+  }
+
+  // Selections
+  const selCount = await client.query('SELECT count(*)::int AS c FROM selections');
+  if (selCount.rows[0].c === 0) {
+    await client.query(
+      `INSERT INTO selections (id, category, item, description, choice, cost, status, project_name, project_id, client_name, due_date)
+       VALUES
+       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
+       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      [
+        'demo-sel-1',
+        'Lobby finishes',
+        'Flooring',
+        'Large format porcelain tile',
+        'Matte charcoal',
+        145000,
+        'approved',
+        'Harborview Residences',
+        'demo-proj-1',
+        'Acme Developments',
+        '2025-01-15',
+        'demo-sel-2',
+        'Warehouse lighting',
+        'High-bay LEDs',
+        'Neutral white 4000K',
+        82000,
+        'pending',
+        'Northbridge Logistics Hub',
+        'demo-proj-2',
+        'Global Logistics Pty',
+        '2025-02-10',
+      ]
+    );
+  }
+
+  // Inspections
+  const inspCount = await client.query('SELECT count(*)::int AS c FROM inspections');
+  if (inspCount.rows[0].c === 0) {
+    await client.query(
+      `INSERT INTO inspections (id, title, type, status, date, scheduled_date, project_name, project_id, inspector, notes, completed_date)
+       VALUES
+       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
+       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      [
+        'demo-insp-1',
+        'Framing Inspection L2',
+        'framing',
+        'scheduled',
+        '2025-01-08',
+        '2025-01-08',
+        'Harborview Residences',
+        'demo-proj-1',
+        'City Inspector',
+        'Check shear walls and PT cables',
+        null,
+        'demo-insp-2',
+        'Fire system hydro',
+        'fire',
+        'pending',
+        '2025-02-05',
+        '2025-02-05',
+        'Northbridge Logistics Hub',
+        'demo-proj-2',
+        'SafeFlow',
+        'Witness hydrostatic test',
+        null,
+      ]
+    );
   }
 }
 
@@ -2575,10 +2862,10 @@ app.post('/api/equipment', (req, res) => {
     projectId: body.projectId || '',
     projectName: body.projectName || '',
     assignedTo: body.assignedTo || '',
-    purchaseDate: body.purchaseDate || '',
+    purchaseDate: body.purchaseDate || null,
     purchasePrice: body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : 0,
-    lastService: body.lastService || '',
-    nextMaintenance: body.nextMaintenance || '',
+    lastService: body.lastService || null,
+    nextMaintenance: body.nextMaintenance || null,
   };
   if (!pool) {
     equipment.unshift(item);
@@ -2599,10 +2886,10 @@ app.post('/api/equipment', (req, res) => {
         item.projectId,
         item.projectName,
         item.assignedTo,
-        item.purchaseDate,
+        item.purchaseDate || null,
         item.purchasePrice,
-        item.lastService,
-        item.nextMaintenance,
+        item.lastService || null,
+        item.nextMaintenance || null,
       ]
     )
     .then(result => res.json({ equipment: result.rows[0] }))
@@ -2622,10 +2909,10 @@ app.put('/api/equipment/:id', (req, res) => {
       projectId: body.projectId ?? item.projectId,
       projectName: body.projectName ?? item.projectName,
       assignedTo: body.assignedTo ?? item.assignedTo,
-      purchaseDate: body.purchaseDate ?? item.purchaseDate,
+      purchaseDate: body.purchaseDate === '' ? null : body.purchaseDate ?? item.purchaseDate,
       purchasePrice: body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : item.purchasePrice,
-      lastService: body.lastService ?? item.lastService,
-      nextMaintenance: body.nextMaintenance ?? item.nextMaintenance,
+      lastService: body.lastService === '' ? null : body.lastService ?? item.lastService,
+      nextMaintenance: body.nextMaintenance === '' ? null : body.nextMaintenance ?? item.nextMaintenance,
     });
     return res.json({ equipment: item });
   }
@@ -2649,10 +2936,10 @@ app.put('/api/equipment/:id', (req, res) => {
             body.projectId ?? current.project_id,
             body.projectName ?? current.project_name,
             body.assignedTo ?? current.assigned_to,
-            body.purchaseDate ?? current.purchase_date,
+            body.purchaseDate === '' ? current.purchase_date : body.purchaseDate ?? current.purchase_date,
             body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : current.purchase_price,
-            body.lastService ?? current.last_service,
-            body.nextMaintenance ?? current.next_maintenance,
+            body.lastService === '' ? current.last_service : body.lastService ?? current.last_service,
+            body.nextMaintenance === '' ? current.next_maintenance : body.nextMaintenance ?? current.next_maintenance,
             req.params.id,
           ]
         )

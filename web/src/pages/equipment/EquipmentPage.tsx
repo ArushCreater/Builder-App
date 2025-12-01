@@ -147,6 +147,9 @@ export function EquipmentPage() {
       purchasePrice: parseFloat(formData.purchasePrice) || 0,
       projectId: formData.projectId || undefined,
       projectName: formData.projectName || project?.name || '',
+      purchaseDate: formData.purchaseDate || undefined,
+      lastMaintenance: formData.lastMaintenance || undefined,
+      nextMaintenance: formData.nextMaintenance || undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, data: payload });
