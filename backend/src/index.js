@@ -134,8 +134,14 @@ async function ensureTables() {
         amount numeric,
         status text,
         valid_until date,
+        file_url text,
+        file_name text,
+        file_type text,
         created_at timestamptz DEFAULT now()
       );
+      ALTER TABLE proposals ADD COLUMN IF NOT EXISTS file_url text;
+      ALTER TABLE proposals ADD COLUMN IF NOT EXISTS file_name text;
+      ALTER TABLE proposals ADD COLUMN IF NOT EXISTS file_type text;
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS schedule_events (
@@ -2864,7 +2870,20 @@ app.get('/api/proposals', (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   pool
     .query(`SELECT * FROM proposals ${where} ORDER BY created_at DESC`, values)
-    .then(result => res.json({ proposals: result.rows }))
+    .then(result =>
+      res.json({
+        proposals: result.rows.map(row => ({
+          ...row,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          clientName: row.client_name,
+          validUntil: row.valid_until,
+          fileUrl: row.file_url,
+          fileName: row.file_name,
+          fileType: row.file_type,
+        })),
+      })
+    )
     .catch(() => res.json({ proposals }));
 });
 
@@ -2875,7 +2894,20 @@ app.get('/api/projects/:id/proposals', (req, res) => {
   }
   pool
     .query('SELECT * FROM proposals WHERE project_id = $1 ORDER BY created_at DESC', [req.params.id])
-    .then(result => res.json({ proposals: result.rows }))
+    .then(result =>
+      res.json({
+        proposals: result.rows.map(row => ({
+          ...row,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          clientName: row.client_name,
+          validUntil: row.valid_until,
+          fileUrl: row.file_url,
+          fileName: row.file_name,
+          fileType: row.file_type,
+        })),
+      })
+    )
     .catch(() => res.json({ proposals: [] }));
 });
 
@@ -2898,8 +2930,8 @@ app.post('/api/proposals', (req, res) => {
   }
   pool
     .query(
-      `INSERT INTO proposals (id, title, client_name, project_id, project_name, amount, status, valid_until, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO proposals (id, title, client_name, project_id, project_name, amount, status, valid_until, file_url, file_name, file_type, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         proposal.id,
         proposal.title,
@@ -2908,7 +2940,10 @@ app.post('/api/proposals', (req, res) => {
         proposal.projectName,
         proposal.amount,
         proposal.status,
-        proposal.validUntil,
+        proposal.validUntil || null,
+        proposal.fileUrl,
+        proposal.fileName,
+        proposal.fileType,
         proposal.createdAt,
       ]
     )
@@ -2935,8 +2970,8 @@ app.post('/api/projects/:id/proposals', (req, res) => {
   }
   pool
     .query(
-      `INSERT INTO proposals (id, title, client_name, project_id, project_name, amount, status, valid_until, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO proposals (id, title, client_name, project_id, project_name, amount, status, valid_until, file_url, file_name, file_type, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         proposal.id,
         proposal.title,
@@ -2945,7 +2980,10 @@ app.post('/api/projects/:id/proposals', (req, res) => {
         proposal.projectName,
         proposal.amount,
         proposal.status,
-        proposal.validUntil,
+        proposal.validUntil || null,
+        proposal.fileUrl,
+        proposal.fileName,
+        proposal.fileType,
         proposal.createdAt,
       ]
     )
@@ -2966,6 +3004,9 @@ app.put('/api/proposals/:id', (req, res) => {
       amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : proposal.amount,
       status: body.status ?? proposal.status,
       validUntil: body.validUntil ?? proposal.validUntil,
+      fileUrl: body.fileUrl ?? proposal.fileUrl,
+      fileName: body.fileName ?? proposal.fileName,
+      fileType: body.fileType ?? proposal.fileType,
     });
     return res.json({ proposal });
   }
@@ -2977,8 +3018,8 @@ app.put('/api/proposals/:id', (req, res) => {
       return pool
         .query(
           `UPDATE proposals SET
-             title=$1, client_name=$2, project_id=$3, project_name=$4, amount=$5, status=$6, valid_until=$7
-           WHERE id=$8
+             title=$1, client_name=$2, project_id=$3, project_name=$4, amount=$5, status=$6, valid_until=$7, file_url=$8, file_name=$9, file_type=$10
+           WHERE id=$11
            RETURNING *`,
           [
             body.title ?? current.title,
@@ -2988,6 +3029,9 @@ app.put('/api/proposals/:id', (req, res) => {
             body.amount !== undefined ? parseFloat(body.amount) || 0 : current.amount,
             body.status ?? current.status,
             body.validUntil ?? current.valid_until,
+            body.fileUrl ?? current.file_url,
+            body.fileName ?? current.file_name,
+            body.fileType ?? current.file_type,
             req.params.id,
           ]
         )

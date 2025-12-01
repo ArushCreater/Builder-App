@@ -85,7 +85,20 @@ export function EquipmentPage() {
       return apiClient.get<{ equipment: Equipment[] }>(`/equipment?${params}`);
     },
   });
-  const equipmentRows = equipment?.equipment || [];
+  const equipmentRows = useMemo(
+    () =>
+      (equipment?.equipment || []).map((e: any) => ({
+        ...e,
+        projectId: e.projectId || e.project_id || '',
+        projectName: e.projectName || e.project_name || '',
+        purchaseDate: e.purchaseDate || e.purchase_date || '',
+        purchasePrice: Number(e.purchasePrice ?? e.purchase_price ?? 0),
+        lastMaintenance: e.lastMaintenance || e.last_service || '',
+        nextMaintenance: e.nextMaintenance || e.next_maintenance || '',
+        status: e.status || 'available',
+      })),
+    [equipment?.equipment]
+  );
   const { data: projectsData } = useQuery({
     queryKey: ['projects', 'equipment'],
     queryFn: () => apiClient.get<{ projects: Array<{ id: string; name: string }> }>('/projects'),
@@ -128,10 +141,12 @@ export function EquipmentPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const project = formData.projectId ? projectsData?.projects.find(p => p.id === formData.projectId) : undefined;
     const payload = {
       ...formData,
       purchasePrice: parseFloat(formData.purchasePrice) || 0,
       projectId: formData.projectId || undefined,
+      projectName: formData.projectName || project?.name || '',
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, data: payload });
@@ -149,7 +164,7 @@ export function EquipmentPage() {
       location: item.location,
       assignedTo: item.assignedTo || '',
       projectId: item.projectId || '',
-      projectName: item.projectName || '-',
+      projectName: item.projectName || '',
       purchaseDate: item.purchaseDate,
       purchasePrice: item.purchasePrice.toString(),
       lastMaintenance: item.lastMaintenance || '',
@@ -415,7 +430,7 @@ export function EquipmentPage() {
                     </TableCell>
                     <TableCell>{item.type}</TableCell>
                     <TableCell>
-                      <Badge variant={statusColors[item.status]}>
+                      <Badge variant={statusColors[item.status as Equipment['status']]}>
                         {item.status}
                       </Badge>
                     </TableCell>

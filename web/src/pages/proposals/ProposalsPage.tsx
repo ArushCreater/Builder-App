@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
@@ -31,7 +31,7 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, FileText, Download, Send, Filter, ChevronDown, Trash2, Edit } from 'lucide-react';
+import { Plus, Search, FileText, Download, Filter, ChevronDown, Trash2, Edit, Eye, Image as ImageIcon } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
 interface Proposal {
@@ -44,6 +44,9 @@ interface Proposal {
   createdAt: string;
   projectName?: string;
   projectId?: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
 }
 
 interface ProjectOption {
@@ -76,6 +79,10 @@ export function ProposalsPage() {
     projectName: '',
     status: 'draft',
   });
+  const [uploadedFile, setUploadedFile] = useState<{ url: string; name: string; type: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data: projectsData } = useQuery({
@@ -93,7 +100,21 @@ export function ProposalsPage() {
       return apiClient.get<{ proposals: Proposal[] }>(`/proposals?${params}`);
     },
   });
-  const proposalRows = proposals?.proposals || [];
+  const proposalRows = useMemo(
+    () =>
+      (proposals?.proposals || []).map((p: any) => ({
+        ...p,
+        projectId: p.projectId || p.project_id || '',
+        projectName: p.projectName || p.project_name || '',
+        clientName: p.clientName || p.client_name || '',
+        validUntil: p.validUntil || p.valid_until || '',
+        amount: Number(p.amount ?? 0),
+        fileUrl: p.fileUrl || p.file_url,
+        fileName: p.fileName || p.file_name,
+        fileType: p.fileType || p.file_type,
+      })),
+    [proposals?.proposals]
+  );
   const projectOptions = projectsData?.projects || [];
 
   const totals = useMemo(() => {
@@ -121,6 +142,7 @@ export function ProposalsPage() {
         projectName: '',
         status: 'draft',
       });
+      setUploadedFile(null);
       toast({
         title: 'Saved',
         description: 'Proposal saved successfully',
@@ -154,13 +176,16 @@ export function ProposalsPage() {
       title: formData.title,
       clientName: formData.clientName,
       amount: parseFloat(formData.amount) || 0,
-      validUntil: formData.validUntil,
+      validUntil: formData.validUntil || undefined,
       projectId: formData.projectId || undefined,
       projectName:
         formData.projectId && projectOptions.find(p => p.id === formData.projectId)?.name
           ? projectOptions.find(p => p.id === formData.projectId)?.name
           : formData.projectName,
       status: formData.status as Proposal['status'],
+      fileUrl: uploadedFile?.url,
+      fileName: uploadedFile?.name,
+      fileType: uploadedFile?.type,
     });
   };
 
@@ -176,7 +201,43 @@ export function ProposalsPage() {
       projectName: proposal.projectName || '',
       status: proposal.status,
     });
+    setUploadedFile(
+      proposal.fileUrl
+        ? { url: proposal.fileUrl, name: proposal.fileName || '', type: proposal.fileType || '' }
+        : null
+    );
     setIsCreateDialogOpen(true);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: 'Error', description: 'File must be under 10MB', variant: 'destructive' });
+      return;
+    }
+    const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+    if (!allowed.includes(file.type)) {
+      toast({ title: 'Error', description: 'Only PDF, JPG, PNG allowed', variant: 'destructive' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setUploadedFile({
+        url: event.target?.result as string,
+        name: file.name,
+        type: file.type,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDownload = (proposal: Proposal) => {
+    if (!proposal.fileUrl || !proposal.fileName) return;
+    const link = document.createElement('a');
+    link.href = proposal.fileUrl;
+    link.download = proposal.fileName;
+    link.click();
   };
 
   const groupedByStatus = ['draft', 'sent', 'accepted', 'rejected'].map(status => ({
@@ -278,6 +339,23 @@ export function ProposalsPage() {
                       required
                     />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Attach File (PDF/Image)</Label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf,image/png,image/jpeg"
+                      onChange={handleFileUpload}
+                    />
+                    {uploadedFile && (
+                      <Badge variant="secondary" className="max-w-[200px] truncate">
+                        {uploadedFile.name}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">Up to 10MB. PDFs and images only.</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
@@ -408,7 +486,7 @@ export function ProposalsPage() {
                                 <div className="font-semibold text-gray-900">{proposal.title}</div>
                                 <div className="text-xs text-gray-500">{proposal.clientName}</div>
                               </div>
-                              <Badge variant={statusColors[proposal.status]}>{proposal.status}</Badge>
+                              <Badge variant={statusColors[proposal.status as Proposal['status']]}>{proposal.status}</Badge>
                             </div>
                             <div className="mt-2 flex items-center justify-between text-sm text-gray-700">
                               <span>{proposal.projectName || 'No project'}</span>
@@ -418,6 +496,12 @@ export function ProposalsPage() {
                               <ChevronDown className="h-3 w-3 rotate-180" />
                               Valid until {proposal.validUntil ? formatDate(proposal.validUntil) : 'N/A'}
                             </div>
+                            {proposal.fileName && (
+                              <div className="mt-2 flex items-center gap-2 text-xs text-blue-600">
+                                <FileText className="h-3 w-3" />
+                                <span className="truncate">{proposal.fileName}</span>
+                              </div>
+                            )}
                             <div className="mt-3 flex items-center justify-between">
                               <div className="flex gap-2">
                                 {(['draft', 'sent', 'accepted', 'rejected'] as Proposal['status'][]).map(s => (
@@ -432,12 +516,27 @@ export function ProposalsPage() {
                                 ))}
                               </div>
                               <div className="flex gap-1">
-                                <Button size="icon" variant="ghost">
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                                <Button size="icon" variant="ghost">
-                                  <Send className="h-4 w-4" />
-                                </Button>
+                                {proposal.fileUrl && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setPreviewFile({
+                                          url: proposal.fileUrl!,
+                                          name: proposal.fileName || '',
+                                          type: proposal.fileType || '',
+                                        });
+                                        setIsPreviewOpen(true);
+                                      }}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" onClick={() => handleDownload(proposal)}>
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
                                 <Button size="icon" variant="ghost" onClick={() => handleEdit(proposal)}>
                                   <Edit className="h-4 w-4" />
                                 </Button>
@@ -472,6 +571,7 @@ export function ProposalsPage() {
                           <TableHead>Project</TableHead>
                           <TableHead>Amount</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>File</TableHead>
                           <TableHead>Valid Until</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
@@ -486,16 +586,51 @@ export function ProposalsPage() {
                               </div>
                             </TableCell>
                             <TableCell>{proposal.clientName}</TableCell>
-                            <TableCell>{proposal.projectName || '—'}</TableCell>
+                            <TableCell>{proposal.projectName || '-'}</TableCell>
                             <TableCell className="font-medium">{formatCurrency(proposal.amount)}</TableCell>
                             <TableCell>
-                              <Badge variant={statusColors[proposal.status]}>
+                              <Badge variant={statusColors[proposal.status as Proposal['status']]}>
                                 {proposal.status}
                               </Badge>
                             </TableCell>
-                            <TableCell>{proposal.validUntil ? formatDate(proposal.validUntil) : '—'}</TableCell>
+                            <TableCell>
+                              {proposal.fileName ? (
+                                <div className="flex items-center gap-1 text-sm text-blue-600">
+                                  {proposal.fileType?.includes('pdf') ? (
+                                    <FileText className="h-4 w-4" />
+                                  ) : (
+                                    <ImageIcon className="h-4 w-4" />
+                                  )}
+                                  <span className="truncate max-w-[110px]">{proposal.fileName}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">No file</span>
+                              )}
+                            </TableCell>
+                            <TableCell>{proposal.validUntil ? formatDate(proposal.validUntil) : '-'}</TableCell>
                             <TableCell>
                               <div className="flex gap-1">
+                                {proposal.fileUrl && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setPreviewFile({
+                                          url: proposal.fileUrl!,
+                                          name: proposal.fileName || '',
+                                          type: proposal.fileType || '',
+                                        });
+                                        setIsPreviewOpen(true);
+                                      }}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" onClick={() => handleDownload(proposal)}>
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
                                 <Button size="icon" variant="ghost" onClick={() => handleEdit(proposal)}>
                                   <Edit className="h-4 w-4" />
                                 </Button>
@@ -515,8 +650,27 @@ export function ProposalsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Proposal Attachment</DialogTitle>
+          </DialogHeader>
+          {previewFile ? (
+            previewFile.type?.includes('pdf') ? (
+              <iframe src={previewFile.url} title="Proposal file" className="w-full h-[70vh] rounded-md border" />
+            ) : (
+              <img src={previewFile.url} alt="Proposal file" className="w-full h-auto rounded-md border" />
+            )
+          ) : (
+            <div className="text-sm text-gray-500">No file to preview.</div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 export default ProposalsPage;
+
+

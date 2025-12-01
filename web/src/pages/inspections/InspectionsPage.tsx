@@ -82,7 +82,19 @@ export function InspectionsPage() {
       return apiClient.get<{ inspections: Inspection[] }>(`/inspections?${params}`);
     },
   });
-  const inspectionRows = inspections?.inspections || [];
+  const inspectionRows = useMemo(
+    () =>
+      (inspections?.inspections || []).map((i: any) => ({
+        ...i,
+        projectId: i.projectId || i.project_id || '',
+        projectName: i.projectName || i.project_name || '',
+        scheduledDate: i.scheduledDate || i.scheduled_date || i.date || '',
+        completedDate: i.completedDate || i.completed_date || '',
+        status: i.status || 'scheduled',
+        notes: i.notes || '',
+      })),
+    [inspections?.inspections]
+  );
 
   const { data: projectsData } = useQuery({
     queryKey: ['projects', 'inspections'],
@@ -123,6 +135,12 @@ export function InspectionsPage() {
     const payload = {
       ...formData,
       projectId: formData.projectId || undefined,
+      projectName:
+        formData.projectId && projectsData?.projects.find((p) => p.id === formData.projectId)
+          ? projectsData.projects.find((p) => p.id === formData.projectId)?.name || ''
+          : formData.projectName,
+      scheduledDate: formData.scheduledDate || undefined,
+      completedDate: formData.completedDate || undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, data: payload });
@@ -432,7 +450,7 @@ export function InspectionsPage() {
                     <TableCell>{formatDate(inspection.scheduledDate)}</TableCell>
                     <TableCell>{inspection.inspector}</TableCell>
                     <TableCell>
-                      <Badge variant={statusColors[inspection.status]}>
+                      <Badge variant={statusColors[inspection.status as Inspection['status']]}>
                         {inspection.status}
                       </Badge>
                     </TableCell>
