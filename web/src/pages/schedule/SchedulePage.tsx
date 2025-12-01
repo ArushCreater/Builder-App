@@ -124,7 +124,15 @@ export function SchedulePage() {
   });
 
   const events = eventsData?.events || [];
-  const projects = projectsData?.projects || [];
+  const projects = useMemo(
+    () =>
+      (projectsData?.projects || []).map(p => ({
+        ...p,
+        startDate: normalizeDate((p as any).startDate || (p as any).start_date || p.startDate) || '',
+        endDate: normalizeDate((p as any).endDate || (p as any).end_date || p.endDate) || '',
+      })),
+    [projectsData?.projects]
+  );
   const tasks = tasksData?.tasks || [];
 
   const createMutation = useMutation({
@@ -210,22 +218,6 @@ export function SchedulePage() {
     setLocalEvents(filteredEvents);
   }, [filteredEvents]);
 
-  const minDate = useMemo(() => {
-    if (!localEvents.length) return undefined;
-    return localEvents.reduce(
-      (min, ev) => (new Date(ev.startDate) < new Date(min) ? ev.startDate : min),
-      localEvents[0].startDate
-    );
-  }, [localEvents]);
-
-  const maxDate = useMemo(() => {
-    if (!localEvents.length) return undefined;
-    return localEvents.reduce(
-      (max, ev) => (new Date(ev.endDate) > new Date(max) ? ev.endDate : max),
-      localEvents[0].endDate
-    );
-  }, [localEvents]);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const project = projects.find(p => p.id === formData.projectId);
@@ -262,31 +254,44 @@ export function SchedulePage() {
   };
 
   const ganttItems: GanttItem[] = useMemo(() => {
-    const combined: GanttItem[] = [
-      ...localEvents.map(e => ({
-        id: e.id,
-        label: e.title,
-        projectName: e.projectName,
-        start: e.startDate,
-        end: e.endDate,
-        type: e.type,
-        assignee: e.assignee,
-      })),
-      ...projects
-        .filter(p => p.startDate && p.endDate)
-        .map(p => ({
-          id: `proj-${p.id}`,
-          label: `${p.name} (Project)`,
-          projectName: p.name,
-          start: p.startDate!,
-          end: p.endDate!,
-          type: 'task' as ScheduleEvent['type'],
-          assignee: '',
-          isProject: true,
-        })),
-    ].sort((a, b) => a.start.localeCompare(b.start));
-    return combined;
+    const projectItems: GanttItem[] = projects
+      .filter(p => p.startDate && p.endDate)
+      .map(p => ({
+        id: `proj-${p.id}`,
+        label: `${p.name} (Project)`,
+        projectName: p.name,
+        start: p.startDate!,
+        end: p.endDate!,
+        type: 'task' as ScheduleEvent['type'],
+        assignee: '',
+        isProject: true,
+      }));
+
+    const eventItems: GanttItem[] = localEvents.map(e => ({
+      id: e.id,
+      label: e.title,
+      projectName: e.projectName,
+      start: e.startDate,
+      end: e.endDate,
+      type: e.type,
+      assignee: e.assignee,
+    }));
+
+    const sortByStart = (a: GanttItem, b: GanttItem) => (a.start || '').localeCompare(b.start || '');
+    return [...projectItems.sort(sortByStart), ...eventItems.sort(sortByStart)];
   }, [localEvents, projects]);
+
+  const minDate = useMemo(() => {
+    const dated = ganttItems.filter(ev => ev.start && ev.end);
+    if (!dated.length) return undefined;
+    return dated.reduce((min, ev) => (new Date(ev.start) < new Date(min) ? ev.start : min), dated[0].start);
+  }, [ganttItems]);
+
+  const maxDate = useMemo(() => {
+    const dated = ganttItems.filter(ev => ev.start && ev.end);
+    if (!dated.length) return undefined;
+    return dated.reduce((max, ev) => (new Date(ev.end) > new Date(max) ? ev.end : max), dated[0].end);
+  }, [ganttItems]);
 
   const timelineDays = useMemo(() => {
     const today = new Date();
