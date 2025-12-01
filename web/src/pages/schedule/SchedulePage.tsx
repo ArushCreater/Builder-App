@@ -894,20 +894,22 @@ export function SchedulePage() {
           ) : (
             <div className="p-6 h-full flex flex-col">
               <div className="flex items-center justify-between mb-6">
-                <div className="text-xl font-bold text-slate-800">
-                  {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                <div className="flex items-center gap-4">
+                  <h2 className="text-xl font-bold text-slate-800">
+                    {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                  </h2>
+                  <div className="flex items-center bg-white rounded-lg border border-slate-200 p-0.5 shadow-sm">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => goMonth(-1)}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => goMonth(1)}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 bg-white rounded-lg border border-slate-200 p-1 shadow-sm">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => goMonth(-1)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(new Date())}>
-                    <span className="text-xs font-semibold">Today</span>
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => goMonth(1)}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Button variant="outline" size="sm" onClick={() => { setCurrentMonth(new Date()); setSelectedDate(new Date().toISOString().split('T')[0]); }}>
+                  Today
+                </Button>
               </div>
               
               <div className="flex flex-col flex-1 gap-6">
