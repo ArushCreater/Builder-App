@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardHeader } from '../../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import {
   Select,
@@ -15,9 +15,10 @@ import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
-import { Calendar, List, Plus, Clock3, MapPin, GanttChartSquare, Filter, Trash2, Edit } from 'lucide-react';
-import { formatDate } from '../../lib/utils';
+import { Calendar as CalendarIcon, List, Plus, Clock3, MapPin, GanttChartSquare, Filter, Trash2, Edit, ChevronLeft, ChevronRight, Search, User, ZoomIn, ZoomOut, X } from 'lucide-react';
+import { formatDate, cn } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
+import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 
 interface ScheduleEvent {
   id: string;
@@ -51,11 +52,11 @@ interface Task {
   dueDate?: string;
 }
 
-const typeBadges: Record<ScheduleEvent['type'], { label: string; variant: 'secondary' | 'default' | 'warning' | 'destructive' | 'success' }> = {
+const typeBadges: Record<ScheduleEvent['type'], { label: string; variant: 'secondary' | 'default' | 'warning' | 'destructive' | 'success' | 'outline' }> = {
   task: { label: 'Task', variant: 'secondary' },
   meeting: { label: 'Meeting', variant: 'default' },
   inspection: { label: 'Inspection', variant: 'warning' },
-  delivery: { label: 'Delivery', variant: 'success' },
+  delivery: { label: 'Delivery', variant: 'outline' },
 };
 
 const normalizeDate = (value?: string | null) => {
@@ -64,12 +65,13 @@ const normalizeDate = (value?: string | null) => {
 };
 
 export function SchedulePage() {
-  const [view, setView] = useState<'calendar' | 'list' | 'gantt'>('calendar');
+  const [view, setView] = useState<'calendar' | 'list' | 'gantt'>('gantt');
   const [selectedProject, setSelectedProject] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [localEvents, setLocalEvents] = useState<ScheduleEvent[]>([]);
   const ganttRef = useRef<HTMLDivElement | null>(null);
@@ -80,7 +82,13 @@ export function SchedulePage() {
     end: string;
     startX: number;
   } | null>(null);
-  const CELL_WIDTH = 72; // px per day in the Gantt grid for predictable interaction and tighter view
+  
+  // Configuration for Gantt View
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const CELL_WIDTH = 100 * zoomLevel; // Significantly increased base width
+  const ROW_HEIGHT = 64; // Taller rows
+  const BAR_HEIGHT = 36; // Taller bars
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -177,10 +185,11 @@ export function SchedulePage() {
     const filtered = merged.filter(e => {
       if (selectedProject !== 'all' && e.projectId !== selectedProject) return false;
       if (typeFilter !== 'all' && e.type !== typeFilter) return false;
+      if (searchQuery && !e.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     });
     return filtered.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
-  }, [events, tasks, selectedProject, typeFilter]);
+  }, [events, tasks, selectedProject, typeFilter, searchQuery]);
 
   useEffect(() => {
     setLocalEvents(filteredEvents);
@@ -235,44 +244,63 @@ export function SchedulePage() {
         start: e.startDate,
         end: e.endDate,
         type: e.type,
+        assignee: e.assignee,
       })),
       ...projects
         .filter(p => p.startDate && p.endDate)
         .map(p => ({
           id: `proj-${p.id}`,
-          label: `${p.name} (project)`,
+          label: `${p.name} (Project)`,
           projectName: p.name,
           start: p.startDate!,
           end: p.endDate!,
           type: 'task' as ScheduleEvent['type'],
+          assignee: '',
+          isProject: true,
         })),
     ].sort((a, b) => a.start.localeCompare(b.start));
     return combined;
   }, [localEvents, projects]);
 
   const timelineDays = useMemo(() => {
-    if (!minDate || !maxDate) {
-      const today = new Date();
-      const start = new Date(today);
-      start.setDate(today.getDate() - 7);
-      const end = new Date(today);
-      end.setDate(today.getDate() + 30);
-      const days: string[] = [];
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        days.push(new Date(d).toISOString().split('T')[0]);
-      }
-      return days;
-    }
-    const start = new Date(minDate);
-    start.setDate(start.getDate() - 3);
-    const end = new Date(maxDate);
-    end.setDate(end.getDate() + 7);
+    const today = new Date();
+    const start = minDate ? new Date(minDate) : new Date(today);
+    const end = maxDate ? new Date(maxDate) : new Date(today);
+    
+    start.setDate(start.getDate() - 5);
+    end.setDate(end.getDate() + 14);
+
     const days: string[] = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       days.push(new Date(d).toISOString().split('T')[0]);
     }
     return days;
   }, [minDate, maxDate]);
+
+  const timelineMonths = useMemo(() => {
+    const months: { label: string; days: number; startIdx: number }[] = [];
+    let currentMonth = '';
+    let count = 0;
+    
+    timelineDays.forEach((day, idx) => {
+      const d = new Date(day);
+      const monthLabel = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+      
+      if (monthLabel !== currentMonth) {
+        if (currentMonth) {
+          months.push({ label: currentMonth, days: count, startIdx: idx - count });
+        }
+        currentMonth = monthLabel;
+        count = 1;
+      } else {
+        count++;
+      }
+    });
+    if (currentMonth) {
+      months.push({ label: currentMonth, days: count, startIdx: timelineDays.length - count });
+    }
+    return months;
+  }, [timelineDays]);
 
   const computeBar = (start: string, end: string) => {
     const startIdx = timelineDays.findIndex(d => d === start);
@@ -288,7 +316,6 @@ export function SchedulePage() {
     setLocalEvents(prev =>
       prev.map(ev => (ev.id === id ? { ...ev, startDate: newStart, endDate: newEnd } : ev))
     );
-    // Persist to backend (only for real schedule events, not derived tasks)
     if (!id.startsWith('task-') && !id.startsWith('proj-')) {
       updateDatesMutation.mutate({ id, startDate: newStart, endDate: newEnd });
     }
@@ -326,7 +353,7 @@ export function SchedulePage() {
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
     };
-  }, [dragState, timelineDays]);
+  }, [dragState, timelineDays, CELL_WIDTH]);
 
   const handleBarMouseDown = (e: React.MouseEvent, id: string, mode: 'move' | 'start' | 'end', start: string, end: string) => {
     e.preventDefault();
@@ -349,149 +376,181 @@ export function SchedulePage() {
     setCurrentMonth(next);
   };
 
-  const eventsForDay = (dateStr: string) =>
-    filteredEvents.filter(e => {
+  const eventsForDay = (dateStr: string | null) => {
+    if (!dateStr) return [];
+    return filteredEvents.filter(e => {
       const start = normalizeDate(e.startDate);
       const end = normalizeDate(e.endDate || e.startDate);
       if (!start || !dateStr) return false;
       return start <= dateStr && dateStr <= end;
     });
+  };
+
+  const getBarColor = (type: string, isProject: boolean) => {
+      if (isProject) return 'bg-slate-800 border-slate-900 text-white';
+      switch (type) {
+        case 'meeting': return 'bg-emerald-500 border-emerald-600 text-white';
+        case 'inspection': return 'bg-amber-500 border-amber-600 text-white';
+        case 'delivery': return 'bg-purple-500 border-purple-600 text-white';
+        default: return 'bg-blue-500 border-blue-600 text-white';
+      }
+  };
+
+  const handleZoom = (direction: 'in' | 'out') => {
+      if (direction === 'in') {
+          setZoomLevel(prev => Math.min(prev + 0.2, 2.0));
+      } else {
+          setZoomLevel(prev => Math.max(prev - 0.2, 0.6));
+      }
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 h-full flex flex-col">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Schedule</h1>
-          <p className="text-gray-500 mt-1">Calendar, list, and Gantt views for all project timelines.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Schedule</h1>
+          <p className="text-slate-500 mt-1">Manage project timelines and resource allocation.</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              {editingId ? 'Edit Event' : 'Add Event'}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <form onSubmit={handleSubmit}>
-              <DialogHeader>
-                <DialogTitle>{editingId ? 'Edit Event' : 'Create Event'}</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Project</Label>
-                    <Select
-                      value={formData.projectId || 'none'}
-                      onValueChange={(value) => {
-                        if (value === 'none') {
-                          setFormData({ ...formData, projectId: '' });
-                          return;
-                        }
-                        setFormData({ ...formData, projectId: value });
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select project" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No project</SelectItem>
-                        {projects.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Type</Label>
-                    <Select
-                      value={formData.type}
-                      onValueChange={(value: ScheduleEvent['type']) => setFormData({ ...formData, type: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="task">Task</SelectItem>
-                        <SelectItem value="meeting">Meeting</SelectItem>
-                        <SelectItem value="inspection">Inspection</SelectItem>
-                        <SelectItem value="delivery">Delivery</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Start</Label>
-                    <Input
-                      type="date"
-                      value={formData.startDate}
-                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>End</Label>
-                    <Input
-                      type="date"
-                      value={formData.endDate}
-                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Assignee</Label>
-                  <Input
-                    value={formData.assignee}
-                    onChange={(e) => setFormData({ ...formData, assignee: e.target.value })}
-                    placeholder="Who is responsible?"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Input
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Details, milestones, or notes"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Location</Label>
-                  <Input
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="Site or meeting location"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); setEditingId(null); }}>
-                  Cancel
+        <div className="flex items-center gap-2">
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+                <Button className="shadow-sm">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Event
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Saving...' : 'Save Event'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+                <form onSubmit={handleSubmit}>
+                <DialogHeader>
+                    <DialogTitle>{editingId ? 'Edit Event' : 'Create Event'}</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                    <Label htmlFor="title">Title</Label>
+                    <Input
+                        id="title"
+                        value={formData.title}
+                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                        required
+                        placeholder="e.g., Foundation Pour"
+                    />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Project</Label>
+                        <Select
+                        value={formData.projectId || 'none'}
+                        onValueChange={(value) => {
+                            if (value === 'none') {
+                            setFormData({ ...formData, projectId: '' });
+                            return;
+                            }
+                            setFormData({ ...formData, projectId: value });
+                        }}
+                        >
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select project" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">No project</SelectItem>
+                            {projects.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Type</Label>
+                        <Select
+                        value={formData.type}
+                        onValueChange={(value: ScheduleEvent['type']) => setFormData({ ...formData, type: value })}
+                        >
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="task">Task</SelectItem>
+                            <SelectItem value="meeting">Meeting</SelectItem>
+                            <SelectItem value="inspection">Inspection</SelectItem>
+                            <SelectItem value="delivery">Delivery</SelectItem>
+                        </SelectContent>
+                        </Select>
+                    </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Start Date</Label>
+                        <Input
+                        type="date"
+                        value={formData.startDate}
+                        onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                        required
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>End Date</Label>
+                        <Input
+                        type="date"
+                        value={formData.endDate}
+                        onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                        required
+                        />
+                    </div>
+                    </div>
+                    <div className="space-y-2">
+                    <Label>Assignee</Label>
+                    <Input
+                        value={formData.assignee}
+                        onChange={(e) => setFormData({ ...formData, assignee: e.target.value })}
+                        placeholder="Who is responsible?"
+                    />
+                    </div>
+                    <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Input
+                        value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        placeholder="Details, milestones, or notes"
+                    />
+                    </div>
+                    <div className="space-y-2">
+                    <Label>Location</Label>
+                    <Input
+                        value={formData.location}
+                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                        placeholder="Site or meeting location"
+                    />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); setEditingId(null); }}>
+                    Cancel
+                    </Button>
+                    <Button type="submit" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? 'Saving...' : 'Save Event'}
+                    </Button>
+                </DialogFooter>
+                </form>
+            </DialogContent>
+            </Dialog>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex gap-2">
+      <Card className="flex-1 flex flex-col shadow-sm border-slate-200 overflow-hidden">
+        <CardHeader className="border-b border-slate-100 pb-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-[200px]">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Input 
+                    placeholder="Search events..." 
+                    className="pl-8 h-9" 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
               <Select value={selectedProject} onValueChange={setSelectedProject}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-[180px] h-9">
                   <SelectValue placeholder="Project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -504,7 +563,7 @@ export function SchedulePage() {
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[140px] h-9">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -516,68 +575,109 @@ export function SchedulePage() {
                 </SelectContent>
               </Select>
             </div>
-            <Tabs value={view} onValueChange={(v) => setView(v as typeof view)}>
-              <TabsList>
-                <TabsTrigger value="calendar">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Calendar
-                </TabsTrigger>
-                <TabsTrigger value="list">
-                  <List className="mr-2 h-4 w-4" />
-                  List
-                </TabsTrigger>
-                <TabsTrigger value="gantt">
-                  <GanttChartSquare className="mr-2 h-4 w-4" />
-                  Gantt
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+
+            <div className="flex items-center gap-2">
+                {view === 'gantt' && (
+                    <div className="flex items-center gap-1 mr-2 bg-slate-100 rounded-md p-1">
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleZoom('out')}>
+                            <ZoomOut className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleZoom('in')}>
+                            <ZoomIn className="h-3.5 w-3.5" />
+                        </Button>
+                    </div>
+                )}
+                
+                <Tabs value={view} onValueChange={(v) => setView(v as typeof view)} className="bg-slate-100 p-1 rounded-md">
+                <TabsList className="h-8 bg-transparent">
+                    <TabsTrigger value="gantt" className="h-7 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <GanttChartSquare className="mr-2 h-3.5 w-3.5" />
+                    Gantt
+                    </TabsTrigger>
+                    <TabsTrigger value="calendar" className="h-7 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                    Calendar
+                    </TabsTrigger>
+                    <TabsTrigger value="list" className="h-7 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <List className="mr-2 h-3.5 w-3.5" />
+                    List
+                    </TabsTrigger>
+                </TabsList>
+                </Tabs>
+            </div>
           </div>
         </CardHeader>
-        <CardContent>
+
+        <CardContent className="p-0 flex-1 overflow-hidden">
           {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="text-gray-500">Loading...</div>
+            <div className="flex items-center justify-center h-full min-h-[400px]">
+              <div className="flex flex-col items-center gap-2">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+                  <p className="text-slate-500 text-sm">Loading schedule...</p>
+              </div>
             </div>
           ) : view === 'list' ? (
-            <div className="space-y-4">
+            <div className="p-6 overflow-y-auto h-full space-y-3">
               {filteredEvents.length === 0 ? (
-                <div className="text-center text-gray-500 py-12">
-                  <Calendar className="h-10 w-10 mx-auto mb-3 text-gray-400" />
-                  <p className="font-medium">No events scheduled</p>
-                  <p className="text-sm">Add events to see them here.</p>
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="bg-slate-50 p-4 rounded-full mb-4">
+                    <CalendarIcon className="h-8 w-8 text-slate-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-slate-900">No events found</h3>
+                  <p className="text-slate-500 max-w-sm mt-1">
+                    Try adjusting your filters or search terms, or add a new event to get started.
+                  </p>
+                  <Button className="mt-4" onClick={() => { setIsDialogOpen(true); setEditingId(null); }}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Event
+                  </Button>
                 </div>
               ) : (
                 filteredEvents.map((event) => (
                   <div
                     key={event.id}
-                    className="flex items-start gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="group flex items-center gap-4 p-4 border border-slate-100 rounded-lg hover:border-indigo-100 hover:bg-indigo-50/30 transition-all bg-white shadow-sm"
                   >
-                    <div className="flex-1">
+                    <div className={cn(
+                        "h-12 w-12 rounded-lg flex items-center justify-center shrink-0",
+                        event.type === 'meeting' ? 'bg-emerald-100 text-emerald-600' :
+                        event.type === 'inspection' ? 'bg-amber-100 text-amber-600' :
+                        event.type === 'delivery' ? 'bg-purple-100 text-purple-600' :
+                        'bg-blue-100 text-blue-600'
+                    )}>
+                        {event.type === 'meeting' ? <User className="h-6 w-6" /> :
+                         event.type === 'inspection' ? <Search className="h-6 w-6" /> :
+                         event.type === 'delivery' ? <MapPin className="h-6 w-6" /> :
+                         <Clock3 className="h-6 w-6" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-gray-900">{event.title}</h3>
-                        <Badge variant={typeBadges[event.type].variant}>{typeBadges[event.type].label}</Badge>
+                        <h3 className="font-semibold text-slate-900 truncate">{event.title}</h3>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-normal border-slate-200">
+                            {typeBadges[event.type].label}
+                        </Badge>
                       </div>
-                      <p className="text-sm text-gray-600">{event.projectName || 'No project'}</p>
-                      <p className="text-sm text-gray-500 mt-1">{event.description}</p>
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Clock3 className="h-4 w-4" />
-                          {formatDate(event.startDate)} - {formatDate(event.endDate)}
+                      <div className="flex items-center gap-4 text-xs text-slate-500">
+                        <span className="flex items-center gap-1.5 font-medium text-slate-600">
+                           {event.projectName || 'General Task'}
                         </span>
                         <span className="flex items-center gap-1">
-                          <MapPin className="h-4 w-4" />
-                          {event.location || '—'}
+                          <Clock3 className="h-3 w-3" />
+                          {formatDate(event.startDate)} {event.endDate !== event.startDate && `— ${formatDate(event.endDate)}`}
                         </span>
-                        <span>Assigned to: {event.assignee || 'Unassigned'}</span>
+                        {event.assignee && (
+                            <span className="flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                {event.assignee}
+                            </span>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button size="icon" variant="ghost" onClick={() => handleEdit(event)}>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-indigo-600" onClick={() => handleEdit(event)}>
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(event.id)}>
-                        <Trash2 className="h-4 w-4 text-red-500" />
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-red-600" onClick={() => deleteMutation.mutate(event.id)}>
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -585,252 +685,314 @@ export function SchedulePage() {
               )}
             </div>
           ) : view === 'gantt' ? (
-            <div className="space-y-4 fade-in">
+            <div className="flex flex-col h-full bg-slate-50/50">
+              {/* Gantt implementation ... (omitted for brevity) ... same as before */}
               {ganttItems.length === 0 ? (
-                <div className="text-center text-gray-500 py-12">No timelines yet. Add events or set project dates.</div>
+                <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                    <p>No timeline data available.</p>
+                </div>
               ) : (
-                <div className="border border-gray-200 rounded-xl overflow-hidden shadow-md">
-                  <div className="flex border-b border-gray-100 bg-gray-50 text-xs text-gray-600">
-                    <div className="w-64 px-3 py-3 font-semibold">Item</div>
-                    <div className="flex-1 overflow-x-auto">
-                      <div className="min-w-[900px]">
-                        <div className="grid" style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${CELL_WIDTH}px)` }}>
-                          {timelineDays.map((d) => (
-                            <div key={d} className="px-2 py-2 text-center border-l border-gray-100 bg-white">
-                              {new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                <div className="flex flex-1 overflow-hidden">
+                  <div className="w-[300px] flex-shrink-0 border-r border-slate-200 bg-white flex flex-col z-10 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)]">
+                    <div className="h-[80px] border-b border-slate-200 bg-slate-50/80 p-4 font-semibold text-sm text-slate-700 flex items-center">
+                        Task Name
+                    </div>
+                    <div className="overflow-y-hidden flex-1"> 
+                         <div className="flex flex-col">
+                            {ganttItems.map((item, i) => (
+                                <div 
+                                    key={item.id} 
+                                    className="border-b border-slate-100 px-4 flex items-center justify-between hover:bg-slate-50 group transition-colors"
+                                    style={{ height: ROW_HEIGHT }}
+                                >
+                                    <div className="flex-1 min-w-0 pr-2">
+                                        <div className="font-medium text-sm text-slate-900 truncate flex items-center gap-2">
+                                            {item.isProject && <Badge variant="secondary" className="h-4 px-1 text-[10px]">PROJ</Badge>}
+                                            {item.label}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 truncate">
+                                            {item.projectName}
+                                        </div>
+                                    </div>
+                                    {item.assignee && (
+                                        <Avatar className="h-6 w-6 border border-white shadow-sm">
+                                            <AvatarFallback className="text-[10px] bg-indigo-100 text-indigo-700">
+                                                {item.assignee.substring(0, 2).toUpperCase()}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                    )}
+                                </div>
+                            ))}
+                         </div>
                     </div>
                   </div>
-                  <div className="flex">
-                    <div className="w-64 border-r border-gray-100 bg-white">
-                      {ganttItems.map((item) => (
-                        <div key={item.id} className="px-3 py-3 border-b border-gray-100">
-                          <div className="font-semibold text-sm text-gray-900">{item.label}</div>
-                          <div className="text-xs text-gray-500">{item.projectName || 'No project'}</div>
+
+                  <div className="flex-1 overflow-auto bg-white" ref={ganttRef}>
+                    <div className="min-w-max">
+                        <div className="sticky top-0 z-20 bg-white border-b border-slate-200 h-[80px]">
+                            <div className="flex h-1/2 border-b border-slate-100">
+                                {timelineMonths.map((month, i) => (
+                                    <div 
+                                        key={i} 
+                                        className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50 border-r border-slate-100 whitespace-nowrap overflow-hidden text-ellipsis"
+                                        style={{ width: month.days * CELL_WIDTH }}
+                                    >
+                                        {month.label}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex h-1/2">
+                                {timelineDays.map((d, i) => {
+                                    const date = new Date(d);
+                                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                                    const isToday = d === new Date().toISOString().split('T')[0];
+                                    return (
+                                        <div 
+                                            key={d} 
+                                            className={cn(
+                                                "flex-shrink-0 border-r border-slate-100 text-[10px] flex flex-col items-center justify-center font-medium",
+                                                isWeekend ? "bg-slate-50 text-slate-400" : "text-slate-600",
+                                                isToday ? "bg-indigo-50/50 text-indigo-600 font-bold" : ""
+                                            )}
+                                            style={{ width: CELL_WIDTH }}
+                                        >
+                                            <span className="opacity-50 text-[9px] uppercase">{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                                            <span>{date.getDate()}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex-1 overflow-x-auto bg-white" ref={ganttRef}>
-                      <div className="relative min-w-[900px]">
-                        <div className="grid" style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${CELL_WIDTH}px)` }}>
-                          {timelineDays.map((d) => (
-                            <div
-                              key={d}
-                              className="h-full border-l border-gray-100 last:border-r border-dashed border-gray-200"
-                              onClick={(e) => {
-                                const projectId = selectedProject !== 'all' ? selectedProject : '';
-                                setFormData({
-                                  ...formData,
-                                  projectId,
-                                  startDate: d,
-                                  endDate: d,
-                                });
-                                setEditingId(null);
-                                setIsDialogOpen(true);
-                                e.stopPropagation();
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <div className="absolute inset-0 pointer-events-none">
-                          {ganttItems.map((item, idx) => {
-                            const bar = computeBar(item.start, item.end);
-                            const top = idx * 64 + 10;
-                            const today = new Date().toISOString().split('T')[0];
-                            const todayIdx = timelineDays.findIndex(d => d === today);
-                            return (
-                              <div key={item.id} className="absolute left-0 right-0 slide-up" style={{ top }}>
-                                <div
-                                  className="absolute h-10 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 shadow-lg flex items-center text-xs text-white px-3 gap-2 cursor-grab ring-1 ring-white/40"
-                                  style={{
-                                    left: `calc(${bar.left} * ${CELL_WIDTH}px)`,
-                                    width: `calc(${bar.width} * ${CELL_WIDTH}px)`,
-                                    transition: 'transform 120ms ease, box-shadow 120ms ease',
-                                  }}
-                                  onMouseDown={(e) => handleBarMouseDown(e, item.id, 'move', item.start, item.end)}
-                                >
-                                  <span className="font-semibold">{item.label}</span>
+
+                        <div className="relative">
+                            <div className="absolute inset-0 flex pointer-events-none">
+                                {timelineDays.map((d, i) => {
+                                    const date = new Date(d);
+                                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                                    const isToday = d === new Date().toISOString().split('T')[0];
+                                    return (
+                                        <div 
+                                            key={d} 
+                                            className={cn(
+                                                "h-full border-r border-slate-100 flex-shrink-0",
+                                                isWeekend ? "bg-slate-50/40" : "",
+                                                isToday ? "bg-indigo-50/30" : ""
+                                            )}
+                                            style={{ width: CELL_WIDTH }}
+                                        />
+                                    );
+                                })}
+                            </div>
+
+                            <div className="relative">
+                                {ganttItems.map((item, i) => (
+                                    <div 
+                                        key={item.id} 
+                                        className="border-b border-slate-100 w-full relative group hover:bg-slate-50/50 transition-colors"
+                                        style={{ height: ROW_HEIGHT }}
+                                    />
+                                ))}
+
+                                <div className="absolute inset-0 pointer-events-none">
+                                    {ganttItems.map((item, idx) => {
+                                        const bar = computeBar(item.start, item.end);
+                                        const top = idx * ROW_HEIGHT + (ROW_HEIGHT - BAR_HEIGHT) / 2;
+                                        const height = BAR_HEIGHT;
+                                        
+                                        const isProject = (item as any).isProject;
+                                        const barColorClass = getBarColor(item.type, isProject);
+
+                                        return (
+                                            <div key={item.id} className="absolute left-0 right-0 pointer-events-auto" style={{ top, height }}>
+                                                <div
+                                                    className={cn(
+                                                        "absolute rounded-md shadow-sm border text-[11px] text-white px-3 flex items-center gap-2 cursor-grab select-none hover:shadow-md transition-shadow overflow-hidden whitespace-nowrap",
+                                                        barColorClass
+                                                    )}
+                                                    style={{
+                                                        left: `calc(${bar.left} * ${CELL_WIDTH}px + 4px)`,
+                                                        width: `calc(${bar.width} * ${CELL_WIDTH}px - 8px)`,
+                                                        height: '100%'
+                                                    }}
+                                                    onMouseDown={(e) => handleBarMouseDown(e, item.id, 'move', item.start, item.end)}
+                                                    title={`${item.label} (${item.start} - ${item.end})`}
+                                                >
+                                                    <span className="font-medium truncate flex-1 text-sm">{item.label}</span>
+                                                </div>
+                                                
+                                                {!isProject && (
+                                                    <>
+                                                        <div
+                                                            className="absolute w-2 h-full cursor-w-resize z-10 hover:bg-white/20 rounded-l-md"
+                                                            style={{ left: `calc(${bar.left} * ${CELL_WIDTH}px + 4px)` }}
+                                                            onMouseDown={(e) => handleBarMouseDown(e, item.id, 'start', item.start, item.end)}
+                                                        />
+                                                        <div
+                                                            className="absolute w-2 h-full cursor-e-resize z-10 hover:bg-white/20 rounded-r-md"
+                                                            style={{ left: `calc(${bar.left + bar.width} * ${CELL_WIDTH}px - 12px)` }}
+                                                            onMouseDown={(e) => handleBarMouseDown(e, item.id, 'end', item.start, item.end)}
+                                                        />
+                                                    </>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+
+                                    {(() => {
+                                        const today = new Date().toISOString().split('T')[0];
+                                        const todayIdx = timelineDays.findIndex(d => d === today);
+                                        if (todayIdx >= 0) {
+                                            return (
+                                                <div 
+                                                    className="absolute top-0 bottom-0 border-l-2 border-red-500 z-30 pointer-events-none opacity-60"
+                                                    style={{ left: `calc(${todayIdx} * ${CELL_WIDTH}px + ${CELL_WIDTH/2}px)` }}
+                                                >
+                                                    <div className="absolute -top-1 -left-1 w-2 h-2 bg-red-500 rounded-full" />
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                 </div>
-                                <div
-                                  className="absolute h-10 w-2 bg-indigo-700 rounded-l cursor-ew-resize"
-                                  style={{
-                                    left: `calc(${bar.left} * ${CELL_WIDTH}px)`,
-                                  }}
-                                  onMouseDown={(e) => handleBarMouseDown(e, item.id, 'start', item.start, item.end)}
-                                />
-                                <div
-                                  className="absolute h-10 w-2 bg-indigo-700 rounded-r cursor-ew-resize"
-                                  style={{
-                                    left: `calc(${bar.left + bar.width} * ${CELL_WIDTH}px - 8px)`,
-                                  }}
-                                  onMouseDown={(e) => handleBarMouseDown(e, item.id, 'end', item.start, item.end)}
-                                />
-                                {todayIdx >= 0 && (
-                                  <div
-                                    className="absolute top-[-8px] bottom-[-4px] w-[2px] bg-red-500"
-                                    style={{ left: `calc(${todayIdx} * ${CELL_WIDTH}px)` }}
-                                  >
-                                    <div className="absolute -top-3 left-[-12px] text-[10px] text-red-600">Today</div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                            </div>
                         </div>
-                      </div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-          ) : view === 'calendar' ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-lg font-semibold">
-                  {currentMonth.toLocaleString('default', { month: 'long' })} {currentMonth.getFullYear()}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => goMonth(-1)}>Prev</Button>
-                  <Button variant="outline" size="sm" onClick={() => goMonth(1)}>Next</Button>
-                </div>
-              </div>
-              <div className="grid grid-cols-7 gap-2 text-center text-xs text-gray-500">
-                {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-                  <div key={d} className="font-semibold">{d}</div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-2">
-                {daysInMonth.map((day, idx) => {
-                  if (!day) return <div key={`pad-${idx}`} />;
-                  const dateStr = day.toISOString().split('T')[0];
-                  const hasEvents = eventsForDay(dateStr).length > 0;
-                  const isSelected = selectedDate === dateStr;
-                  const dayEvents = eventsForDay(dateStr);
-                  const preview = dayEvents.slice(0, 2);
-                  return (
-                    <button
-                      key={dateStr}
-                      onClick={() => setSelectedDate(dateStr)}
-                      className={`rounded-lg border p-2 text-left transition-all ${
-                        isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-gray-800">{day.getDate()}</span>
-                        {hasEvents && <span className="h-2 w-2 rounded-full bg-indigo-500" />}
-                      </div>
-                      {hasEvents && (
-                        <div className="mt-2 space-y-1">
-                          {preview.map((e) => (
-                            <div key={e.id} className="flex items-center gap-1 text-xs text-gray-700">
-                              <span
-                                className="h-2 w-2 rounded-full"
-                                style={{
-                                  background:
-                                    e.type === 'meeting'
-                                      ? '#10b981'
-                                      : e.type === 'inspection'
-                                        ? '#f59e0b'
-                                        : e.type === 'delivery'
-                                          ? '#6366f1'
-                                          : '#0ea5e9',
-                                }}
-                              />
-                              <span className="truncate">{e.title}</span>
-                            </div>
-                          ))}
-                          {dayEvents.length > preview.length && (
-                            <div className="text-[10px] text-indigo-600">+{dayEvents.length - preview.length} more</div>
-                          )}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">
-                  {selectedDate ? `Events on ${formatDate(selectedDate)}` : 'Events'}
-                </h3>
-                <div className="space-y-3">
-                  {eventsForDay(selectedDate).length === 0 && (
-                    <div className="text-sm text-gray-500">No events for this day.</div>
-                  )}
-                  {eventsForDay(selectedDate).map(event => (
-                    <div key={event.id} className="rounded-md border border-gray-200 bg-white p-3 shadow-xs">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-semibold text-gray-900">{event.title}</div>
-                          <div className="text-xs text-gray-500">{event.projectName || 'No project'}</div>
-                        </div>
-                        <Badge variant={typeBadges[event.type].variant}>{typeBadges[event.type].label}</Badge>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-600 mt-2">
-                        <Clock3 className="h-3 w-3" />
-                        <span>
-                          {formatDate(event.startDate)}
-                          {event.startDate !== event.endDate ? ` → ${formatDate(event.endDate)}` : ''}
-                        </span>
-                        {event.location && (
-                          <>
-                            <MapPin className="h-3 w-3" />
-                            <span>{event.location}</span>
-                          </>
-                        )}
-                      </div>
-                      {event.description && <div className="text-xs text-gray-600 mt-2">{event.description}</div>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Filter className="h-4 w-4 text-gray-400" />
-                  <span className="font-semibold text-gray-800">Upcoming</span>
+            <div className="p-6 h-full flex flex-col">
+              <div className="flex items-center justify-between mb-6">
+                <div className="text-xl font-bold text-slate-800">
+                  {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
                 </div>
-                {filteredEvents.slice(0, 5).map((event) => (
-                  <div key={event.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                    <div>
-                      <div className="font-semibold text-gray-900">{event.title}</div>
-                      <div className="text-xs text-gray-500">
-                        {event.projectName || 'No project'} • {formatDate(event.startDate)}
-                      </div>
-                    </div>
-                    <Badge variant={typeBadges[event.type].variant}>{typeBadges[event.type].label}</Badge>
-                  </div>
-                ))}
-                {filteredEvents.length === 0 && <div className="text-sm text-gray-500 py-4">No upcoming events</div>}
+                <div className="flex items-center gap-2 bg-white rounded-lg border border-slate-200 p-1 shadow-sm">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => goMonth(-1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(new Date())}>
+                    <span className="text-xs font-semibold">Today</span>
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => goMonth(1)}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                  <span className="font-semibold text-gray-800">Highlights</span>
+              
+              <div className="flex flex-col flex-1 gap-6">
+                <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden flex-1 shadow-sm min-h-[400px]">
+                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                    <div key={d} className="bg-slate-50 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        {d}
+                    </div>
+                    ))}
+                    
+                    {daysInMonth.map((day, idx) => {
+                    if (!day) return <div key={`pad-${idx}`} className="bg-white min-h-[80px]" />;
+                    const dateStr = day.toISOString().split('T')[0];
+                    const dayEvents = eventsForDay(dateStr);
+                    const isSelected = selectedDate === dateStr;
+                    const isToday = dateStr === new Date().toISOString().split('T')[0];
+                    
+                    return (
+                        <div
+                        key={dateStr}
+                        onClick={() => setSelectedDate(dateStr)}
+                        className={cn(
+                            "bg-white p-2 min-h-[80px] transition-colors cursor-pointer hover:bg-slate-50 flex flex-col gap-1",
+                            isSelected && "ring-2 ring-indigo-500 ring-inset z-10",
+                            isToday && "bg-indigo-50/30"
+                        )}
+                        >
+                        <div className="flex items-center justify-between mb-1">
+                            <span className={cn(
+                                "text-sm font-medium h-7 w-7 flex items-center justify-center rounded-full",
+                                isToday ? "bg-indigo-600 text-white" : "text-slate-700"
+                            )}>
+                                {day.getDate()}
+                            </span>
+                            {dayEvents.length > 0 && (
+                                <span className="text-[10px] font-medium text-slate-400">
+                                    {dayEvents.length}
+                                </span>
+                            )}
+                        </div>
+                        
+                        <div className="space-y-1 overflow-y-auto max-h-[60px] custom-scrollbar">
+                            {dayEvents.slice(0, 3).map((e) => (
+                                <div 
+                                    key={e.id} 
+                                    className={cn(
+                                        "text-[10px] px-1.5 py-0.5 rounded truncate border border-transparent",
+                                        e.type === 'meeting' ? "bg-emerald-100 text-emerald-700" :
+                                        e.type === 'inspection' ? "bg-amber-100 text-amber-700" :
+                                        e.type === 'delivery' ? "bg-purple-100 text-purple-700" :
+                                        "bg-blue-100 text-blue-700"
+                                    )}
+                                    title={e.title}
+                                >
+                                    {e.title}
+                                </div>
+                            ))}
+                        </div>
+                        </div>
+                    );
+                    })}
                 </div>
-                <div className="space-y-2 text-sm text-gray-700">
-                  <div className="flex items-center justify-between">
-                    <span>Total events</span>
-                    <span className="font-semibold">{filteredEvents.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Meetings</span>
-                    <span className="font-semibold">{filteredEvents.filter(e => e.type === 'meeting').length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Inspections</span>
-                    <span className="font-semibold">{filteredEvents.filter(e => e.type === 'inspection').length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Deliveries</span>
-                    <span className="font-semibold">{filteredEvents.filter(e => e.type === 'delivery').length}</span>
-                  </div>
-                </div>
+
+                {selectedDate && (
+                    <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 animate-in slide-in-from-top-2 duration-200">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-slate-800">
+                                Events on {formatDate(selectedDate)}
+                            </h3>
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedDate(null)}>
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
+                        
+                        {eventsForDay(selectedDate).length === 0 ? (
+                            <div className="text-slate-500 text-sm py-4 text-center border-2 border-dashed border-slate-200 rounded-lg">
+                                No events scheduled for this day
+                            </div>
+                        ) : (
+                            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                                {eventsForDay(selectedDate).map((event) => (
+                                    <div 
+                                        key={event.id}
+                                        className="bg-white p-3 rounded-md border border-slate-200 shadow-sm flex flex-col gap-2 hover:border-indigo-200 transition-colors"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-semibold text-slate-900 truncate">{event.title}</span>
+                                            <Badge variant={typeBadges[event.type].variant} className="text-[10px] h-5">
+                                                {typeBadges[event.type].label}
+                                            </Badge>
+                                        </div>
+                                        <div className="text-xs text-slate-500 flex flex-col gap-1">
+                                            <div className="flex items-center gap-1.5">
+                                                <Clock3 className="h-3 w-3" />
+                                                <span>{formatDate(event.startDate)} - {formatDate(event.endDate)}</span>
+                                            </div>
+                                            {event.location && (
+                                                <div className="flex items-center gap-1.5">
+                                                    <MapPin className="h-3 w-3" />
+                                                    <span>{event.location}</span>
+                                                </div>
+                                            )}
+                                            {event.assignee && (
+                                                <div className="flex items-center gap-1.5 mt-1">
+                                                    <User className="h-3 w-3" />
+                                                    <span>{event.assignee}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
               </div>
             </div>
           )}
