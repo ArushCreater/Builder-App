@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 
 interface Project {
   id: string;
@@ -122,6 +123,25 @@ interface DocPage {
   images: string[];
 }
 
+interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  projectId: string;
+  projectName: string;
+  clientName: string;
+  amount: number;
+  status: string;
+  dueDate?: string;
+  issueDate?: string;
+  description?: string;
+}
+
+interface Material {
+  id: string;
+  projectId?: string;
+  totalCost?: number;
+}
+
 export function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -153,6 +173,15 @@ export function ProjectDetailPage() {
     mimeType: '',
     url: '',
     key: '',
+  });
+  const [invoiceForm, setInvoiceForm] = useState({
+    invoiceNumber: '',
+    clientName: '',
+    amount: '',
+    status: 'draft',
+    dueDate: '',
+    issueDate: '',
+    description: '',
   });
   const docFileRef = useRef<HTMLInputElement | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -187,6 +216,16 @@ export function ProjectDetailPage() {
     queryFn: () => apiClient.get<{ items: BudgetItem[]; summary: any }>(`/projects/${id}/budget`),
   });
 
+  const { data: invoicesData } = useQuery({
+    queryKey: ['project-invoices', id],
+    queryFn: () => apiClient.get<{ invoices: Invoice[] }>(`/invoices?projectId=${id}`),
+  });
+
+  const { data: materialsData } = useQuery({
+    queryKey: ['project-materials', id],
+    queryFn: () => apiClient.get<{ materials: Material[] }>(`/materials?projectId=${id}`),
+  });
+
   const { data: documentsData } = useQuery({
     queryKey: ['project-documents', id],
     queryFn: () => apiClient.get<{ documents: Document[] }>(`/projects/${id}/documents`),
@@ -200,8 +239,26 @@ export function ProjectDetailPage() {
   const project = projectData?.project;
   const tasks = tasksData?.tasks || [];
   const budgetItems = budgetData?.items || [];
+  const invoices = invoicesData?.invoices || [];
+  const materials = materialsData?.materials || [];
   const documents = documentsData?.documents || [];
   const scheduleEvents = scheduleData?.events || [];
+
+  const invoiceTotals = useMemo(() => {
+    const total = invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    const paid = invoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    return { total, paid };
+  }, [invoices]);
+
+  const expenseTotals = useMemo(() => {
+    const materialCost = materials.reduce((sum, m) => sum + (m.totalCost || 0), 0);
+    const actualCost = project?.actualCost || 0;
+    return { materialCost, actualCost, total: materialCost + actualCost };
+  }, [materials, project?.actualCost]);
+
+  const budgetBaseline = useMemo(() => {
+    return Math.max(project?.estimatedBudget || 0, invoiceTotals.total, expenseTotals.total, 1);
+  }, [project?.estimatedBudget, invoiceTotals.total, expenseTotals.total]);
   const combinedPlanItems = useMemo(() => {
     const events = scheduleEvents.map(ev => ({
       id: ev.id,
@@ -285,6 +342,16 @@ export function ProjectDetailPage() {
       navigate('/projects');
     },
     onError: () => toast({ title: 'Error', description: 'Could not delete project', variant: 'destructive' }),
+  });
+
+  const invoiceMutation = useMutation({
+    mutationFn: (data: any) => apiClient.post<{ invoice: Invoice }>('/invoices', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-invoices', id] });
+      setInvoiceForm({ invoiceNumber: '', clientName: '', amount: '', status: 'draft', dueDate: '', issueDate: '', description: '' });
+      toast({ title: 'Invoice saved' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not save invoice', variant: 'destructive' }),
   });
 
   const progressMutation = useMutation({
@@ -636,6 +703,7 @@ export function ProjectDetailPage() {
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
           <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="docs">Docs</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices ({invoices.length})</TabsTrigger>
           <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="files">Files ({documents.length})</TabsTrigger>
         </TabsList>
@@ -647,6 +715,51 @@ export function ProjectDetailPage() {
             </CardHeader>
             <CardContent>
               <p className="text-gray-700">{project.description}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Funding vs Spend</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="relative h-6 rounded-lg bg-gray-100 overflow-hidden border border-gray-200">
+                <div
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 to-blue-600"
+                  style={{ width: `${Math.min(100, (invoiceTotals.total / budgetBaseline) * 100)}%` }}
+                />
+                <div
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-500 to-rose-500 opacity-80"
+                  style={{ width: `${Math.min(100, (expenseTotals.total / budgetBaseline) * 100)}%` }}
+                />
+                {expenseTotals.total > invoiceTotals.total && (
+                  <div
+                    className="absolute inset-y-[2px] border-2 border-dotted border-blue-300 rounded"
+                    style={{
+                      left: `${(invoiceTotals.total / budgetBaseline) * 100}%`,
+                      width: `${Math.min(100, ((expenseTotals.total - invoiceTotals.total) / budgetBaseline) * 100)}%`,
+                    }}
+                  />
+                )}
+              </div>
+              <div className="grid md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <p className="text-gray-500">Budget</p>
+                  <p className="font-semibold">{formatCurrency(project.estimatedBudget)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Invoiced</p>
+                  <p className="font-semibold text-blue-600">{formatCurrency(invoiceTotals.total)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Expenses</p>
+                  <p className="font-semibold text-rose-600">{formatCurrency(expenseTotals.total)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Remaining invoiced</p>
+                  <p className="font-semibold text-amber-600">{formatCurrency(invoiceTotals.total - expenseTotals.total)}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -803,6 +916,166 @@ export function ProjectDetailPage() {
           </div>
         </TabsContent>
 
+        <TabsContent value="invoices" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Project Invoices</h3>
+              <p className="text-sm text-gray-500">Track deposits from clients or lenders and sync with budget.</p>
+            </div>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Invoice
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const amount = parseFloat(invoiceForm.amount) || 0;
+                    invoiceMutation.mutate({
+                      invoiceNumber: invoiceForm.invoiceNumber || `INV-${Date.now()}`,
+                      projectId: id,
+                      projectName: project?.name,
+                      clientName: invoiceForm.clientName || 'Client',
+                      amount,
+                      status: invoiceForm.status,
+                      dueDate: invoiceForm.dueDate,
+                      issueDate: invoiceForm.issueDate,
+                      description: invoiceForm.description,
+                    });
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>Add Invoice</DialogTitle>
+                    <DialogDescription>Record a deposit from a client or bank.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-3">
+                    <div className="space-y-2">
+                      <Label>Invoice #</Label>
+                      <Input
+                        value={invoiceForm.invoiceNumber}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, invoiceNumber: e.target.value })}
+                        placeholder="INV-2025-001"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Client / Payer</Label>
+                      <Input
+                        value={invoiceForm.clientName}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, clientName: e.target.value })}
+                        placeholder="Client or lender"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Amount</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={invoiceForm.amount}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, amount: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select
+                        value={invoiceForm.status}
+                        onValueChange={(val) => setInvoiceForm({ ...invoiceForm, status: val })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="paid">Paid</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Issue Date</Label>
+                      <Input
+                        type="date"
+                        value={invoiceForm.issueDate}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, issueDate: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Due Date</Label>
+                      <Input
+                        type="date"
+                        value={invoiceForm.dueDate}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Description</Label>
+                      <Input
+                        value={invoiceForm.description}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })}
+                        placeholder="Notes about this deposit"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit" disabled={invoiceMutation.isPending}>
+                      {invoiceMutation.isPending ? 'Saving...' : 'Save'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Deposits & Invoices</CardTitle>
+                <Badge variant="secondary">Total: {formatCurrency(invoiceTotals.total)}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Issue</TableHead>
+                    <TableHead>Due</TableHead>
+                    <TableHead>Description</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-gray-500">
+                        No invoices yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {invoices.map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-semibold">{inv.invoiceNumber}</TableCell>
+                      <TableCell>{inv.clientName}</TableCell>
+                      <TableCell>
+                        <Badge variant={inv.status === 'paid' ? 'success' : inv.status === 'pending' ? 'warning' : 'secondary'}>
+                          {inv.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatCurrency(inv.amount)}</TableCell>
+                      <TableCell>{inv.issueDate ? formatDate(inv.issueDate) : '-'}</TableCell>
+                      <TableCell>{inv.dueDate ? formatDate(inv.dueDate) : '-'}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{inv.description || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
         <TabsContent value="schedule" className="space-y-4">
           <Card>
             <CardHeader className="flex items-center justify-between">

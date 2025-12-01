@@ -108,6 +108,98 @@ async function ensureTables() {
         updated_at timestamptz DEFAULT now()
       );
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS contacts (
+        id uuid PRIMARY KEY,
+        name text,
+        phone text,
+        email text,
+        company text,
+        office_number text,
+        address text,
+        designation text,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS proposals (
+        id uuid PRIMARY KEY,
+        title text,
+        client_name text,
+        project_id text,
+        project_name text,
+        amount numeric,
+        status text,
+        valid_until date,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schedule_events (
+        id uuid PRIMARY KEY,
+        title text,
+        project_id text,
+        project_name text,
+        type text,
+        start_date date,
+        end_date date,
+        assignee text,
+        description text,
+        location text,
+        created_at timestamptz DEFAULT now(),
+        updated_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id uuid PRIMARY KEY,
+        invoice_number text,
+        project_id text,
+        project_name text,
+        client_name text,
+        amount numeric,
+        status text,
+        due_date date,
+        issue_date date,
+        description text,
+        file_url text,
+        file_name text,
+        file_type text,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS materials (
+        id uuid PRIMARY KEY,
+        name text,
+        description text,
+        quantity numeric,
+        unit text,
+        cost_per_unit numeric,
+        total_cost numeric,
+        supplier text,
+        project_name text,
+        project_id text,
+        status text,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS selections (
+        id uuid PRIMARY KEY,
+        category text,
+        item text,
+        description text,
+        choice text,
+        cost numeric,
+        status text,
+        project_name text,
+        project_id text,
+        client_name text,
+        due_date date,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
   } finally {
     client.release();
   }
@@ -1281,17 +1373,32 @@ app.delete('/api/tasks/:id', (req, res) => {
 // Contacts
 app.get('/api/contacts', (req, res) => {
   const { search } = req.query;
-  let list = [...contacts];
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      c =>
-        (c.name || '').toLowerCase().includes(q) ||
-        (c.email || '').toLowerCase().includes(q) ||
-        (c.company || '').toLowerCase().includes(q)
-    );
+  if (!pool) {
+    let list = [...contacts];
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        c =>
+          (c.name || '').toLowerCase().includes(q) ||
+          (c.email || '').toLowerCase().includes(q) ||
+          (c.company || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ contacts: list });
   }
-  res.json({ contacts: list });
+
+  const clauses = [];
+  const values = [];
+  if (search) {
+    clauses.push(`(LOWER(name) LIKE $${clauses.length + 1} OR LOWER(email) LIKE $${clauses.length + 1} OR LOWER(company) LIKE $${clauses.length + 1})`);
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  pool
+    .query(`SELECT * FROM contacts ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ contacts: result.rows }))
+    .catch(() => res.json({ contacts }));
 });
 
 app.post('/api/contacts', (req, res) => {
@@ -1307,31 +1414,72 @@ app.post('/api/contacts', (req, res) => {
     designation: body.designation,
     createdAt: new Date().toISOString(),
   };
-  contacts.unshift(contact);
-  res.json({ contact });
+  if (!pool) {
+    contacts.unshift(contact);
+    return res.json({ contact });
+  }
+  pool
+    .query(
+      `INSERT INTO contacts (id, name, phone, email, company, office_number, address, designation)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [contact.id, contact.name, contact.phone, contact.email, contact.company, contact.officeNumber, contact.address, contact.designation]
+    )
+    .then(result => res.json({ contact: result.rows[0] }))
+    .catch(() => res.json({ contact }));
 });
 
 app.put('/api/contacts/:id', (req, res) => {
   const body = req.body || {};
-  const contact = contacts.find(c => c.id === req.params.id);
-  if (!contact) return res.status(404).json({ message: 'Not found' });
-  Object.assign(contact, {
-    name: body.name ?? contact.name,
-    phone: body.phone ?? contact.phone,
-    email: body.email ?? contact.email,
-    company: body.company ?? contact.company,
-    officeNumber: body.officeNumber ?? contact.officeNumber,
-    address: body.address ?? contact.address,
-    designation: body.designation ?? contact.designation,
-  });
-  res.json({ contact });
+  if (!pool) {
+    const contact = contacts.find(c => c.id === req.params.id);
+    if (!contact) return res.status(404).json({ message: 'Not found' });
+    Object.assign(contact, {
+      name: body.name ?? contact.name,
+      phone: body.phone ?? contact.phone,
+      email: body.email ?? contact.email,
+      company: body.company ?? contact.company,
+      officeNumber: body.officeNumber ?? contact.officeNumber,
+      address: body.address ?? contact.address,
+      designation: body.designation ?? contact.designation,
+    });
+    return res.json({ contact });
+  }
+  pool
+    .query(`UPDATE contacts SET
+              name=COALESCE($1,name),
+              phone=COALESCE($2,phone),
+              email=COALESCE($3,email),
+              company=COALESCE($4,company),
+              office_number=COALESCE($5,office_number),
+              address=COALESCE($6,address),
+              designation=COALESCE($7,designation),
+              created_at=created_at
+            WHERE id=$8
+            RETURNING *`,
+      [body.name, body.phone, body.email, body.company, body.officeNumber, body.address, body.designation, req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ contact: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/contacts/:id', (req, res) => {
-  const idx = contacts.findIndex(c => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = contacts.splice(idx, 1);
-  res.json({ contact: removed });
+  if (!pool) {
+    const idx = contacts.findIndex(c => c.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = contacts.splice(idx, 1);
+    return res.json({ contact: removed });
+  }
+  pool
+    .query('DELETE FROM contacts WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ contact: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Users
@@ -1380,20 +1528,45 @@ app.get('/api/budget/items', (_req, res) => {
 // Materials
 app.get('/api/materials', (req, res) => {
   const { search, status, projectId } = req.query;
-  let list = [...materials];
-  if (projectId) list = list.filter(m => m.projectId === projectId);
-  if (status) list = list.filter(m => m.status === status);
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      m =>
-        m.name.toLowerCase().includes(q) ||
-        m.description.toLowerCase().includes(q) ||
-        (m.projectName || '').toLowerCase().includes(q) ||
-        (m.supplier || '').toLowerCase().includes(q)
-    );
+  if (!pool) {
+    let list = [...materials];
+    if (projectId) list = list.filter(m => m.projectId === projectId);
+    if (status) list = list.filter(m => m.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        m =>
+          m.name.toLowerCase().includes(q) ||
+          m.description.toLowerCase().includes(q) ||
+          (m.projectName || '').toLowerCase().includes(q) ||
+          (m.supplier || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ materials: list });
   }
-  res.json({ materials: list });
+
+  const clauses = [];
+  const values = [];
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(
+      `(LOWER(name) LIKE $${clauses.length + 1} OR LOWER(description) LIKE $${clauses.length + 1} OR LOWER(supplier) LIKE $${clauses.length + 1} OR LOWER(project_name) LIKE $${clauses.length + 1})`
+    );
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  pool
+    .query(`SELECT * FROM materials ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ materials: result.rows }))
+    .catch(() => res.json({ materials }));
 });
 
 app.post('/api/materials', (req, res) => {
@@ -1410,58 +1583,148 @@ app.post('/api/materials', (req, res) => {
     totalCost: quantity * costPerUnit,
     supplier: body.supplier || '',
     projectName: body.projectName || '',
-    projectId: body.projectId,
+    projectId: body.projectId || '',
     status: body.status || 'in-stock',
   };
-  materials.push(material);
-  res.json(material);
+  if (!pool) {
+    materials.push(material);
+    return res.json(material);
+  }
+  pool
+    .query(
+      `INSERT INTO materials (id, name, description, quantity, unit, cost_per_unit, total_cost, supplier, project_name, project_id, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [
+        material.id,
+        material.name,
+        material.description,
+        material.quantity,
+        material.unit,
+        material.costPerUnit,
+        material.totalCost,
+        material.supplier,
+        material.projectName,
+        material.projectId,
+        material.status,
+      ]
+    )
+    .then(result => res.json(result.rows[0]))
+    .catch(() => res.json(material));
 });
 
 app.put('/api/materials/:id', (req, res) => {
   const body = req.body || {};
-  const material = materials.find(m => m.id === req.params.id);
-  if (!material) return res.status(404).json({ message: 'Not found' });
-  const nextQuantity = body.quantity !== undefined ? parseFloat(body.quantity) || 0 : material.quantity;
-  const nextCostPerUnit = body.costPerUnit !== undefined ? parseFloat(body.costPerUnit) || 0 : material.costPerUnit;
-  Object.assign(material, {
-    name: body.name ?? material.name,
-    description: body.description ?? material.description,
-    quantity: nextQuantity,
-    unit: body.unit ?? material.unit,
-    costPerUnit: nextCostPerUnit,
-    totalCost: nextQuantity * nextCostPerUnit,
-    supplier: body.supplier ?? material.supplier,
-    projectName: body.projectName ?? material.projectName,
-    projectId: body.projectId ?? material.projectId,
-    status: body.status ?? material.status,
-  });
-  res.json({ material });
+  if (!pool) {
+    const material = materials.find(m => m.id === req.params.id);
+    if (!material) return res.status(404).json({ message: 'Not found' });
+    const nextQuantity = body.quantity !== undefined ? parseFloat(body.quantity) || 0 : material.quantity;
+    const nextCostPerUnit = body.costPerUnit !== undefined ? parseFloat(body.costPerUnit) || 0 : material.costPerUnit;
+    Object.assign(material, {
+      name: body.name ?? material.name,
+      description: body.description ?? material.description,
+      quantity: nextQuantity,
+      unit: body.unit ?? material.unit,
+      costPerUnit: nextCostPerUnit,
+      totalCost: nextQuantity * nextCostPerUnit,
+      supplier: body.supplier ?? material.supplier,
+      projectName: body.projectName ?? material.projectName,
+      projectId: body.projectId ?? material.projectId,
+      status: body.status ?? material.status,
+    });
+    return res.json({ material });
+  }
+
+  pool
+    .query('SELECT * FROM materials WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      const nextQuantity = body.quantity !== undefined ? parseFloat(body.quantity) || 0 : current.quantity;
+      const nextCostPerUnit = body.costPerUnit !== undefined ? parseFloat(body.costPerUnit) || 0 : current.cost_per_unit;
+      const totalCost = nextQuantity * nextCostPerUnit;
+      return pool
+        .query(
+          `UPDATE materials SET
+             name=$1, description=$2, quantity=$3, unit=$4, cost_per_unit=$5, total_cost=$6, supplier=$7, project_name=$8, project_id=$9, status=$10
+           WHERE id=$11
+           RETURNING *`,
+          [
+            body.name ?? current.name,
+            body.description ?? current.description,
+            nextQuantity,
+            body.unit ?? current.unit,
+            nextCostPerUnit,
+            totalCost,
+            body.supplier ?? current.supplier,
+            body.projectName ?? current.project_name,
+            body.projectId ?? current.project_id,
+            body.status ?? current.status,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ material: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/materials/:id', (req, res) => {
-  const idx = materials.findIndex(m => m.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = materials.splice(idx, 1);
-  res.json({ material: removed });
+  if (!pool) {
+    const idx = materials.findIndex(m => m.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = materials.splice(idx, 1);
+    return res.json({ material: removed });
+  }
+  pool
+    .query('DELETE FROM materials WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ material: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Selections
 app.get('/api/selections', (req, res) => {
   const { search, status, projectId } = req.query;
-  let list = [...selections];
-  if (projectId) list = list.filter(s => s.projectId === projectId);
-  if (status) list = list.filter(s => s.status === status);
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      s =>
-        s.category.toLowerCase().includes(q) ||
-        s.item.toLowerCase().includes(q) ||
-        (s.projectName || '').toLowerCase().includes(q) ||
-        s.clientName.toLowerCase().includes(q)
-    );
+  if (!pool) {
+    let list = [...selections];
+    if (projectId) list = list.filter(s => s.projectId === projectId);
+    if (status) list = list.filter(s => s.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        s =>
+          s.category.toLowerCase().includes(q) ||
+          s.item.toLowerCase().includes(q) ||
+          (s.projectName || '').toLowerCase().includes(q) ||
+          (s.clientName || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ selections: list });
   }
-  res.json({ selections: list });
+
+  const clauses = [];
+  const values = [];
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(
+      `(LOWER(category) LIKE $${clauses.length + 1} OR LOWER(item) LIKE $${clauses.length + 1} OR LOWER(description) LIKE $${clauses.length + 1} OR LOWER(client_name) LIKE $${clauses.length + 1} OR LOWER(project_name) LIKE $${clauses.length + 1})`
+    );
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  pool
+    .query(`SELECT * FROM selections ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ selections: result.rows }))
+    .catch(() => res.json({ selections }));
 });
 
 app.post('/api/selections', (req, res) => {
@@ -1475,38 +1738,103 @@ app.post('/api/selections', (req, res) => {
     cost: parseFloat(body.cost) || 0,
     status: body.status || 'pending',
     projectName: body.projectName || '',
-    projectId: body.projectId,
+    projectId: body.projectId || '',
     clientName: body.clientName || '',
-    dueDate: body.dueDate || '',
+    dueDate: body.dueDate || null,
   };
-  selections.unshift(selection);
-  res.json({ selection });
+  if (!pool) {
+    selections.unshift(selection);
+    return res.json({ selection });
+  }
+  pool
+    .query(
+      `INSERT INTO selections (id, category, item, description, choice, cost, status, project_name, project_id, client_name, due_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING *`,
+      [
+        selection.id,
+        selection.category,
+        selection.item,
+        selection.description,
+        selection.choice,
+        selection.cost,
+        selection.status,
+        selection.projectName,
+        selection.projectId,
+        selection.clientName,
+        selection.dueDate,
+      ]
+    )
+    .then(result => res.json({ selection: result.rows[0] }))
+    .catch(() => res.json({ selection }));
 });
 
 app.put('/api/selections/:id', (req, res) => {
   const body = req.body || {};
-  const selection = selections.find(s => s.id === req.params.id);
-  if (!selection) return res.status(404).json({ message: 'Not found' });
-  Object.assign(selection, {
-    category: body.category ?? selection.category,
-    item: body.item ?? selection.item,
-    description: body.description ?? selection.description,
-    choice: body.choice ?? selection.choice,
-    cost: body.cost !== undefined ? parseFloat(body.cost) || 0 : selection.cost,
-    status: body.status ?? selection.status,
-    projectName: body.projectName ?? selection.projectName,
-    projectId: body.projectId ?? selection.projectId,
-    clientName: body.clientName ?? selection.clientName,
-    dueDate: body.dueDate ?? selection.dueDate,
-  });
-  res.json({ selection });
+  if (!pool) {
+    const selection = selections.find(s => s.id === req.params.id);
+    if (!selection) return res.status(404).json({ message: 'Not found' });
+    Object.assign(selection, {
+      category: body.category ?? selection.category,
+      item: body.item ?? selection.item,
+      description: body.description ?? selection.description,
+      choice: body.choice ?? selection.choice,
+      cost: body.cost !== undefined ? parseFloat(body.cost) || 0 : selection.cost,
+      status: body.status ?? selection.status,
+      projectName: body.projectName ?? selection.projectName,
+      projectId: body.projectId ?? selection.projectId,
+      clientName: body.clientName ?? selection.clientName,
+      dueDate: body.dueDate ?? selection.dueDate,
+    });
+    return res.json({ selection });
+  }
+
+  pool
+    .query('SELECT * FROM selections WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE selections SET
+             category=$1, item=$2, description=$3, choice=$4, cost=$5, status=$6, project_name=$7, project_id=$8, client_name=$9, due_date=$10
+           WHERE id=$11
+           RETURNING *`,
+          [
+            body.category ?? current.category,
+            body.item ?? current.item,
+            body.description ?? current.description,
+            body.choice ?? current.choice,
+            body.cost !== undefined ? parseFloat(body.cost) || 0 : current.cost,
+            body.status ?? current.status,
+            body.projectName ?? current.project_name,
+            body.projectId ?? current.project_id,
+            body.clientName ?? current.client_name,
+            body.dueDate ?? current.due_date,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ selection: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/selections/:id', (req, res) => {
-  const idx = selections.findIndex(s => s.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = selections.splice(idx, 1);
-  res.json({ selection: removed });
+  if (!pool) {
+    const idx = selections.findIndex(s => s.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = selections.splice(idx, 1);
+    return res.json({ selection: removed });
+  }
+
+  pool
+    .query('DELETE FROM selections WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ selection: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Daily Logs
@@ -1981,24 +2309,51 @@ app.post('/api/messages', (req, res) => {
 // Proposals
 app.get('/api/proposals', (req, res) => {
   const { search, status, projectId } = req.query;
-  let list = [...proposals];
-  if (projectId) list = list.filter(p => p.projectId === projectId);
-  if (status) list = list.filter(p => p.status === status);
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      p =>
-        p.title.toLowerCase().includes(q) ||
-        p.clientName.toLowerCase().includes(q) ||
-        (p.projectName || '').toLowerCase().includes(q)
-    );
+  if (!pool) {
+    let list = [...proposals];
+    if (projectId) list = list.filter(p => p.projectId === projectId);
+    if (status) list = list.filter(p => p.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        p =>
+          p.title.toLowerCase().includes(q) ||
+          p.clientName.toLowerCase().includes(q) ||
+          (p.projectName || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ proposals: list });
   }
-  res.json({ proposals: list });
+  const clauses = [];
+  const values = [];
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(`(LOWER(title) LIKE $${clauses.length + 1} OR LOWER(client_name) LIKE $${clauses.length + 1})`);
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  pool
+    .query(`SELECT * FROM proposals ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ proposals: result.rows }))
+    .catch(() => res.json({ proposals }));
 });
 
 app.get('/api/projects/:id/proposals', (req, res) => {
-  const list = proposals.filter(p => p.projectId === req.params.id);
-  res.json({ proposals: list });
+  if (!pool) {
+    const list = proposals.filter(p => p.projectId === req.params.id);
+    return res.json({ proposals: list });
+  }
+  pool
+    .query('SELECT * FROM proposals WHERE project_id = $1 ORDER BY created_at DESC', [req.params.id])
+    .then(result => res.json({ proposals: result.rows }))
+    .catch(() => res.json({ proposals: [] }));
 });
 
 app.post('/api/proposals', (req, res) => {
@@ -2014,8 +2369,28 @@ app.post('/api/proposals', (req, res) => {
     validUntil: body.validUntil || body.dueDate || '',
     createdAt: new Date().toISOString(),
   };
-  proposals.push(proposal);
-  res.json({ proposal });
+  if (!pool) {
+    proposals.push(proposal);
+    return res.json({ proposal });
+  }
+  pool
+    .query(
+      `INSERT INTO proposals (id, title, client_name, project_id, project_name, amount, status, valid_until, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        proposal.id,
+        proposal.title,
+        proposal.clientName,
+        proposal.projectId,
+        proposal.projectName,
+        proposal.amount,
+        proposal.status,
+        proposal.validUntil,
+        proposal.createdAt,
+      ]
+    )
+    .then(result => res.json({ proposal: result.rows[0] }))
+    .catch(() => res.json({ proposal }));
 });
 
 app.post('/api/projects/:id/proposals', (req, res) => {
@@ -2031,59 +2406,163 @@ app.post('/api/projects/:id/proposals', (req, res) => {
     validUntil: body.validUntil || '',
     createdAt: new Date().toISOString(),
   };
-  proposals.push(proposal);
-  res.json({ proposal });
+  if (!pool) {
+    proposals.push(proposal);
+    return res.json({ proposal });
+  }
+  pool
+    .query(
+      `INSERT INTO proposals (id, title, client_name, project_id, project_name, amount, status, valid_until, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        proposal.id,
+        proposal.title,
+        proposal.clientName,
+        proposal.projectId,
+        proposal.projectName,
+        proposal.amount,
+        proposal.status,
+        proposal.validUntil,
+        proposal.createdAt,
+      ]
+    )
+    .then(result => res.json({ proposal: result.rows[0] }))
+    .catch(() => res.json({ proposal }));
 });
 
 app.put('/api/proposals/:id', (req, res) => {
   const body = req.body || {};
-  const proposal = proposals.find(p => p.id === req.params.id);
-  if (!proposal) return res.status(404).json({ message: 'Not found' });
-  Object.assign(proposal, {
-    title: body.title ?? proposal.title,
-    clientName: body.clientName ?? proposal.clientName,
-    projectName: body.projectName ?? proposal.projectName,
-    projectId: body.projectId ?? proposal.projectId,
-    amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : proposal.amount,
-    status: body.status ?? proposal.status,
-    validUntil: body.validUntil ?? proposal.validUntil,
-  });
-  res.json({ proposal });
+  if (!pool) {
+    const proposal = proposals.find(p => p.id === req.params.id);
+    if (!proposal) return res.status(404).json({ message: 'Not found' });
+    Object.assign(proposal, {
+      title: body.title ?? proposal.title,
+      clientName: body.clientName ?? proposal.clientName,
+      projectName: body.projectName ?? proposal.projectName,
+      projectId: body.projectId ?? proposal.projectId,
+      amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : proposal.amount,
+      status: body.status ?? proposal.status,
+      validUntil: body.validUntil ?? proposal.validUntil,
+    });
+    return res.json({ proposal });
+  }
+  pool
+    .query('SELECT * FROM proposals WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE proposals SET
+             title=$1, client_name=$2, project_id=$3, project_name=$4, amount=$5, status=$6, valid_until=$7
+           WHERE id=$8
+           RETURNING *`,
+          [
+            body.title ?? current.title,
+            body.clientName ?? current.client_name,
+            body.projectId ?? current.project_id,
+            body.projectName ?? current.project_name,
+            body.amount !== undefined ? parseFloat(body.amount) || 0 : current.amount,
+            body.status ?? current.status,
+            body.validUntil ?? current.valid_until,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ proposal: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.patch('/api/proposals/:id', (req, res) => {
   const body = req.body || {};
-  const proposal = proposals.find(p => p.id === req.params.id);
-  if (!proposal) return res.status(404).json({ message: 'Not found' });
-  if (body.status) proposal.status = body.status;
-  if (body.amount !== undefined) proposal.amount = parseFloat(body.amount) || proposal.amount;
-  if (body.validUntil !== undefined) proposal.validUntil = body.validUntil;
-  res.json({ proposal });
+  if (!pool) {
+    const proposal = proposals.find(p => p.id === req.params.id);
+    if (!proposal) return res.status(404).json({ message: 'Not found' });
+    if (body.status) proposal.status = body.status;
+    if (body.amount !== undefined) proposal.amount = parseFloat(body.amount) || proposal.amount;
+    if (body.validUntil !== undefined) proposal.validUntil = body.validUntil;
+    return res.json({ proposal });
+  }
+  pool
+    .query('SELECT * FROM proposals WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE proposals SET
+             status=COALESCE($1,status),
+             amount=COALESCE($2,amount),
+             valid_until=COALESCE($3,valid_until)
+           WHERE id=$4
+           RETURNING *`,
+          [
+            body.status ?? current.status,
+            body.amount !== undefined ? parseFloat(body.amount) || current.amount : current.amount,
+            body.validUntil ?? current.valid_until,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ proposal: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/proposals/:id', (req, res) => {
-  const idx = proposals.findIndex(p => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = proposals.splice(idx, 1);
-  res.json({ proposal: removed });
+  if (!pool) {
+    const idx = proposals.findIndex(p => p.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = proposals.splice(idx, 1);
+    return res.json({ proposal: removed });
+  }
+  pool
+    .query('DELETE FROM proposals WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ proposal: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
-// Invoices (in-memory)
+// Invoices
 app.get('/api/invoices', (req, res) => {
   const { search, status, projectId } = req.query;
-  let list = [...invoices];
-  if (projectId) list = list.filter(i => i.projectId === projectId);
-  if (status) list = list.filter(i => i.status === status);
-  if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      i =>
-        i.invoiceNumber.toLowerCase().includes(q) ||
-        (i.projectName || '').toLowerCase().includes(q) ||
-        i.clientName.toLowerCase().includes(q)
-    );
+  if (!pool) {
+    let list = [...invoices];
+    if (projectId) list = list.filter(i => i.projectId === projectId);
+    if (status) list = list.filter(i => i.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        i =>
+          i.invoiceNumber.toLowerCase().includes(q) ||
+          (i.projectName || '').toLowerCase().includes(q) ||
+          i.clientName.toLowerCase().includes(q)
+      );
+    }
+    return res.json({ invoices: list });
   }
-  res.json({ invoices: list });
+
+  const clauses = [];
+  const values = [];
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(`(LOWER(invoice_number) LIKE $${clauses.length + 1} OR LOWER(client_name) LIKE $${clauses.length + 1})`);
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  pool
+    .query(`SELECT * FROM invoices ${where} ORDER BY created_at DESC`, values)
+    .then(result => res.json({ invoices: result.rows }))
+    .catch(() => res.json({ invoices }));
 });
 
 app.post('/api/invoices', (req, res) => {
@@ -2104,44 +2583,136 @@ app.post('/api/invoices', (req, res) => {
     fileType: body.fileType,
     createdAt: new Date().toISOString(),
   };
-  invoices.unshift(invoice);
-  res.json({ invoice });
+  if (!pool) {
+    invoices.unshift(invoice);
+    return res.json({ invoice });
+  }
+  pool
+    .query(
+      `INSERT INTO invoices (id, invoice_number, project_id, project_name, client_name, amount, status, due_date, issue_date, description, file_url, file_name, file_type, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       RETURNING *`,
+      [
+        invoice.id,
+        invoice.invoiceNumber,
+        invoice.projectId,
+        invoice.projectName,
+        invoice.clientName,
+        invoice.amount,
+        invoice.status,
+        invoice.dueDate || null,
+        invoice.issueDate || null,
+        invoice.description,
+        invoice.fileUrl,
+        invoice.fileName,
+        invoice.fileType,
+        invoice.createdAt,
+      ]
+    )
+    .then(result => res.json({ invoice: result.rows[0] }))
+    .catch(() => res.json({ invoice }));
 });
 
 app.put('/api/invoices/:id', (req, res) => {
   const body = req.body || {};
-  const invoice = invoices.find(i => i.id === req.params.id);
-  if (!invoice) return res.status(404).json({ message: 'Not found' });
-  Object.assign(invoice, {
-    invoiceNumber: body.invoiceNumber ?? invoice.invoiceNumber,
-    projectId: body.projectId ?? invoice.projectId,
-    projectName: body.projectName ?? invoice.projectName,
-    clientName: body.clientName ?? invoice.clientName,
-    amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : invoice.amount,
-    status: body.status ?? invoice.status,
-    dueDate: body.dueDate ?? invoice.dueDate,
-    issueDate: body.issueDate ?? invoice.issueDate,
-    description: body.description ?? invoice.description,
-    fileUrl: body.fileUrl ?? invoice.fileUrl,
-    fileName: body.fileName ?? invoice.fileName,
-    fileType: body.fileType ?? invoice.fileType,
-  });
-  res.json({ invoice });
+  if (!pool) {
+    const invoice = invoices.find(i => i.id === req.params.id);
+    if (!invoice) return res.status(404).json({ message: 'Not found' });
+    Object.assign(invoice, {
+      invoiceNumber: body.invoiceNumber ?? invoice.invoiceNumber,
+      projectId: body.projectId ?? invoice.projectId,
+      projectName: body.projectName ?? invoice.projectName,
+      clientName: body.clientName ?? invoice.clientName,
+      amount: body.amount !== undefined ? parseFloat(body.amount) || 0 : invoice.amount,
+      status: body.status ?? invoice.status,
+      dueDate: body.dueDate ?? invoice.dueDate,
+      issueDate: body.issueDate ?? invoice.issueDate,
+      description: body.description ?? invoice.description,
+      fileUrl: body.fileUrl ?? invoice.fileUrl,
+      fileName: body.fileName ?? invoice.fileName,
+      fileType: body.fileType ?? invoice.fileType,
+    });
+    return res.json({ invoice });
+  }
+  pool
+    .query('SELECT * FROM invoices WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE invoices SET
+             invoice_number=$1,
+             project_id=$2,
+             project_name=$3,
+             client_name=$4,
+             amount=$5,
+             status=$6,
+             due_date=$7,
+             issue_date=$8,
+             description=$9,
+             file_url=$10,
+             file_name=$11,
+             file_type=$12
+           WHERE id=$13
+           RETURNING *`,
+          [
+            body.invoiceNumber ?? current.invoice_number,
+            body.projectId ?? current.project_id,
+            body.projectName ?? current.project_name,
+            body.clientName ?? current.client_name,
+            body.amount !== undefined ? parseFloat(body.amount) || 0 : current.amount,
+            body.status ?? current.status,
+            body.dueDate ?? current.due_date,
+            body.issueDate ?? current.issue_date,
+            body.description ?? current.description,
+            body.fileUrl ?? current.file_url,
+            body.fileName ?? current.file_name,
+            body.fileType ?? current.file_type,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ invoice: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.patch('/api/invoices/:id', (req, res) => {
   const body = req.body || {};
-  const invoice = invoices.find(i => i.id === req.params.id);
-  if (!invoice) return res.status(404).json({ message: 'Not found' });
-  if (body.status) invoice.status = body.status;
-  res.json({ invoice });
+  if (!pool) {
+    const invoice = invoices.find(i => i.id === req.params.id);
+    if (!invoice) return res.status(404).json({ message: 'Not found' });
+    if (body.status) invoice.status = body.status;
+    return res.json({ invoice });
+  }
+  pool
+    .query(
+      `UPDATE invoices SET status=COALESCE($1,status) WHERE id=$2 RETURNING *`,
+      [body.status, req.params.id]
+    )
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ invoice: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/invoices/:id', (req, res) => {
-  const idx = invoices.findIndex(i => i.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = invoices.splice(idx, 1);
-  res.json({ invoice: removed });
+  if (!pool) {
+    const idx = invoices.findIndex(i => i.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = invoices.splice(idx, 1);
+    return res.json({ invoice: removed });
+  }
+  pool
+    .query('DELETE FROM invoices WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ invoice: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Conversations/messages for UI
@@ -2173,27 +2744,63 @@ app.post('/api/messages/conversation/:id', (req, res) => {
 // Schedule (in-memory only)
 app.get('/api/schedule/events', (req, res) => {
   const { projectId, type, search } = req.query;
-  let list = [...scheduleEvents];
+  if (!pool) {
+    let list = [...scheduleEvents];
+    if (projectId) {
+      const projectMatchName =
+        projects.find(p => p.id === projectId)?.name ||
+        projectDocuments[projectId]?.projectName ||
+        '';
+      list = list.filter(
+        e => e.projectId === projectId || (!!projectMatchName && e.projectName === projectMatchName)
+      );
+    }
+    if (type) list = list.filter(e => e.type === type);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        e =>
+          e.title.toLowerCase().includes(q) ||
+          (e.projectName || '').toLowerCase().includes(q) ||
+          (e.description || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json({ events: list });
+  }
+  const clauses = [];
+  const values = [];
   if (projectId) {
-    const projectMatchName =
-      projects.find(p => p.id === projectId)?.name ||
-      projectDocuments[projectId]?.projectName ||
-      '';
-    list = list.filter(
-      e => e.projectId === projectId || (!!projectMatchName && e.projectName === projectMatchName)
-    );
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
   }
-  if (type) list = list.filter(e => e.type === type);
+  if (type) {
+    clauses.push(`type = $${clauses.length + 1}`);
+    values.push(type);
+  }
   if (search) {
-    const q = String(search).toLowerCase();
-    list = list.filter(
-      e =>
-        e.title.toLowerCase().includes(q) ||
-        (e.projectName || '').toLowerCase().includes(q) ||
-        (e.description || '').toLowerCase().includes(q)
-    );
+    clauses.push(`(LOWER(title) LIKE $${clauses.length + 1} OR LOWER(description) LIKE $${clauses.length + 1})`);
+    values.push(`%${String(search).toLowerCase()}%`);
   }
-  res.json({ events: list });
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  pool
+    .query(`SELECT * FROM schedule_events ${where} ORDER BY start_date ASC`, values)
+    .then(result =>
+      res.json({
+        events: result.rows.map(row => ({
+          id: row.id,
+          title: row.title,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          type: row.type,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          assignee: row.assignee,
+          description: row.description,
+          location: row.location,
+        })),
+      })
+    )
+    .catch(() => res.json({ events: scheduleEvents }));
 });
 
 app.post('/api/schedule/events', (req, res) => {
@@ -2213,36 +2820,97 @@ app.post('/api/schedule/events', (req, res) => {
     description: body.description || '',
     location: body.location || '',
   };
-  scheduleEvents.push(event);
-  res.json({ event });
+  if (!pool) {
+    scheduleEvents.push(event);
+    return res.json({ event });
+  }
+  pool
+    .query(
+      `INSERT INTO schedule_events (id, title, project_id, project_name, type, start_date, end_date, assignee, description, location)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [
+        event.id,
+        event.title,
+        event.projectId,
+        event.projectName,
+        event.type,
+        event.startDate || null,
+        event.endDate || null,
+        event.assignee,
+        event.description,
+        event.location,
+      ]
+    )
+    .then(result => res.json({ event: result.rows[0] }))
+    .catch(() => res.json({ event }));
 });
 
 app.put('/api/schedule/events/:id', (req, res) => {
   const body = req.body || {};
-  const event = scheduleEvents.find(e => e.id === req.params.id);
-  if (!event) return res.status(404).json({ message: 'Not found' });
-  Object.assign(event, {
-    title: body.title ?? event.title,
-    projectId: body.projectId ?? event.projectId,
-    projectName:
-      body.projectName ??
-      event.projectName ??
-      (body.projectId ? projects.find(p => p.id === body.projectId)?.name : undefined),
-    type: body.type ?? event.type,
-    startDate: body.startDate ?? event.startDate,
-    endDate: body.endDate ?? event.endDate,
-    assignee: body.assignee ?? event.assignee,
-    description: body.description ?? event.description,
-    location: body.location ?? event.location,
-  });
-  res.json({ event });
+  if (!pool) {
+    const event = scheduleEvents.find(e => e.id === req.params.id);
+    if (!event) return res.status(404).json({ message: 'Not found' });
+    Object.assign(event, {
+      title: body.title ?? event.title,
+      projectId: body.projectId ?? event.projectId,
+      projectName:
+        body.projectName ??
+        event.projectName ??
+        (body.projectId ? projects.find(p => p.id === body.projectId)?.name : undefined),
+      type: body.type ?? event.type,
+      startDate: body.startDate ?? event.startDate,
+      endDate: body.endDate ?? event.endDate,
+      assignee: body.assignee ?? event.assignee,
+      description: body.description ?? event.description,
+      location: body.location ?? event.location,
+    });
+    return res.json({ event });
+  }
+
+  pool
+    .query('SELECT * FROM schedule_events WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      return pool
+        .query(
+          `UPDATE schedule_events SET
+             title=$1, project_id=$2, project_name=$3, type=$4, start_date=$5, end_date=$6, assignee=$7, description=$8, location=$9, updated_at=now()
+           WHERE id=$10
+           RETURNING *`,
+          [
+            body.title ?? current.title,
+            body.projectId ?? current.project_id,
+            body.projectName ?? current.project_name,
+            body.type ?? current.type,
+            body.startDate ?? current.start_date,
+            body.endDate ?? current.end_date,
+            body.assignee ?? current.assignee,
+            body.description ?? current.description,
+            body.location ?? current.location,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ event: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/schedule/events/:id', (req, res) => {
-  const idx = scheduleEvents.findIndex(e => e.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = scheduleEvents.splice(idx, 1);
-  res.json({ event: removed });
+  if (!pool) {
+    const idx = scheduleEvents.findIndex(e => e.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = scheduleEvents.splice(idx, 1);
+    return res.json({ event: removed });
+  }
+  pool
+    .query('DELETE FROM schedule_events WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ event: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
 // Fallback
