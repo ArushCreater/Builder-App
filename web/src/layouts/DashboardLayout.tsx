@@ -208,12 +208,9 @@ export function DashboardLayout() {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Button variant="outline" className="hidden sm:inline-flex rounded-full border-slate-200 text-slate-900 bg-white hover:bg-slate-100">
+              <Button variant="outline" className="hidden sm:inline-flex rounded-full border-slate-200 text-slate-900 bg-white hover:bg-slate-100" onClick={() => navigate("/projects")}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Project
-              </Button>
-              <Button variant="ghost" className="rounded-full bg-white border border-slate-200 shadow-sm hover:border-indigo-200 hover:bg-indigo-50">
-                Command ⌘K
               </Button>
 
               {/* Notifications */}
@@ -308,3 +305,6 @@ export function DashboardLayout() {
 }
 
 export default DashboardLayout;
+
+
+

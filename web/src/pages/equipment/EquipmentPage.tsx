@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import { useToast } from '../../components/ui/use-toast';
 
 interface Equipment {
   id: string;
@@ -56,6 +57,7 @@ const statusColors = {
 
 export function EquipmentPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
@@ -87,16 +89,21 @@ export function EquipmentPage() {
   });
   const equipmentRows = useMemo(
     () =>
-      (equipment?.equipment || []).map((e: any) => ({
-        ...e,
-        projectId: e.projectId || e.project_id || '',
-        projectName: e.projectName || e.project_name || '',
-        purchaseDate: e.purchaseDate || e.purchase_date || '',
-        purchasePrice: Number(e.purchasePrice ?? e.purchase_price ?? 0),
-        lastMaintenance: e.lastMaintenance || e.last_service || '',
-        nextMaintenance: e.nextMaintenance || e.next_maintenance || '',
-        status: e.status || 'available',
-      })),
+      (equipment?.equipment || []).map((e: any) => {
+        const statusRaw = e.status || 'available';
+        const normalizedStatus =
+          statusRaw === 'in_use' ? 'in-use' : (statusRaw as Equipment['status'] | string);
+        return {
+          ...e,
+          projectId: e.projectId || e.project_id || '',
+          projectName: e.projectName || e.project_name || '',
+          purchaseDate: e.purchaseDate || e.purchase_date || '',
+          purchasePrice: Number(e.purchasePrice ?? e.purchase_price ?? 0),
+          lastMaintenance: e.lastMaintenance || e.last_service || '',
+          nextMaintenance: e.nextMaintenance || e.next_maintenance || '',
+          status: (normalizedStatus || 'available') as Equipment['status'],
+        };
+      }),
     [equipment?.equipment]
   );
   const { data: projectsData } = useQuery({
@@ -126,6 +133,7 @@ export function EquipmentPage() {
         nextMaintenance: '',
       });
     },
+    onError: () => toast({ title: 'Error', description: 'Failed to save equipment', variant: 'destructive' }),
   });
 
   const updateMutation = useMutation({

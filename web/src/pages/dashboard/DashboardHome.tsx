@@ -1,5 +1,24 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
+import { useToast } from '../../components/ui/use-toast';
+import { Input } from '../../components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../../components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
@@ -75,6 +94,8 @@ const revenueChartData = [
 ];
 
 export function DashboardHome() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
     queryKey: ['dashboard-projects'],
     queryFn: () => apiClient.get<{ projects: any[] }>('/projects'),
@@ -109,6 +130,25 @@ export function DashboardHome() {
   const tasks = tasksData?.tasks || [];
   const invoices = invoicesData?.invoices || [];
   const events = eventsData?.events || [];
+  const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
+  const [quickForm, setQuickForm] = useState({
+    name: '',
+    type: 'residential',
+    startDate: '',
+    endDate: '',
+    estimatedBudget: '',
+  });
+
+  const createProjectMutation = useMutation({
+    mutationFn: (payload: any) => apiClient.post('/projects', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-projects'] });
+      setIsQuickCreateOpen(false);
+      setQuickForm({ name: '', type: 'residential', startDate: '', endDate: '', estimatedBudget: '' });
+      toast({ title: 'Project created', description: 'New project added successfully' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not create project', variant: 'destructive' }),
+  });
 
   const stats: DashboardStats = {
     totalProjects: projects.length,
@@ -253,9 +293,95 @@ export function DashboardHome() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button className="rounded-full bg-white text-slate-900 hover:bg-slate-100 px-5 border border-white/20 shadow">
-              Quick create
-            </Button>
+            <Dialog open={isQuickCreateOpen} onOpenChange={setIsQuickCreateOpen}>
+              <DialogTrigger asChild>
+                <Button className="rounded-full bg-white text-slate-900 hover:bg-slate-100 px-5 border border-white/20 shadow">
+                  Quick create
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    createProjectMutation.mutate({
+                      name: quickForm.name || 'Untitled Project',
+                      type: quickForm.type,
+                      startDate: quickForm.startDate || null,
+                      endDate: quickForm.endDate || null,
+                      estimatedBudget: parseFloat(quickForm.estimatedBudget) || 0,
+                    });
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>Quick create project</DialogTitle>
+                    <DialogDescription>Spin up a project without leaving the dashboard.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-3 py-4">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Project name</label>
+                      <Input
+                        value={quickForm.name}
+                        onChange={(e) => setQuickForm({ ...quickForm, name: e.target.value })}
+                        placeholder="e.g., Midtown Tower"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Type</label>
+                      <Select
+                        value={quickForm.type}
+                        onValueChange={(val) => setQuickForm({ ...quickForm, type: val })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="residential">Residential</SelectItem>
+                          <SelectItem value="commercial">Commercial</SelectItem>
+                          <SelectItem value="industrial">Industrial</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">Start date</label>
+                        <Input
+                          type="date"
+                          value={quickForm.startDate}
+                          onChange={(e) => setQuickForm({ ...quickForm, startDate: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">End date</label>
+                        <Input
+                          type="date"
+                          value={quickForm.endDate}
+                          onChange={(e) => setQuickForm({ ...quickForm, endDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700">Budget (optional)</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={quickForm.estimatedBudget}
+                        onChange={(e) => setQuickForm({ ...quickForm, estimatedBudget: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsQuickCreateOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={createProjectMutation.isPending}>
+                      {createProjectMutation.isPending ? 'Creating...' : 'Create project'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
             <Button variant="outline" className="rounded-full border-white/25 text-white bg-white/10 hover:bg-white/15 flex items-center gap-2">
               <Sparkles className="h-4 w-4" />
               Generate report

@@ -2670,7 +2670,23 @@ app.get('/api/inspections', (req, res) => {
 
   pool
     .query(`SELECT * FROM inspections ${where} ORDER BY created_at DESC`, values)
-    .then(result => res.json({ inspections: result.rows }))
+    .then(result =>
+      res.json({
+        inspections: result.rows.map(row => ({
+          id: row.id,
+          title: row.title,
+          type: row.type,
+          status: row.status,
+          date: row.date,
+          scheduledDate: row.scheduled_date,
+          projectName: row.project_name,
+          projectId: row.project_id,
+          inspector: row.inspector,
+          notes: row.notes,
+          completedDate: row.completed_date,
+        })),
+      })
+    )
     .catch(() => res.json({ inspections }));
 });
 
@@ -2847,7 +2863,24 @@ app.get('/api/equipment', (req, res) => {
 
   pool
     .query(`SELECT * FROM equipment ${where} ORDER BY created_at DESC`, values)
-    .then(result => res.json({ equipment: result.rows }))
+    .then(result =>
+      res.json({
+        equipment: result.rows.map(row => ({
+          id: row.id,
+          name: row.name,
+          type: row.type,
+          status: row.status === 'in_use' ? 'in-use' : row.status,
+          location: row.location,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          assignedTo: row.assigned_to,
+          purchaseDate: row.purchase_date,
+          purchasePrice: Number(row.purchase_price || 0),
+          lastMaintenance: row.last_service,
+          nextMaintenance: row.next_maintenance,
+        })),
+      })
+    )
     .catch(() => res.json({ equipment }));
 });
 
@@ -2864,7 +2897,7 @@ app.post('/api/equipment', (req, res) => {
     assignedTo: body.assignedTo || '',
     purchaseDate: body.purchaseDate || null,
     purchasePrice: body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : 0,
-    lastService: body.lastService || null,
+    lastService: body.lastService || body.lastMaintenance || null,
     nextMaintenance: body.nextMaintenance || null,
   };
   if (!pool) {
@@ -2938,7 +2971,9 @@ app.put('/api/equipment/:id', (req, res) => {
             body.assignedTo ?? current.assigned_to,
             body.purchaseDate === '' ? current.purchase_date : body.purchaseDate ?? current.purchase_date,
             body.purchasePrice !== undefined ? Number(body.purchasePrice) || 0 : current.purchase_price,
-            body.lastService === '' ? current.last_service : body.lastService ?? current.last_service,
+            body.lastService === ''
+              ? current.last_service
+              : (body.lastService ?? body.lastMaintenance) ?? current.last_service,
             body.nextMaintenance === '' ? current.next_maintenance : body.nextMaintenance ?? current.next_maintenance,
             req.params.id,
           ]
