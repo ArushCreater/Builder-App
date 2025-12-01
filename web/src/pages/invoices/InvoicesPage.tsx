@@ -76,6 +76,8 @@ export function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [formData, setFormData] = useState({
@@ -187,6 +189,21 @@ export function InvoicesPage() {
     setIsViewDialogOpen(true);
   };
 
+  const updateMutation = useMutation({
+    mutationFn: (data: Partial<Invoice>) => {
+      if (!editingInvoice) throw new Error('No invoice selected');
+      return apiClient.put(`/invoices/${editingInvoice.id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      setIsEditDialogOpen(false);
+      setEditingInvoice(null);
+      setUploadedFile(null);
+      toast({ title: 'Success', description: 'Invoice updated successfully' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Failed to update invoice', variant: 'destructive' }),
+  });
+
   const handleDownloadInvoice = (invoice: Invoice) => {
     if (invoice.fileUrl && invoice.fileName) {
       const link = document.createElement('a');
@@ -223,6 +240,26 @@ export function InvoicesPage() {
   const handleCreateInvoice = (e: React.FormEvent) => {
     e.preventDefault();
     createMutation.mutate({
+      invoiceNumber: formData.invoiceNumber,
+      projectId: formData.projectId || undefined,
+      projectName: formData.projectName,
+      clientName: formData.clientName,
+      amount: parseFloat(formData.amount) || 0,
+      status: formData.status,
+      dueDate: formData.dueDate,
+      issueDate: formData.issueDate,
+      description: formData.description,
+      type: 'invoice',
+      fileUrl: uploadedFile?.url,
+      fileName: uploadedFile?.name,
+      fileType: uploadedFile?.type,
+    });
+  };
+
+  const handleUpdateInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingInvoice) return;
+    updateMutation.mutate({
       invoiceNumber: formData.invoiceNumber,
       projectId: formData.projectId || undefined,
       projectName: formData.projectName,
@@ -441,6 +478,161 @@ export function InvoicesPage() {
             </form>
           </DialogContent>
         </Dialog>
+        {/* Edit Invoice Dialog */}
+        <Dialog
+          open={isEditDialogOpen}
+          onOpenChange={(open) => {
+            setIsEditDialogOpen(open);
+            if (!open) {
+              setEditingInvoice(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <form onSubmit={handleUpdateInvoice}>
+              <DialogHeader>
+                <DialogTitle>Edit Invoice</DialogTitle>
+                <DialogDescription>Update an existing invoice and its attachment.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="invoiceNumber-edit">Invoice Number</Label>
+                    <Input
+                      id="invoiceNumber-edit"
+                      name="invoiceNumber"
+                      value={formData.invoiceNumber}
+                      onChange={handleChange}
+                      placeholder="Auto-generated if empty"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="status-edit">Status</Label>
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, status: value as Invoice['status'] })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="unpaid">Unpaid</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="overdue">Overdue</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="projectName-edit">Project</Label>
+                    <Select
+                      value={formData.projectId || 'none'}
+                      onValueChange={(value) => {
+                        if (value === 'none') {
+                          setFormData({ ...formData, projectId: '', projectName: '' });
+                          return;
+                        }
+                        const proj = projectsData?.projects.find(p => p.id === value);
+                        setFormData({ ...formData, projectId: value, projectName: proj?.name || '' });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No project</SelectItem>
+                        {projectsData?.projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientName-edit">Client Name</Label>
+                    <Input
+                      id="clientName-edit"
+                      name="clientName"
+                      value={formData.clientName}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="amount-edit">Amount ($)</Label>
+                  <Input
+                    id="amount-edit"
+                    name="amount"
+                    type="number"
+                    step="0.01"
+                    value={formData.amount}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="issueDate-edit">Issue Date</Label>
+                    <Input
+                      id="issueDate-edit"
+                      name="issueDate"
+                      type="date"
+                      value={formData.issueDate}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dueDate-edit">Due Date</Label>
+                    <Input
+                      id="dueDate-edit"
+                      name="dueDate"
+                      type="date"
+                      value={formData.dueDate}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description-edit">Description</Label>
+                  <Input
+                    id="description-edit"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                  />
+                </div>
+                  <div className="space-y-2">
+                    <Label>Attachment</Label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        accept=".pdf,.jpg,.jpeg,.png"
+                      />
+                      {uploadedFile && (
+                        <Badge variant="secondary" className="truncate max-w-[180px]">
+                          {uploadedFile.name}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? 'Saving...' : 'Update Invoice'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Stats Cards */}
@@ -634,6 +826,32 @@ export function InvoicesPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingInvoice(invoice);
+                            setFormData({
+                              invoiceNumber: invoice.invoiceNumber,
+                              projectId: invoice.projectId || '',
+                              projectName: invoice.projectName,
+                              clientName: invoice.clientName,
+                              amount: invoice.amount.toString(),
+                              status: invoice.status,
+                              dueDate: invoice.dueDate,
+                              issueDate: invoice.issueDate,
+                              description: invoice.description,
+                            });
+                            setUploadedFile(
+                              invoice.fileUrl
+                                ? { url: invoice.fileUrl, name: invoice.fileName || '', type: invoice.fileType || '' }
+                                : null
+                            );
+                            setIsEditDialogOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
