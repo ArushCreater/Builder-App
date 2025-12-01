@@ -71,7 +71,7 @@ export function SchedulePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(new Date().toISOString().split('T')[0]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [localEvents, setLocalEvents] = useState<ScheduleEvent[]>([]);
   const ganttRef = useRef<HTMLDivElement | null>(null);
@@ -162,8 +162,23 @@ export function SchedulePage() {
   });
 
   const filteredEvents = useMemo(() => {
+    const eventTaskIds = new Set(events.filter(e => e.type === 'task').map(e => e.id));
+    const eventKeys = new Set(
+      events.map(e => {
+        const start = normalizeDate(e.startDate);
+        const end = normalizeDate(e.endDate || e.startDate);
+        return `${e.projectId || 'none'}|${(e.title || '').toLowerCase()}|${start}|${end}|${e.type}`;
+      })
+    );
+
     const taskEvents: ScheduleEvent[] = tasks
       .filter(t => !!t.dueDate)
+      .filter(t => !eventTaskIds.has(t.id))
+      .filter(t => {
+        const start = normalizeDate(t.dueDate) || '';
+        const key = `${t.projectId || 'none'}|${(t.title || '').toLowerCase()}|${start}|${start}|task`;
+        return !eventKeys.has(key);
+      })
       .map(t => ({
         id: `task-${t.id}`,
         title: t.title,
@@ -686,7 +701,6 @@ export function SchedulePage() {
             </div>
           ) : view === 'gantt' ? (
             <div className="flex flex-col h-full bg-slate-50/50">
-              {/* Gantt implementation ... (omitted for brevity) ... same as before */}
               {ganttItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-500">
                     <p>No timeline data available.</p>

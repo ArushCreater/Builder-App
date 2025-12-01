@@ -121,9 +121,11 @@ async function ensureTables() {
         office_number text,
         address text,
         designation text,
+        favorite boolean DEFAULT false,
         created_at timestamptz DEFAULT now()
       );
     `);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS favorite boolean DEFAULT false;`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS proposals (
         id uuid PRIMARY KEY,
@@ -746,6 +748,7 @@ const contacts = [
     officeNumber: '02 8000 1234',
     address: '12 Market St, Sydney',
     designation: 'Owner',
+    favorite: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -757,6 +760,7 @@ const contacts = [
     officeNumber: '03 9600 5555',
     address: '55 Collins St, Melbourne',
     designation: 'Architect',
+    favorite: false,
     createdAt: new Date().toISOString(),
   },
 ];
@@ -1748,6 +1752,7 @@ app.get('/api/contacts', (req, res) => {
           (c.company || '').toLowerCase().includes(q)
       );
     }
+    list.sort((a, b) => (a.favorite === b.favorite ? (a.name || '').localeCompare(b.name || '') : a.favorite ? -1 : 1));
     return res.json({ contacts: list });
   }
 
@@ -1760,8 +1765,23 @@ app.get('/api/contacts', (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
   pool
-    .query(`SELECT * FROM contacts ${where} ORDER BY created_at DESC`, values)
-    .then(result => res.json({ contacts: result.rows }))
+    .query(`SELECT * FROM contacts ${where} ORDER BY favorite DESC, name ASC`, values)
+    .then(result =>
+      res.json({
+        contacts: result.rows.map(row => ({
+          id: row.id,
+          name: row.name,
+          phone: row.phone,
+          email: row.email,
+          company: row.company,
+          officeNumber: row.office_number,
+          address: row.address,
+          designation: row.designation,
+          favorite: !!row.favorite,
+          createdAt: row.created_at,
+        })),
+      })
+    )
     .catch(() => res.json({ contacts }));
 });
 
@@ -1776,6 +1796,7 @@ app.post('/api/contacts', (req, res) => {
     officeNumber: body.officeNumber,
     address: body.address,
     designation: body.designation,
+    favorite: !!body.favorite,
     createdAt: new Date().toISOString(),
   };
   if (!pool) {
@@ -1784,9 +1805,9 @@ app.post('/api/contacts', (req, res) => {
   }
   pool
     .query(
-      `INSERT INTO contacts (id, name, phone, email, company, office_number, address, designation)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [contact.id, contact.name, contact.phone, contact.email, contact.company, contact.officeNumber, contact.address, contact.designation]
+      `INSERT INTO contacts (id, name, phone, email, company, office_number, address, designation, favorite)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [contact.id, contact.name, contact.phone, contact.email, contact.company, contact.officeNumber, contact.address, contact.designation, contact.favorite]
     )
     .then(result => res.json({ contact: result.rows[0] }))
     .catch(() => res.json({ contact }));
@@ -1805,6 +1826,7 @@ app.put('/api/contacts/:id', (req, res) => {
       officeNumber: body.officeNumber ?? contact.officeNumber,
       address: body.address ?? contact.address,
       designation: body.designation ?? contact.designation,
+      favorite: body.favorite ?? contact.favorite,
     });
     return res.json({ contact });
   }
@@ -1817,10 +1839,11 @@ app.put('/api/contacts/:id', (req, res) => {
               office_number=COALESCE($5,office_number),
               address=COALESCE($6,address),
               designation=COALESCE($7,designation),
+              favorite=COALESCE($8,favorite),
               created_at=created_at
-            WHERE id=$8
+            WHERE id=$9
             RETURNING *`,
-      [body.name, body.phone, body.email, body.company, body.officeNumber, body.address, body.designation, req.params.id])
+      [body.name, body.phone, body.email, body.company, body.officeNumber, body.address, body.designation, body.favorite, req.params.id])
     .then(result => {
       const row = result.rows[0];
       if (!row) return res.status(404).json({ message: 'Not found' });
@@ -3742,6 +3765,39 @@ app.post('/api/schedule/events', (req, res) => {
   };
   if (!pool) {
     scheduleEvents.push(event);
+    // if this is a task-type event, mirror it into tasks for visibility on Tasks page
+    if (event.type === 'task') {
+      const task = {
+        id: event.id,
+        title: event.title,
+        description: event.description,
+        status: 'todo',
+        priority: 'medium',
+        assignee: event.assignee || '',
+        projectId: event.projectId || '',
+        projectName: event.projectName || '',
+        dueDate: event.endDate || event.startDate || '',
+        completed: false,
+      };
+      tasks.push(task);
+      if (task.projectId) {
+        const bucket = (projectTasks[task.projectId] = projectTasks[task.projectId] || []);
+        bucket.push({
+          id: task.id,
+          projectId: task.projectId,
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          priority: task.priority,
+          assignedTo: task.assignee,
+          dueDate: task.dueDate,
+          projectName: task.projectName,
+          createdBy: 'System',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
     return res.json({ event });
   }
   pool
@@ -3761,7 +3817,43 @@ app.post('/api/schedule/events', (req, res) => {
         event.location,
       ]
     )
-    .then(result => res.json({ event: result.rows[0] }))
+    .then(result => {
+      const row = result.rows[0];
+      if (event.type === 'task') {
+        const taskPayload = {
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          status: 'todo',
+          priority: 'medium',
+          assignee: event.assignee || '',
+          projectId: event.projectId,
+          projectName: event.projectName,
+          dueDate: event.endDate || event.startDate || null,
+          completed: false,
+        };
+        pool
+          .query(
+            `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date, completed)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              taskPayload.id,
+              taskPayload.title,
+              taskPayload.description,
+              taskPayload.status,
+              taskPayload.priority,
+              taskPayload.assignee,
+              taskPayload.projectId,
+              taskPayload.projectName,
+              taskPayload.dueDate || null,
+              taskPayload.completed,
+            ]
+          )
+          .catch(() => {});
+      }
+      return res.json({ event: row });
+    })
     .catch(() => res.json({ event }));
 });
 
@@ -3811,7 +3903,55 @@ app.put('/api/schedule/events/:id', (req, res) => {
             req.params.id,
           ]
         )
-        .then(updateResult => res.json({ event: updateResult.rows[0] }));
+        .then(updateResult => {
+          const updated = updateResult.rows[0];
+          if ((body.type ?? current.type) === 'task') {
+            const taskUpdate = {
+              title: body.title ?? current.title,
+              description: body.description ?? current.description,
+              assignee: body.assignee ?? current.assignee,
+              projectId: body.projectId ?? current.project_id,
+              projectName: body.projectName ?? current.project_name,
+              dueDate: body.endDate ?? current.end_date ?? body.startDate ?? current.start_date,
+            };
+            pool
+              .query('SELECT * FROM tasks WHERE id = $1', [req.params.id])
+              .then(taskResult => {
+                if (taskResult.rows[0]) {
+                  return pool.query(
+                    `UPDATE tasks SET title=$1, description=$2, assignee=$3, project_id=$4, project_name=$5, due_date=$6 WHERE id=$7`,
+                    [
+                      taskUpdate.title,
+                      taskUpdate.description,
+                      taskUpdate.assignee,
+                      taskUpdate.projectId,
+                      taskUpdate.projectName,
+                      taskUpdate.dueDate || null,
+                      req.params.id,
+                    ]
+                  );
+                }
+                return pool.query(
+                  `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date, completed)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                  [
+                    req.params.id,
+                    taskUpdate.title,
+                    taskUpdate.description,
+                    'todo',
+                    'medium',
+                    taskUpdate.assignee,
+                    taskUpdate.projectId,
+                    taskUpdate.projectName,
+                    taskUpdate.dueDate || null,
+                    false,
+                  ]
+                );
+              })
+              .catch(() => {});
+          }
+          return res.json({ event: updated });
+        });
     })
     .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
@@ -3821,6 +3961,10 @@ app.delete('/api/schedule/events/:id', (req, res) => {
     const idx = scheduleEvents.findIndex(e => e.id === req.params.id);
     if (idx === -1) return res.status(404).json({ message: 'Not found' });
     const [removed] = scheduleEvents.splice(idx, 1);
+    if (removed.type === 'task') {
+      const tIdx = tasks.findIndex(t => t.id === removed.id);
+      if (tIdx !== -1) tasks.splice(tIdx, 1);
+    }
     return res.json({ event: removed });
   }
   pool
@@ -3828,6 +3972,9 @@ app.delete('/api/schedule/events/:id', (req, res) => {
     .then(result => {
       const row = result.rows[0];
       if (!row) return res.status(404).json({ message: 'Not found' });
+      if (row.type === 'task') {
+        pool.query('DELETE FROM tasks WHERE id = $1', [req.params.id]).catch(() => {});
+      }
       res.json({ event: row });
     })
     .catch(() => res.status(500).json({ message: 'Delete failed' }));

@@ -4,7 +4,6 @@ import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +16,9 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Mail, Phone, MapPin, Trash2, Pencil } from 'lucide-react';
+import { Plus, Search, Mail, Phone, MapPin, Trash2, Pencil, MoreVertical, Briefcase, Building2, LayoutGrid, List, Star } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 
 interface Contact {
   id: string;
@@ -29,11 +30,13 @@ interface Contact {
   address?: string;
   designation?: string;
   createdAt?: string;
+  favorite?: boolean;
 }
 
 export function ContactsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [view, setView] = useState<'grid' | 'list'>('list');
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
@@ -45,6 +48,7 @@ export function ContactsPage() {
     officeNumber: '',
     address: '',
     designation: '',
+    favorite: false,
   });
 
   const { data, isLoading } = useQuery({
@@ -56,6 +60,8 @@ export function ContactsPage() {
   });
 
   const contacts = data?.contacts || [];
+  const favorites = contacts.filter(c => c.favorite);
+  const others = contacts.filter(c => !c.favorite).sort((a, b) => a.name.localeCompare(b.name));
 
   const resetForm = () => {
     setForm({
@@ -66,6 +72,7 @@ export function ContactsPage() {
       officeNumber: '',
       address: '',
       designation: '',
+      favorite: false,
     });
     setEditing(null);
   };
@@ -125,164 +132,321 @@ export function ContactsPage() {
       officeNumber: contact.officeNumber || '',
       address: contact.address || '',
       designation: contact.designation || '',
+      favorite: !!contact.favorite,
     });
     setIsDialogOpen(true);
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Contacts</h1>
-          <p className="text-gray-500 mt-1">Central rolodex for clients, partners, vendors, and team.</p>
-        </div>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { resetForm(); } }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Contact
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <form onSubmit={handleSubmit}>
-              <DialogHeader>
-                <DialogTitle>{editing ? 'Edit Contact' : 'New Contact'}</DialogTitle>
-                <DialogDescription>Capture key contact details. Only name is required.</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-                <div className="space-y-2">
-                  <Label>Name *</Label>
-                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Designation</Label>
-                  <Input value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Company</Label>
-                  <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Office Number</Label>
-                  <Input value={form.officeNumber} onChange={(e) => setForm({ ...form, officeNumber: e.target.value })} />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Address</Label>
-                  <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+  const renderContactList = (list: Contact[]) => (
+    view === 'grid' ? (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+        {list.map((contact) => (
+          <div key={contact.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group relative">
+            <button
+              className={`absolute top-3 right-3 transition-colors z-10 ${contact.favorite ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                updateMutation.mutate({ id: contact.id, data: { favorite: !contact.favorite } });
+              }}
+              aria-label="Toggle favorite"
+            >
+              <Star className={`h-5 w-5 ${contact.favorite ? 'fill-amber-400' : ''}`} />
+            </button>
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-10 w-10 border border-slate-100 shadow-sm">
+                  <AvatarFallback className="bg-indigo-50 text-indigo-600 font-semibold">
+                    {contact.name?.[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="font-semibold text-slate-900 line-clamp-1">{contact.name}</h3>
+                  <p className="text-xs text-slate-500 font-medium line-clamp-1">
+                    {contact.designation || 'No Designation'}
+                  </p>
                 </div>
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { resetForm(); setIsDialogOpen(false); }}>
-                  Cancel
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mr-6">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 text-slate-400 hover:text-indigo-600" 
+                  onClick={() => startEdit(contact)}
+                  title="Edit Contact"
+                >
+                  <Pencil className="h-4 w-4" />
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editing ? (updateMutation.isPending ? 'Saving...' : 'Save') : (createMutation.isPending ? 'Creating...' : 'Create')}
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 text-slate-400 hover:text-red-600" 
+                  onClick={() => deleteMutation.mutate(contact.id)}
+                  title="Delete Contact"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+              </div>
+            </div>
+            
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="truncate">{contact.company || '—'}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="truncate">{contact.email || '—'}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Phone className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="truncate">{contact.phone || '—'}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="truncate">{contact.address || '—'}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-slate-50 hover:bg-slate-50">
+              <TableHead className="w-[300px]">Name & Role</TableHead>
+              <TableHead>Company</TableHead>
+              <TableHead>Contact Info</TableHead>
+              <TableHead>Address</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.map((contact) => (
+              <TableRow key={contact.id} className="group hover:bg-slate-50/50">
+                <TableCell className="align-top py-4">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-9 w-9 border border-slate-200">
+                      <AvatarFallback className="bg-indigo-50 text-indigo-600 font-medium text-xs">
+                        {contact.name?.[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="font-semibold text-slate-900">{contact.name}</div>
+                      <div className="text-xs text-slate-500">{contact.designation || 'No Designation'}</div>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="align-top py-4">
+                  <div className="flex items-center gap-2 text-sm text-slate-700">
+                    <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                    {contact.company || '—'}
+                  </div>
+                </TableCell>
+                <TableCell className="align-top py-4">
+                  <div className="flex flex-col gap-1 text-sm text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 text-slate-400" />
+                      {contact.email || '—'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-3.5 w-3.5 text-slate-400" />
+                      {contact.phone || '—'}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="align-top py-4">
+                  <div className="flex items-start gap-2 text-sm text-slate-600 max-w-[200px]">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
+                    <span className="truncate">{contact.address || '—'}</span>
+                  </div>
+                </TableCell>
+                <TableCell className="align-top py-4 text-right">
+                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`h-8 w-8 ${contact.favorite ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500'}`}
+                      onClick={() => updateMutation.mutate({ id: contact.id, data: { favorite: !contact.favorite } })}
+                      title="Toggle favorite"
+                    >
+                      <Star className={`h-4 w-4 ${contact.favorite ? 'fill-amber-400' : ''}`} />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-slate-400 hover:text-indigo-600" 
+                      onClick={() => startEdit(contact)}
+                      title="Edit Contact"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-slate-400 hover:text-red-600" 
+                      onClick={() => deleteMutation.mutate(contact.id)}
+                      title="Delete Contact"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    )
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Contacts</h1>
+          <p className="text-gray-500 mt-1">Central rolodex for clients, partners, and vendors</p>
+        </div>
+        <div className="flex items-center gap-2">
+            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { resetForm(); } }}>
+            <DialogTrigger asChild>
+                <Button className="shadow-sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Contact
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+                <form onSubmit={handleSubmit}>
+                <DialogHeader>
+                    <DialogTitle>{editing ? 'Edit Contact' : 'New Contact'}</DialogTitle>
+                    <DialogDescription>Capture key contact details. Only name is required.</DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+                    <div className="space-y-2">
+                    <Label>Name *</Label>
+                    <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                    </div>
+                    <div className="space-y-2">
+                    <Label>Designation</Label>
+                    <Input value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                    <Label>Phone</Label>
+                    <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                    <Label>Company</Label>
+                    <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                    <Label>Office Number</Label>
+                    <Input value={form.officeNumber} onChange={(e) => setForm({ ...form, officeNumber: e.target.value })} />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                    <Label>Address</Label>
+                    <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => { resetForm(); setIsDialogOpen(false); }}>
+                    Cancel
+                    </Button>
+                    <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                    {editing ? (updateMutation.isPending ? 'Saving...' : 'Save') : (createMutation.isPending ? 'Creating...' : 'Create')}
+                    </Button>
+                </DialogFooter>
+                </form>
+            </DialogContent>
+            </Dialog>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <CardTitle className="text-lg text-gray-800">Directory</CardTitle>
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search by name, email, company..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="border-b border-slate-100 pb-4">
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+            <div className="relative w-full sm:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search contacts..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+              />
+            </div>
+            
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+              <Button
+                variant={view === 'grid' ? 'white' : 'ghost'}
+                size="sm"
+                className={`h-7 px-2.5 ${view === 'grid' ? 'shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                onClick={() => setView('grid')}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={view === 'list' ? 'white' : 'ghost'}
+                size="sm"
+                className={`h-7 px-2.5 ${view === 'list' ? 'shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                onClick={() => setView('list')}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {isLoading ? (
-            <div className="h-48 flex items-center justify-center text-gray-500">Loading contacts...</div>
+            <div className="flex items-center justify-center h-64">
+                <div className="flex flex-col items-center gap-2">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+                    <p className="text-slate-500 text-sm">Loading contacts...</p>
+                </div>
+            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Designation</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {contacts.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-gray-500">
-                      No contacts yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {contacts.map((contact) => (
-                  <TableRow key={contact.id}>
-                    <TableCell className="font-semibold text-gray-900">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{contact.name?.[0]?.toUpperCase() || '?'}</Badge>
-                        <div className="flex flex-col">
-                          <span>{contact.name}</span>
-                          {contact.createdAt && <span className="text-xs text-gray-400">Added {contact.createdAt.split('T')[0]}</span>}
+            <div className="flex flex-col">
+              {contacts.length === 0 ? (
+                <div className="py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center">
+                        <div className="bg-slate-100 p-3 rounded-full mb-3">
+                            <Briefcase className="h-6 w-6 text-slate-400" />
                         </div>
+                        <p className="font-medium text-slate-900">No contacts found</p>
+                        <p className="text-sm mt-1">Add a new contact to get started.</p>
+                    </div>
+                </div>
+              ) : (
+                <>
+                  {/* Favorites Section */}
+                  {favorites.length > 0 && (
+                    <div className="mb-6">
+                      <div className="mx-4 mt-4 mb-2 flex items-center gap-2 text-amber-700 text-xs font-semibold uppercase tracking-wider">
+                        <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                        Favorites
                       </div>
-                    </TableCell>
-                    <TableCell>{contact.company || '-'}</TableCell>
-                    <TableCell>
-                      {contact.phone ? (
-                        <span className="inline-flex items-center gap-1 text-gray-800">
-                          <Phone className="h-4 w-4 text-gray-400" /> {contact.phone}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {contact.email ? (
-                        <span className="inline-flex items-center gap-1 text-gray-800">
-                          <Mail className="h-4 w-4 text-gray-400" /> {contact.email}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                    <TableCell>{contact.designation || '-'}</TableCell>
-                    <TableCell>
-                      {contact.address ? (
-                        <span className="inline-flex items-center gap-1 text-gray-800">
-                          <MapPin className="h-4 w-4 text-gray-400" /> {contact.address}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => startEdit(contact)}>
-                          <Pencil className="h-4 w-4 mr-1" /> Edit
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-red-600" onClick={() => deleteMutation.mutate(contact.id)}>
-                          <Trash2 className="h-4 w-4 mr-1" /> Delete
-                        </Button>
+                      <div className="bg-amber-50/30 rounded-xl border border-amber-100/50 overflow-hidden mx-4">
+                        {renderContactList(favorites)}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                  )}
+
+                  {/* All Contacts Section */}
+                  <div>
+                    {favorites.length > 0 && (
+                      <div className="mx-4 mb-2 flex items-center gap-2 text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                        All Contacts
+                      </div>
+                    )}
+                    <div className={favorites.length > 0 ? "bg-white rounded-xl border border-slate-200 overflow-hidden mx-4 mb-4" : ""}>
+                      {renderContactList(others)}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

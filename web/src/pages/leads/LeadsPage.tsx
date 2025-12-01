@@ -4,15 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Card, CardContent, CardHeader } from '../../components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../../components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -32,8 +24,17 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Mail, Phone, Eye, Pencil, Trash } from 'lucide-react';
-import { formatDate } from '../../lib/utils';
+import { Plus, Search, Mail, Phone, Eye, Pencil, Trash, User, MoreHorizontal, Calendar, DollarSign, Building } from 'lucide-react';
+import { formatDate, cn } from '../../lib/utils';
+import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu';
 
 interface Lead {
   id: string;
@@ -48,14 +49,14 @@ interface Lead {
   notes?: string;
 }
 
-const statusColors = {
-  new: 'default',
-  contacted: 'secondary',
-  qualified: 'default',
-  proposal: 'warning',
-  won: 'success',
-  lost: 'destructive',
-} as const;
+const statusConfig: Record<string, { label: string; className: string }> = {
+  new: { label: 'New', className: 'bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200' },
+  contacted: { label: 'Contacted', className: 'bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200' },
+  qualified: { label: 'Qualified', className: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-indigo-200' },
+  proposal: { label: 'Proposal', className: 'bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-200' },
+  won: { label: 'Won', className: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border-emerald-200' },
+  lost: { label: 'Lost', className: 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200' },
+};
 
 export function LeadsPage() {
   const navigate = useNavigate();
@@ -207,142 +208,144 @@ export function LeadsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
-          <p className="text-gray-500 mt-1">Manage your sales leads and prospects</p>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Leads</h1>
+          <p className="text-gray-500 mt-1">Manage and track your sales pipeline</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={openCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Lead
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <form onSubmit={handleCreateLead}>
-              <DialogHeader>
-                <DialogTitle>{editingLead ? 'Edit Lead' : 'Create New Lead'}</DialogTitle>
-                <DialogDescription>
-                  {editingLead ? 'Update lead details' : 'Add a new lead to your pipeline'}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      name="firstName"
-                      value={formData.firstName}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      name="lastName"
-                      value={formData.lastName}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="source">Source</Label>
-                    <Input
-                      id="source"
-                      name="source"
-                      value={formData.source}
-                      onChange={handleChange}
-                      placeholder="e.g., Website, Referral"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="estimatedValue">Estimated Value</Label>
-                    <Input
-                      id="estimatedValue"
-                      name="estimatedValue"
-                      type="number"
-                      value={formData.estimatedValue}
-                      onChange={handleChange}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <Input
-                    id="notes"
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleChange}
-                    placeholder="Additional notes..."
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
+        <div className="flex items-center gap-2">
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+                <Button onClick={openCreate} className="shadow-sm">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Lead
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  {editingLead
-                    ? updateMutation.isPending
-                      ? 'Saving...'
-                      : 'Save Changes'
-                    : createMutation.isPending
-                      ? 'Creating...'
-                      : 'Create Lead'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+                <form onSubmit={handleCreateLead}>
+                <DialogHeader>
+                    <DialogTitle>{editingLead ? 'Edit Lead' : 'Create New Lead'}</DialogTitle>
+                    <DialogDescription>
+                    {editingLead ? 'Update lead details' : 'Add a new lead to your pipeline'}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="firstName">First Name</Label>
+                        <Input
+                        id="firstName"
+                        name="firstName"
+                        value={formData.firstName}
+                        onChange={handleChange}
+                        required
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="lastName">Last Name</Label>
+                        <Input
+                        id="lastName"
+                        name="lastName"
+                        value={formData.lastName}
+                        onChange={handleChange}
+                        required
+                        />
+                    </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="email">Email</Label>
+                        <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        required
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="phone">Phone</Label>
+                        <Input
+                        id="phone"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        required
+                        />
+                    </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="source">Source</Label>
+                        <Input
+                        id="source"
+                        name="source"
+                        value={formData.source}
+                        onChange={handleChange}
+                        placeholder="e.g., Website, Referral"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="estimatedValue">Estimated Value</Label>
+                        <Input
+                        id="estimatedValue"
+                        name="estimatedValue"
+                        type="number"
+                        value={formData.estimatedValue}
+                        onChange={handleChange}
+                        placeholder="0"
+                        />
+                    </div>
+                    </div>
+                    <div className="space-y-2">
+                    <Label htmlFor="notes">Notes</Label>
+                    <Input
+                        id="notes"
+                        name="notes"
+                        value={formData.notes}
+                        onChange={handleChange}
+                        placeholder="Additional notes..."
+                    />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Cancel
+                    </Button>
+                    <Button
+                    type="submit"
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                    >
+                    {editingLead
+                        ? updateMutation.isPending
+                        ? 'Saving...'
+                        : 'Save Changes'
+                        : createMutation.isPending
+                        ? 'Creating...'
+                        : 'Create Lead'}
+                    </Button>
+                </DialogFooter>
+                </form>
+            </DialogContent>
+            </Dialog>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="border-b border-slate-100 pb-4">
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+            <div className="relative w-full sm:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Search leads..."
+                placeholder="Search leads by name, email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-9 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px] bg-slate-50 border-slate-200">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -357,84 +360,126 @@ export function LeadsPage() {
             </Select>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="text-gray-500">Loading...</div>
+                <div className="flex flex-col items-center gap-2">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+                    <p className="text-slate-500 text-sm">Loading leads...</p>
+                </div>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Estimated Value</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {leads.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                      No leads found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  leads.map((lead) => (
-                  <TableRow key={lead.id}>
-                    <TableCell className="font-medium">
-                      {lead.firstName} {lead.lastName}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center text-sm">
-                          <Mail className="h-3 w-3 mr-1 text-gray-400" />
-                          {lead.email}
-                        </div>
-                        <div className="flex items-center text-sm">
-                          <Phone className="h-3 w-3 mr-1 text-gray-400" />
-                          {lead.phone}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[lead.status]}>
-                        {lead.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{lead.source}</TableCell>
-                    <TableCell>${lead.estimatedValue.toLocaleString()}</TableCell>
-                    <TableCell>{formatDate(lead.createdAt)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/leads/${lead.id}`)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(lead)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(lead.id)}
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                        <tr>
+                            <th className="px-6 py-4 w-[250px]">Name & Contact</th>
+                            <th className="px-6 py-4 w-[150px]">Status</th>
+                            <th className="px-6 py-4">Value & Source</th>
+                            <th className="px-6 py-4">Created</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                        {leads.length === 0 ? (
+                            <tr>
+                                <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                                    <div className="flex flex-col items-center justify-center">
+                                        <div className="bg-slate-100 p-3 rounded-full mb-3">
+                                            <User className="h-6 w-6 text-slate-400" />
+                                        </div>
+                                        <p className="font-medium text-slate-900">No leads found</p>
+                                        <p className="text-sm mt-1">Try adjusting your filters or add a new lead.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        ) : (
+                            leads.map((lead) => (
+                                <tr key={lead.id} className="group hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4 align-top">
+                                        <div className="flex items-start gap-3">
+                                            <Avatar className="h-9 w-9 border border-slate-200 bg-white shadow-sm mt-0.5">
+                                                <AvatarFallback className="bg-indigo-50 text-indigo-700 font-medium text-xs">
+                                                    {lead.firstName[0]}{lead.lastName[0]}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <div>
+                                                <div className="font-semibold text-slate-900">
+                                                    {lead.firstName} {lead.lastName}
+                                                </div>
+                                                <div className="flex flex-col gap-0.5 mt-1 text-xs text-slate-500">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Mail className="h-3 w-3" />
+                                                        {lead.email}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Phone className="h-3 w-3" />
+                                                        {lead.phone}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 align-top pt-5">
+                                        <Badge variant="outline" className={cn("font-medium", statusConfig[lead.status]?.className)}>
+                                            {statusConfig[lead.status]?.label || lead.status}
+                                        </Badge>
+                                    </td>
+                                    <td className="px-6 py-4 align-top">
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex items-center gap-1.5 font-medium text-slate-900">
+                                                <DollarSign className="h-3.5 w-3.5 text-slate-400" />
+                                                {lead.estimatedValue.toLocaleString()}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                <Building className="h-3 w-3" />
+                                                {lead.source || 'Unknown Source'}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 align-top pt-5">
+                                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                            <Calendar className="h-3 w-3" />
+                                            {formatDate(lead.createdAt)}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 align-top text-right pt-4">
+                                        <div className="flex items-center justify-end gap-1">
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-8 w-8 text-slate-400 hover:text-indigo-600" 
+                                                onClick={() => navigate(`/leads/${lead.id}`)}
+                                                title="View Details"
+                                            >
+                                                <Eye className="h-4 w-4" />
+                                            </Button>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-8 w-8 text-slate-400 hover:text-indigo-600" 
+                                                onClick={() => openEdit(lead)}
+                                                title="Edit Lead"
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-8 w-8 text-slate-400 hover:text-red-600" 
+                                                onClick={() => handleDelete(lead.id)}
+                                                title="Delete Lead"
+                                            >
+                                                <Trash className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
           )}
         </CardContent>
       </Card>
