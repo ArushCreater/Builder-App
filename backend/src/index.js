@@ -2670,23 +2670,29 @@ app.get('/api/inspections', (req, res) => {
 
   pool
     .query(`SELECT * FROM inspections ${where} ORDER BY created_at DESC`, values)
-    .then(result =>
-      res.json({
-        inspections: result.rows.map(row => ({
-          id: row.id,
-          title: row.title,
-          type: row.type,
-          status: row.status,
-          date: row.date,
-          scheduledDate: row.scheduled_date,
-          projectName: row.project_name,
-          projectId: row.project_id,
-          inspector: row.inspector,
-          notes: row.notes,
-          completedDate: row.completed_date,
-        })),
-      })
-    )
+    .then(result => {
+      const mapped = result.rows.map(row => ({
+        id: row.id,
+        title: row.title,
+        type: row.type,
+        status: row.status || 'scheduled',
+        date: row.date || row.scheduled_date,
+        scheduledDate: row.scheduled_date || row.date,
+        projectName: row.project_name,
+        projectId: row.project_id,
+        inspector: row.inspector,
+        notes: row.notes,
+        completedDate: row.completed_date,
+      }));
+      // Merge with in-memory fallback in case DB insert failed but UI expects to see local data
+      const combined = [...mapped];
+      inspections.forEach(mem => {
+        if (!combined.find(r => r.id === mem.id)) {
+          combined.push(mem);
+        }
+      });
+      res.json({ inspections: combined });
+    })
     .catch(() => res.json({ inspections }));
 });
 
@@ -2697,13 +2703,13 @@ app.post('/api/inspections', (req, res) => {
     title: body.title || body.type || 'Inspection',
     type: body.type || 'general',
     status: body.status || 'scheduled',
-    date: body.date || body.scheduledDate || '',
-    scheduledDate: body.scheduledDate || body.date || '',
+    date: body.date || body.scheduledDate || null,
+    scheduledDate: body.scheduledDate || body.date || null,
     projectName: body.projectName || '',
     projectId: body.projectId || '',
     inspector: body.inspector || '',
     notes: body.notes || '',
-    completedDate: body.completedDate || '',
+    completedDate: body.completedDate || null,
   };
   if (!pool) {
     inspections.unshift(inspection);
@@ -2720,13 +2726,13 @@ app.post('/api/inspections', (req, res) => {
         inspection.title,
         inspection.type,
         inspection.status,
-        inspection.date,
-        inspection.scheduledDate,
+        inspection.date || null,
+        inspection.scheduledDate || null,
         inspection.projectName,
         inspection.projectId,
         inspection.inspector,
         inspection.notes,
-        inspection.completedDate,
+        inspection.completedDate || null,
       ]
     )
     .then(result => res.json({ inspection: result.rows[0] }))
@@ -2768,13 +2774,13 @@ app.put('/api/inspections/:id', (req, res) => {
             body.title ?? current.title,
             body.type ?? current.type,
             body.status ?? current.status,
-            body.date ?? current.date,
-            body.scheduledDate ?? current.scheduled_date,
+            body.date === '' ? current.date : body.date ?? current.date,
+            body.scheduledDate === '' ? current.scheduled_date : body.scheduledDate ?? current.scheduled_date,
             body.projectName ?? current.project_name,
             body.projectId ?? current.project_id,
             body.inspector ?? current.inspector,
             body.notes ?? current.notes,
-            body.completedDate ?? current.completed_date,
+            body.completedDate === '' ? current.completed_date : body.completedDate ?? current.completed_date,
             req.params.id,
           ]
         )
