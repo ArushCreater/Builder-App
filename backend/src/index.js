@@ -182,6 +182,32 @@ async function ensureTables() {
       ALTER TABLE invoices ADD COLUMN IF NOT EXISTS type text;
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS expenses (
+        id uuid PRIMARY KEY,
+        title text,
+        type text,
+        category text,
+        vendor text,
+        amount numeric,
+        tax numeric,
+        total numeric,
+        status text,
+        payment_method text,
+        date date,
+        due_date date,
+        project_id text,
+        project_name text,
+        notes text,
+        receipt_url text,
+        receipt_name text,
+        receipt_type text,
+        created_at timestamptz DEFAULT now()
+      );
+      ALTER TABLE expenses ADD COLUMN IF NOT EXISTS receipt_url text;
+      ALTER TABLE expenses ADD COLUMN IF NOT EXISTS receipt_name text;
+      ALTER TABLE expenses ADD COLUMN IF NOT EXISTS receipt_type text;
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS materials (
         id uuid PRIMARY KEY,
         name text,
@@ -679,6 +705,269 @@ const materials = [
   { id: 'm-1', name: 'Concrete', description: 'Ready-mix 25 MPa', quantity: 30, unit: 'm3', costPerUnit: 120, totalCost: 3600, supplier: 'BuildCo', projectName: 'Sunrise Apartments', projectId: 'p-1', status: 'in-stock' },
   { id: 'm-2', name: 'Steel Rebar', description: 'Grade 500N', quantity: 2, unit: 'ton', costPerUnit: 950, totalCost: 1900, supplier: 'SteelWorks', projectName: 'Downtown Office', projectId: 'p-2', status: 'ordered' },
 ];
+
+const expenses = [
+  {
+    id: 'exp-1',
+    title: 'Site utilities setup',
+    type: 'project',
+    category: 'Site Services',
+    vendor: 'UtilityCo',
+    amount: 2400,
+    tax: 240,
+    total: 2640,
+    status: 'approved',
+    paymentMethod: 'credit_card',
+    date: '2024-12-01',
+    dueDate: '2024-12-15',
+    projectId: 'p-1',
+    projectName: 'Sunrise Apartments',
+    notes: 'Temporary power & water',
+    receiptUrl: '',
+    receiptName: '',
+    receiptType: '',
+  },
+  {
+    id: 'exp-2',
+    title: 'Office phone line',
+    type: 'non-project',
+    category: 'Operations',
+    vendor: 'Telco',
+    amount: 120,
+    tax: 12,
+    total: 132,
+    status: 'paid',
+    paymentMethod: 'ach',
+    date: '2024-11-22',
+    dueDate: '2024-11-22',
+    projectId: '',
+    projectName: '',
+    notes: 'Monthly plan',
+    receiptUrl: '',
+    receiptName: '',
+    receiptType: '',
+  },
+];
+
+// Expenses
+app.get('/api/expenses', (req, res) => {
+  const { type, projectId, search, status } = req.query;
+  if (!pool) {
+    let list = [...expenses];
+    if (type && type !== 'all') list = list.filter(e => e.type === type);
+    if (projectId) list = list.filter(e => e.projectId === projectId);
+    if (status) list = list.filter(e => e.status === status);
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(
+        e =>
+          (e.title || '').toLowerCase().includes(q) ||
+          (e.vendor || '').toLowerCase().includes(q) ||
+          (e.category || '').toLowerCase().includes(q)
+      );
+    }
+    list.sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime());
+    return res.json({ expenses: list });
+  }
+  const clauses = [];
+  const values = [];
+  if (type && type !== 'all') {
+    clauses.push(`type = $${clauses.length + 1}`);
+    values.push(type);
+  }
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (status) {
+    clauses.push(`status = $${clauses.length + 1}`);
+    values.push(status);
+  }
+  if (search) {
+    clauses.push(
+      `(LOWER(title) LIKE $${clauses.length + 1} OR LOWER(vendor) LIKE $${clauses.length + 1} OR LOWER(category) LIKE $${clauses.length + 1})`
+    );
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  pool
+    .query(`SELECT * FROM expenses ${where} ORDER BY date DESC NULLS LAST, created_at DESC`, values)
+    .then(result =>
+      res.json({
+        expenses: result.rows.map(r => ({
+          id: r.id,
+          title: r.title,
+          type: r.type,
+          category: r.category,
+          vendor: r.vendor,
+          amount: Number(r.amount || 0),
+          tax: Number(r.tax || 0),
+          total: Number(r.total || 0),
+          status: r.status,
+          paymentMethod: r.payment_method,
+          date: r.date,
+          dueDate: r.due_date,
+          projectId: r.project_id,
+          projectName: r.project_name,
+          notes: r.notes,
+          receiptUrl: r.receipt_url,
+          receiptName: r.receipt_name,
+          receiptType: r.receipt_type,
+        })),
+      })
+    )
+    .catch(() => res.json({ expenses }));
+});
+
+app.post('/api/expenses', (req, res) => {
+  const body = req.body || {};
+  const amount = parseFloat(body.amount) || 0;
+  const tax = parseFloat(body.tax) || 0;
+  const total = body.total !== undefined ? parseFloat(body.total) || 0 : amount + tax;
+  const expense = {
+    id: randomUUID(),
+    title: body.title || 'Expense',
+    type: body.type || (body.projectId ? 'project' : 'non-project'),
+    category: body.category || 'General',
+    vendor: body.vendor || '',
+    amount,
+    tax,
+    total,
+    status: body.status || 'draft',
+    paymentMethod: body.paymentMethod || '',
+    date: body.date || null,
+    dueDate: body.dueDate || null,
+    projectId: body.projectId || '',
+    projectName: body.projectName || '',
+    notes: body.notes || '',
+    receiptUrl: body.receiptUrl,
+    receiptName: body.receiptName,
+    receiptType: body.receiptType,
+  };
+  if (!pool) {
+    expenses.unshift(expense);
+    return res.json({ expense });
+  }
+  pool
+    .query(
+      `INSERT INTO expenses (id, title, type, category, vendor, amount, tax, total, status, payment_method, date, due_date, project_id, project_name, notes, receipt_url, receipt_name, receipt_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       RETURNING *`,
+      [
+        expense.id,
+        expense.title,
+        expense.type,
+        expense.category,
+        expense.vendor,
+        expense.amount,
+        expense.tax,
+        expense.total,
+        expense.status,
+        expense.paymentMethod,
+        expense.date || null,
+        expense.dueDate || null,
+        expense.projectId,
+        expense.projectName,
+        expense.notes,
+        expense.receiptUrl,
+        expense.receiptName,
+        expense.receiptType,
+      ]
+    )
+    .then(result => res.json({ expense: result.rows[0] }))
+    .catch(() => res.json({ expense }));
+});
+
+app.put('/api/expenses/:id', (req, res) => {
+  const body = req.body || {};
+  if (!pool) {
+    const exp = expenses.find(e => e.id === req.params.id);
+    if (!exp) return res.status(404).json({ message: 'Not found' });
+    const amount = body.amount !== undefined ? parseFloat(body.amount) || 0 : exp.amount;
+    const tax = body.tax !== undefined ? parseFloat(body.tax) || 0 : exp.tax;
+    const total = body.total !== undefined ? parseFloat(body.total) || amount + tax : exp.total;
+    Object.assign(exp, {
+      title: body.title ?? exp.title,
+      type: body.type ?? exp.type,
+      category: body.category ?? exp.category,
+      vendor: body.vendor ?? exp.vendor,
+      amount,
+      tax,
+      total,
+      status: body.status ?? exp.status,
+      paymentMethod: body.paymentMethod ?? exp.paymentMethod,
+      date: body.date === '' ? null : body.date ?? exp.date,
+      dueDate: body.dueDate === '' ? null : body.dueDate ?? exp.dueDate,
+      projectId: body.projectId ?? exp.projectId,
+      projectName: body.projectName ?? exp.projectName,
+      notes: body.notes ?? exp.notes,
+      receiptUrl: body.receiptUrl ?? exp.receiptUrl,
+      receiptName: body.receiptName ?? exp.receiptName,
+      receiptType: body.receiptType ?? exp.receiptType,
+    });
+    return res.json({ expense: exp });
+  }
+  pool
+    .query('SELECT * FROM expenses WHERE id = $1', [req.params.id])
+    .then(result => {
+      const current = result.rows[0];
+      if (!current) return res.status(404).json({ message: 'Not found' });
+      const amount = body.amount !== undefined ? parseFloat(body.amount) || 0 : current.amount;
+      const tax = body.tax !== undefined ? parseFloat(body.tax) || 0 : current.tax;
+      const total = body.total !== undefined ? parseFloat(body.total) || amount + tax : current.total;
+      return pool
+        .query(
+          `UPDATE expenses SET
+             title=$1, type=$2, category=$3, vendor=$4, amount=$5, tax=$6, total=$7, status=$8, payment_method=$9,
+             date=$10, due_date=$11, project_id=$12, project_name=$13, notes=$14, receipt_url=$15, receipt_name=$16, receipt_type=$17
+           WHERE id=$18
+           RETURNING *`,
+          [
+            body.title ?? current.title,
+            body.type ?? current.type,
+            body.category ?? current.category,
+            body.vendor ?? current.vendor,
+            amount,
+            tax,
+            total,
+            body.status ?? current.status,
+            body.paymentMethod ?? current.payment_method,
+            body.date === '' ? current.date : body.date ?? current.date,
+            body.dueDate === '' ? current.due_date : body.dueDate ?? current.due_date,
+            body.projectId ?? current.project_id,
+            body.projectName ?? current.project_name,
+            body.notes ?? current.notes,
+            body.receiptUrl ?? current.receipt_url,
+            body.receiptName ?? current.receipt_name,
+            body.receiptType ?? current.receipt_type,
+            req.params.id,
+          ]
+        )
+        .then(updateResult => res.json({ expense: updateResult.rows[0] }));
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
+});
+
+app.delete('/api/expenses/:id', (req, res) => {
+  if (!pool) {
+    const idx = expenses.findIndex(e => e.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = expenses.splice(idx, 1);
+    return res.json({ expense: removed });
+  }
+  pool
+    .query('DELETE FROM expenses WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ expense: row });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
+});
+
+// Health endpoints for EB
+app.get('/', (_req, res) => res.json({ status: 'ok' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 const selections = [
   { id: 's-1', category: 'Cabinetry', item: 'Kitchen Cabinets', description: 'Shaker style', choice: 'Matte White', cost: 4500, status: 'pending', projectName: 'Sunrise Apartments', projectId: 'p-1', clientName: 'John Smith', dueDate: '2024-05-01' },

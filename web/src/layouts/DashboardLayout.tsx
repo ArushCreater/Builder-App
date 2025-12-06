@@ -58,6 +58,7 @@ const navigation: NavItem[] = [
   { name: 'Schedule', path: '/schedule', icon: Calendar },
   { name: 'Budget', path: '/budget', icon: DollarSign },
   { name: 'Invoices', path: '/invoices', icon: Receipt },
+  { name: 'Expenses', path: '/expenses', icon: Receipt },
   { name: 'Materials', path: '/materials', icon: Package },
   { name: 'Selections', path: '/selections', icon: Palette },
   { name: 'Daily Logs', path: '/daily-logs', icon: BookOpen },

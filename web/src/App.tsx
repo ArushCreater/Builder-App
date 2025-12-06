@@ -22,6 +22,7 @@ import TasksPage from './pages/tasks/TasksPage'
 import SchedulePage from './pages/schedule/SchedulePage'
 import BudgetPage from './pages/budget/BudgetPage'
 import InvoicesPage from './pages/invoices/InvoicesPage'
+import ExpensesPage from './pages/expenses/ExpensesPage'
 import MaterialsPage from './pages/materials/MaterialsPage'
 import SelectionsPage from './pages/selections/SelectionsPage'
 import DailyLogsPage from './pages/dailyLogs/DailyLogsPage'
@@ -92,6 +93,7 @@ function App() {
             {/* Financial */}
             <Route path="/budget" element={<BudgetPage />} />
             <Route path="/invoices" element={<InvoicesPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/bids" element={<BidsPage />} />
             <Route path="/sold" element={<SoldPage />} />
 

@@ -9,13 +9,11 @@ const api: AxiosInstance = axios.create({
   timeout: 30000, // 30 seconds
 });
 
-// Request interceptor - Add auth token to requests
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('auth_token');
-
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Auth is currently disabled; ensure no stray Authorization header is set
+    if (config.headers) {
+      delete config.headers.Authorization;
     }
 
     return config;
