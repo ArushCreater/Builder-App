@@ -22,8 +22,16 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { Badge } from '../../components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Banknote, Building, CreditCard, Calendar as CalendarIcon, Receipt } from 'lucide-react';
+import { Plus, Search, Banknote, Building, CreditCard, Calendar as CalendarIcon, Receipt, LayoutGrid, List } from 'lucide-react';
 import { formatCurrency, formatDateShort } from '../../lib/utils';
 
 type Expense = {
@@ -66,6 +74,7 @@ export default function ExpensesPage() {
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [view, setView] = useState<'list' | 'cards'>('list');
   const [formData, setFormData] = useState<Partial<Expense>>({
     title: '',
     type: 'project',
@@ -523,11 +532,68 @@ export default function ExpensesPage() {
               </div>
             </div>
           ) : (
-            <div className="max-h-[650px] overflow-y-auto pr-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {expenses.map(renderExpenseCard)}
+            <>
+              <div className="flex items-center justify-end gap-2 mb-3">
+                <Button
+                  variant={view === 'list' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => setView('list')}
+                >
+                  <List className="h-4 w-4" /> List
+                </Button>
+                <Button
+                  variant={view === 'cards' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => setView('cards')}
+                >
+                  <LayoutGrid className="h-4 w-4" /> Cards
+                </Button>
               </div>
-            </div>
+              {view === 'list' ? (
+                <div className="max-h-[650px] overflow-y-auto pr-1">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Project</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {expenses.map(exp => (
+                        <TableRow key={exp.id} className="hover:bg-slate-50">
+                          <TableCell className="font-semibold text-slate-900">{exp.title}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{exp.type === 'project' ? 'Project' : 'Non-project'}</Badge>
+                          </TableCell>
+                          <TableCell>{exp.projectName || '—'}</TableCell>
+                          <TableCell>{exp.vendor || '—'}</TableCell>
+                          <TableCell>
+                            <Badge variant={statusBadges[exp.status || 'pending']?.variant || 'outline'}>
+                              {statusBadges[exp.status || 'pending']?.label || exp.status || 'Pending'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{exp.date ? formatDateShort(exp.date) : '—'}</TableCell>
+                          <TableCell className="text-right font-semibold">{formatCurrency(exp.total || exp.amount || 0)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="max-h-[650px] overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {expenses.map(renderExpenseCard)}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
