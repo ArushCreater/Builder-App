@@ -186,7 +186,7 @@ export function DashboardLayout() {
       </aside>
 
       {/* Main content */}
-      <div className={cn('flex-1 flex flex-col transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64')}>
+      <div className={cn('flex-1 flex flex-col transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-24' : 'lg:pl-[22rem]')}>
         {/* Top header */}
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
           <div className="flex flex-wrap items-center justify-between gap-3 h-auto py-3 px-4 sm:px-6 lg:px-8">

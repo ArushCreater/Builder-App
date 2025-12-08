@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../lib/api';
@@ -96,6 +96,21 @@ export function ProjectsPage() {
   });
 
   const projects = projectsData?.projects || [];
+  const { data: projectExpensesData } = useQuery({
+    queryKey: ['project-expenses-all'],
+    queryFn: () => apiClient.get<{ expenses: { projectId?: string; amount?: number; tax?: number; total?: number }[] }>('/expenses?type=project'),
+  });
+
+  const expenseTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    (projectExpensesData?.expenses || []).forEach((exp) => {
+      const value = exp.total ?? ((exp.amount || 0) + (exp.tax || 0));
+      const key = exp.projectId || '';
+      if (!key) return;
+      totals[key] = (totals[key] || 0) + value;
+    });
+    return totals;
+  }, [projectExpensesData?.expenses]);
   const filtered = projects;
 
   const createMutation = useMutation({
@@ -447,16 +462,18 @@ export function ProjectsPage() {
                         <div>
                           <div className="flex items-center justify-between text-sm mb-2">
                             <span className="text-gray-600">Budget Used</span>
-                            <span className="font-medium">
-                              {project.estimatedBudget > 0
-                                ? Math.round((project.actualCost / project.estimatedBudget) * 100)
-                                : 0}%
-                            </span>
+                            {(() => {
+                              const spent = expenseTotals[project.id] ?? project.actualCost ?? 0;
+                              const pct = project.estimatedBudget > 0 ? Math.round((spent / project.estimatedBudget) * 100) : 0;
+                              return <span className="font-medium">{pct}%</span>;
+                            })()}
                           </div>
                           <Progress
-                            value={project.estimatedBudget > 0
-                              ? (project.actualCost / project.estimatedBudget) * 100
-                              : 0}
+                            value={
+                              project.estimatedBudget > 0
+                                ? ((expenseTotals[project.id] ?? project.actualCost ?? 0) / project.estimatedBudget) * 100
+                                : 0
+                            }
                           />
                         </div>
                         <div className="space-y-2 text-sm">
@@ -473,7 +490,7 @@ export function ProjectsPage() {
                               Budget
                             </div>
                             <span className="font-medium">
-                              {formatCurrency(project.actualCost)} / {formatCurrency(project.estimatedBudget)}
+                              {formatCurrency(expenseTotals[project.id] ?? project.actualCost)} / {formatCurrency(project.estimatedBudget)}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
@@ -563,12 +580,12 @@ export function ProjectsPage() {
                                   <p className="text-xs text-gray-500 line-clamp-2">{project.description}</p>
                                 </CardHeader>
                             <CardContent className="space-y-2 text-xs text-gray-600">
-                              <div className="flex items-center justify-between">
-                                <span>Budget</span>
-                                <span className="font-semibold text-gray-900">
-                                  {formatCurrency(project.actualCost)} / {formatCurrency(project.estimatedBudget)}
-                                </span>
-                              </div>
+                                <div className="flex items-center justify-between">
+                                  <span>Budget</span>
+                                  <span className="font-semibold text-gray-900">
+                                  {formatCurrency(expenseTotals[project.id] ?? project.actualCost)} / {formatCurrency(project.estimatedBudget)}
+                                  </span>
+                                </div>
                               {project.endDate && (
                                 <div className="flex items-center justify-between">
                                   <span>Deadline</span>
@@ -587,7 +604,7 @@ export function ProjectsPage() {
                                 <Progress
                                   value={
                                     project.estimatedBudget > 0
-                                      ? (project.actualCost / project.estimatedBudget) * 100
+                                      ? ((expenseTotals[project.id] ?? project.actualCost ?? 0) / project.estimatedBudget) * 100
                                       : 0
                                   }
                                 />

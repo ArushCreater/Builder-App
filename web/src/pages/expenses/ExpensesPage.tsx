@@ -131,6 +131,8 @@ export default function ExpensesPage() {
     mutationFn: (payload: Partial<Expense>) => apiClient.post('/expenses', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['project-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['project-budget'] });
       setIsDialogOpen(false);
       setEditingId(null);
       setFormData({ title: '', type: segment, status: 'pending', paymentMethod: 'credit_card' });
@@ -144,6 +146,8 @@ export default function ExpensesPage() {
       apiClient.put(`/expenses/${payload.id}`, payload.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['project-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['project-budget'] });
       setIsDialogOpen(false);
       setEditingId(null);
       toast({ title: 'Updated', description: 'Expense updated' });
@@ -155,6 +159,8 @@ export default function ExpensesPage() {
     mutationFn: (id: string) => apiClient.delete(`/expenses/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['project-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['project-budget'] });
       toast({ title: 'Deleted', description: 'Expense removed' });
     },
     onError: () => toast({ title: 'Error', description: 'Failed to delete expense', variant: 'destructive' }),

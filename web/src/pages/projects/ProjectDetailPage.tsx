@@ -142,6 +142,15 @@ interface Material {
   totalCost?: number;
 }
 
+interface Expense {
+  id: string;
+  projectId?: string;
+  amount?: number;
+  tax?: number;
+  total?: number;
+  type?: string;
+}
+
 export function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -228,6 +237,11 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
     queryFn: () => apiClient.get<{ materials: Material[] }>(`/materials?projectId=${id}`),
   });
 
+  const { data: projectExpensesData } = useQuery({
+    queryKey: ['project-expenses', id],
+    queryFn: () => apiClient.get<{ expenses: Expense[] }>(`/expenses?type=project&projectId=${id}`),
+  });
+
   const { data: documentsData } = useQuery({
     queryKey: ['project-documents', id],
     queryFn: () => apiClient.get<{ documents: Document[] }>(`/projects/${id}/documents`),
@@ -253,6 +267,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
     [invoicesData?.invoices]
   );
   const materials = materialsData?.materials || [];
+  const projectExpenses = projectExpensesData?.expenses || [];
   const documents = documentsData?.documents || [];
   const scheduleEvents = scheduleData?.events || [];
 
@@ -264,9 +279,13 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
 
   const expenseTotals = useMemo(() => {
     const materialCost = materials.reduce((sum, m) => sum + (m.totalCost || 0), 0);
-    const actualCost = project?.actualCost || 0;
-    return { materialCost, actualCost, total: materialCost + actualCost };
-  }, [materials, project?.actualCost]);
+    const expenseCost = projectExpenses.reduce((sum, e) => {
+      const value = e.total ?? ((e.amount || 0) + (e.tax || 0));
+      return sum + value;
+    }, 0);
+    const total = materialCost + expenseCost;
+    return { materialCost, expenseCost, total };
+  }, [materials, projectExpenses]);
 
   const budgetBaseline = useMemo(() => {
     return Math.max(project?.estimatedBudget || 0, depositTotals.total, expenseTotals.total, 1);
@@ -407,7 +426,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   }
 
   const budgetProgress = project.estimatedBudget > 0
-    ? (project.actualCost / project.estimatedBudget) * 100
+    ? (expenseTotals.total / project.estimatedBudget) * 100
     : 0;
 
   const openEdit = () => {
@@ -672,7 +691,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
             <div>
               <div className="text-lg font-bold">{formatCurrency(project.estimatedBudget)}</div>
               <div className="text-sm text-gray-500">
-                {formatCurrency(project.actualCost)} spent
+                {formatCurrency(expenseTotals.total)} spent
               </div>
               <Progress value={budgetProgress} className="mt-2" />
             </div>

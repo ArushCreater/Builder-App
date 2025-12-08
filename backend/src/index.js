@@ -1396,19 +1396,7 @@ app.post('/api/projects/:id/tasks', (req, res) => {
   if (!pool) {
     projectTasks[req.params.id] = projectTasks[req.params.id] || [];
     projectTasks[req.params.id].push(task);
-    // Keep global list in sync so tasks page can see project tasks
-    tasks.push({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      status: task.status,
-      priority: task.priority,
-      assignee: task.assignedTo || '',
-      projectName: task.projectName || '',
-      projectId: task.projectId,
-      dueDate: task.dueDate,
-      completed: task.status === 'done' || task.status === 'completed',
-    });
+    // Global task list is derived from projectTasks in the /api/tasks handler, avoid double-inserting here.
     return res.json({ task });
   }
   pool
@@ -1809,22 +1797,32 @@ app.delete('/api/leads/:id', (req, res) => {
 app.get('/api/tasks', (req, res) => {
   const { search, status, projectId } = req.query;
   if (!pool) {
-    // Flatten project-specific tasks into the global view so all tasks appear here
-    const projectTaskList = Object.entries(projectTasks).flatMap(([pid, taskList]) =>
-      (taskList || []).map(t => ({
-        id: t.id,
-        title: t.title,
-        description: t.description,
-        status: t.status,
-        priority: t.priority,
-        assignee: t.assignedTo || '',
-        projectId: pid,
-        projectName: t.projectName || '',
-        dueDate: t.dueDate || '',
-        completed: t.status === 'done' || t.status === 'completed',
-      }))
-    );
-    return res.json({ tasks: [...tasks, ...projectTaskList] });
+    // Flatten project-specific tasks into the global view so all tasks appear here, de-duped by id
+    const merged = [];
+    const seen = new Set();
+    const pushUnique = (t) => {
+      if (seen.has(t.id)) return;
+      seen.add(t.id);
+      merged.push(t);
+    };
+    tasks.forEach(pushUnique);
+    Object.entries(projectTasks).forEach(([pid, taskList]) => {
+      (taskList || []).forEach(t =>
+        pushUnique({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          status: t.status,
+          priority: t.priority,
+          assignee: t.assignedTo || '',
+          projectId: pid,
+          projectName: t.projectName || '',
+          dueDate: t.dueDate || '',
+          completed: t.status === 'done' || t.status === 'completed',
+        })
+      );
+    });
+    return res.json({ tasks: merged });
   }
 
   const clauses = [];
@@ -1925,7 +1923,7 @@ app.post('/api/tasks', (req, res) => {
 app.patch('/api/tasks/:id', (req, res) => {
   const body = req.body || {};
   if (!pool) {
-    const task = tasks.find(t => t.id === req.params.id);
+    let task = tasks.find(t => t.id === req.params.id);
     if (task) {
       if (body.completed !== undefined) task.completed = !!body.completed;
       if (body.status) task.status = body.status;
@@ -1941,6 +1939,21 @@ app.patch('/api/tasks/:id', (req, res) => {
     Object.values(projectTasks).forEach(list => {
       const t = list.find(x => x.id === req.params.id);
       if (t) {
+        if (!task) {
+          task = {
+            id: t.id,
+            title: t.title,
+            description: t.description,
+            status: t.status,
+            priority: t.priority,
+            assignee: t.assignedTo || '',
+            projectId: t.projectId,
+            projectName: t.projectName || '',
+            dueDate: t.dueDate,
+            completed: t.status === 'done' || t.status === 'completed',
+          };
+          tasks.push(task);
+        }
         if (body.completed !== undefined) t.status = body.completed ? 'done' : t.status || 'todo';
         if (body.status) t.status = body.status;
         if (body.title) t.title = body.title;
