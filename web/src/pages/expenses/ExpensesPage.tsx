@@ -76,6 +76,7 @@ export default function ExpensesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'cards'>('list');
+  const [taxMode, setTaxMode] = useState<'exclusive' | 'inclusive'>('exclusive');
   const [formData, setFormData] = useState<Partial<Expense>>({
     title: '',
     type: 'project',
@@ -169,9 +170,27 @@ export default function ExpensesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const gstRate = 0.1;
+    const rawAmount = Number(formData.amount || 0);
+    const computed =
+      taxMode === 'inclusive'
+        ? (() => {
+            const total = rawAmount;
+            const base = total / (1 + gstRate);
+            const tax = total - base;
+            return { amount: base, tax, total };
+          })()
+        : (() => {
+            const base = rawAmount;
+            const tax = base * gstRate;
+            const total = base + tax;
+            return { amount: base, tax, total };
+          })();
     const payload: Partial<Expense> = {
       ...formData,
-      total: formData.total && formData.total > 0 ? formData.total : (formData.amount || 0) + (formData.tax || 0),
+      amount: computed.amount,
+      tax: computed.tax,
+      total: computed.total,
     };
     if (segment === 'non-project') {
       payload.projectId = '';
@@ -191,6 +210,7 @@ export default function ExpensesPage() {
     setEditingId(exp.id);
     setIsDialogOpen(true);
     setSegment(exp.type as 'project' | 'non-project');
+    setTaxMode('exclusive');
     setFormData({
       ...exp,
       amount: exp.amount ?? 0,
@@ -333,19 +353,33 @@ export default function ExpensesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Tax</Label>
-                  <Input
-                    type="number"
-                    value={formData.tax ?? 0}
-                    onChange={e => setFormData({ ...formData, tax: parseFloat(e.target.value) || 0 })}
-                  />
+                  <Label>GST (10%)</Label>
+                  <Select value={taxMode} onValueChange={(v: 'exclusive' | 'inclusive') => setTaxMode(v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="exclusive">Exclusive (add 10%)</SelectItem>
+                      <SelectItem value="inclusive">Inclusive (includes 10%)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-500">
+                    {taxMode === 'inclusive'
+                      ? 'Amount includes GST; total will match the entered amount.'
+                      : 'GST will be added on top of the entered amount.'}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Total</Label>
                   <Input
                     type="number"
-                    value={formData.total ?? (formData.amount || 0) + (formData.tax || 0)}
-                    onChange={e => setFormData({ ...formData, total: parseFloat(e.target.value) || 0 })}
+                    value={(() => {
+                      const gstRate = 0.1;
+                      const rawAmount = Number(formData.amount || 0);
+                      const total = taxMode === 'inclusive' ? rawAmount : rawAmount + rawAmount * gstRate;
+                      return Number.isFinite(total) ? Number(total.toFixed(2)) : 0;
+                    })()}
+                    readOnly
                   />
                 </div>
                 <div className="space-y-2">

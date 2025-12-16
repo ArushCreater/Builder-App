@@ -30,6 +30,7 @@ import {
 import {
   ArrowLeft,
   Calendar,
+  DollarSign,
   FileText,
   Edit,
   Plus,
@@ -39,6 +40,8 @@ import {
   LayoutPanelTop,
   BookOpen,
   Image as ImageIcon,
+  Package,
+  ClipboardCheck,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
@@ -151,6 +154,45 @@ interface Expense {
   type?: string;
 }
 
+interface Selection {
+  id: string;
+  projectId?: string;
+  category?: string;
+  item?: string;
+  choice?: string;
+  status?: string;
+  cost?: number;
+  clientName?: string;
+  dueDate?: string;
+  createdAt?: string;
+}
+
+interface Inspection {
+  id: string;
+  projectId?: string;
+  title?: string;
+  type?: string;
+  status?: string;
+  scheduledDate?: string;
+  inspector?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+interface DailyLog {
+  id: string;
+  projectId?: string;
+  projectName?: string;
+  date?: string;
+  weather?: string;
+  temperature?: string;
+  workPerformed?: string;
+  crewSize?: number;
+  hoursWorked?: number;
+  notes?: string;
+  createdBy?: string;
+}
+
 export function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -232,6 +274,11 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
     queryFn: () => apiClient.get<{ invoices: Invoice[] }>(`/invoices?projectId=${id}&type=deposit`),
   });
 
+  const { data: projectInvoicesData } = useQuery({
+    queryKey: ['project-invoices-full', id],
+    queryFn: () => apiClient.get<{ invoices: Invoice[] }>(`/invoices?projectId=${id}&type=invoice`),
+  });
+
   const { data: materialsData } = useQuery({
     queryKey: ['project-materials', id],
     queryFn: () => apiClient.get<{ materials: Material[] }>(`/materials?projectId=${id}`),
@@ -240,6 +287,21 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const { data: projectExpensesData } = useQuery({
     queryKey: ['project-expenses', id],
     queryFn: () => apiClient.get<{ expenses: Expense[] }>(`/expenses?type=project&projectId=${id}`),
+  });
+
+  const { data: selectionsData } = useQuery({
+    queryKey: ['project-selections', id],
+    queryFn: () => apiClient.get<{ selections: Selection[] }>(`/selections?projectId=${id}`),
+  });
+
+  const { data: inspectionsData } = useQuery({
+    queryKey: ['project-inspections', id],
+    queryFn: () => apiClient.get<{ inspections: Inspection[] }>(`/inspections?projectId=${id}`),
+  });
+
+  const { data: dailyLogsData } = useQuery({
+    queryKey: ['project-daily-logs', id],
+    queryFn: () => apiClient.get<{ logs: DailyLog[] }>(`/daily-logs?projectId=${id}`),
   });
 
   const { data: documentsData } = useQuery({
@@ -266,8 +328,22 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
       })),
     [invoicesData?.invoices]
   );
+  const projectInvoices = useMemo(
+    () =>
+      (projectInvoicesData?.invoices || []).map((inv: any) => ({
+        ...inv,
+        issueDate: inv.issueDate || inv.issue_date || '',
+        dueDate: inv.dueDate || inv.due_date || '',
+        clientName: inv.clientName || inv.client_name || '',
+        description: inv.description || inv.description_text || inv.description || '',
+      })),
+    [projectInvoicesData?.invoices]
+  );
   const materials = materialsData?.materials || [];
   const projectExpenses = projectExpensesData?.expenses || [];
+  const selections = selectionsData?.selections || [];
+  const inspections = inspectionsData?.inspections || [];
+  const dailyLogs = dailyLogsData?.logs || [];
   const documents = documentsData?.documents || [];
   const scheduleEvents = scheduleData?.events || [];
 
@@ -767,6 +843,12 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
           <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="docs">Docs</TabsTrigger>
           <TabsTrigger value="invoices">Deposits ({invoices.length})</TabsTrigger>
+          <TabsTrigger value="project-invoices">Invoices ({projectInvoices.length})</TabsTrigger>
+          <TabsTrigger value="expenses">Expenses ({projectExpenses.length})</TabsTrigger>
+          <TabsTrigger value="materials">Materials ({materials.length})</TabsTrigger>
+          <TabsTrigger value="selections">Selections ({selections.length})</TabsTrigger>
+          <TabsTrigger value="daily-logs">Daily Logs ({dailyLogs.length})</TabsTrigger>
+          <TabsTrigger value="inspections">Inspections ({inspections.length})</TabsTrigger>
           <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="files">Files ({documents.length})</TabsTrigger>
         </TabsList>
@@ -1191,7 +1273,12 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-blue-600" /> Linked Schedule
               </CardTitle>
-              <Badge variant="secondary">{scheduleEvents.length} items</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{scheduleEvents.length} items</Badge>
+                <Button variant="outline" size="sm" onClick={() => navigate('/schedule')}>
+                  Open Schedule
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {scheduleEvents.length === 0 && (
@@ -1201,16 +1288,287 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                 <div key={ev.id} className="rounded-xl border border-gray-100 p-3 flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-gray-900">{ev.title}</p>
-                    <p className="text-xs text-gray-500 flex items-center gap-2">
+                    <p className="text-xs text-gray-500 flex flex-wrap items-center gap-2">
                       <MapPin className="h-3 w-3" /> {ev.location || 'On site'}
+                      {ev.assignee ? (
+                        <>
+                          <span className="text-gray-300">•</span>
+                          <span>{ev.assignee}</span>
+                        </>
+                      ) : null}
+                      {ev.type ? (
+                        <>
+                          <span className="text-gray-300">•</span>
+                          <span className="uppercase tracking-wide">{ev.type}</span>
+                        </>
+                      ) : null}
                     </p>
                   </div>
                   <div className="text-right text-sm text-gray-700 flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-gray-500" />
-                    {ev.startDate ? formatDate(ev.startDate) : 'TBD'}
+                    {ev.startDate ? (
+                      <span>
+                        {formatDate(ev.startDate)}
+                        {ev.endDate && ev.endDate !== ev.startDate ? ` – ${formatDate(ev.endDate)}` : ''}
+                      </span>
+                    ) : (
+                      'TBD'
+                    )}
                   </div>
                 </div>
               ))}
+              {tasks.filter(t => !!t.dueDate).length > 0 && (
+                <div className="pt-2">
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Project tasks with due dates</p>
+                  <div className="space-y-2">
+                    {tasks
+                      .filter(t => !!t.dueDate)
+                      .slice(0, 6)
+                      .map(t => (
+                        <div key={t.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                          <span className="text-sm font-medium text-gray-900">{t.title}</span>
+                          <span className="text-xs text-gray-600">{formatDate(t.dueDate!)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="project-invoices" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-indigo-600" /> Project Invoices
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => navigate('/invoices')}>
+                Open Invoices
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {projectInvoices.length === 0 ? (
+                <p className="text-sm text-gray-500">No invoices linked to this project yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Client</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Due</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {projectInvoices.map(inv => (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
+                        <TableCell>{inv.clientName}</TableCell>
+                        <TableCell><Badge variant="secondary">{inv.status}</Badge></TableCell>
+                        <TableCell className="text-right">{formatCurrency(inv.amount)}</TableCell>
+                        <TableCell>{inv.dueDate ? formatDate(inv.dueDate) : '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="expenses" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-rose-600" /> Project Expenses
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => navigate('/expenses')}>
+                Open Expenses
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {projectExpenses.length === 0 ? (
+                <p className="text-sm text-gray-500">No expenses linked to this project yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {projectExpenses.map((e: any) => (
+                      <TableRow key={e.id}>
+                        <TableCell className="font-medium">{e.title || 'Expense'}</TableCell>
+                        <TableCell>{e.category || '—'}</TableCell>
+                        <TableCell>{e.vendor || '—'}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(e.total ?? (e.amount || 0) + (e.tax || 0))}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="materials" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-indigo-600" /> Project Materials
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => navigate('/materials')}>
+                Open Materials
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {materials.length === 0 ? (
+                <p className="text-sm text-gray-500">No materials linked to this project yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {materials.map((m: any) => (
+                      <TableRow key={m.id}>
+                        <TableCell className="font-medium">{m.name || 'Material'}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(m.totalCost || 0)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="selections" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <LayoutPanelTop className="h-4 w-4 text-indigo-600" /> Project Selections
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => navigate('/selections')}>
+                Open Selections
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {selections.length === 0 ? (
+                <p className="text-sm text-gray-500">No selections linked to this project yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead>Due</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selections.map((s: any) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium">{s.category}</TableCell>
+                        <TableCell>{s.item}</TableCell>
+                        <TableCell><Badge variant="secondary">{s.status || 'pending'}</Badge></TableCell>
+                        <TableCell className="text-right">{formatCurrency(s.cost || 0)}</TableCell>
+                        <TableCell>{s.dueDate ? formatDate(s.dueDate) : '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="daily-logs" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-indigo-600" /> Daily Logs
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => navigate('/daily-logs')}>
+                Open Daily Logs
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {dailyLogs.length === 0 ? (
+                <p className="text-sm text-gray-500">No daily logs linked to this project yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Weather</TableHead>
+                      <TableHead>Crew</TableHead>
+                      <TableHead>Hours</TableHead>
+                      <TableHead>Summary</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dailyLogs.map((l: any) => (
+                      <TableRow key={l.id}>
+                        <TableCell className="font-medium">{l.date ? formatDate(l.date) : '—'}</TableCell>
+                        <TableCell>{l.weather || '—'} {l.temperature ? `(${l.temperature})` : ''}</TableCell>
+                        <TableCell>{l.crewSize ?? '—'}</TableCell>
+                        <TableCell>{l.hoursWorked ?? '—'}</TableCell>
+                        <TableCell className="max-w-[420px] truncate">{l.workPerformed || l.notes || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="inspections" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4 text-indigo-600" /> Inspections
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => navigate('/inspections')}>
+                Open Inspections
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {inspections.length === 0 ? (
+                <p className="text-sm text-gray-500">No inspections linked to this project yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Scheduled</TableHead>
+                      <TableHead>Inspector</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {inspections.map((i: any) => (
+                      <TableRow key={i.id}>
+                        <TableCell className="font-medium">{i.title || 'Inspection'}</TableCell>
+                        <TableCell><Badge variant="secondary">{i.status || 'scheduled'}</Badge></TableCell>
+                        <TableCell>{i.scheduledDate ? formatDate(i.scheduledDate) : '—'}</TableCell>
+                        <TableCell>{i.inspector || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
