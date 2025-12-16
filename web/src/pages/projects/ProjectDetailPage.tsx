@@ -327,6 +327,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
     mutationFn: (data: any) => apiClient.post<{ task: Task }>(`/projects/${id}/tasks`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-tasks', id] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setIsTaskDialogOpen(false);
       setTaskForm({ title: '', description: '', status: 'todo', priority: 'medium', assignedTo: '', dueDate: '' });
       toast({ title: 'Task added' });
@@ -339,6 +340,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
       apiClient.put<{ task: Task }>(`/projects/${id}/tasks/${data.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-tasks', id] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
     onError: () => toast({ title: 'Error', description: 'Could not update task', variant: 'destructive' }),
   });
@@ -480,6 +482,22 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                   onChange={(e) => setProgressValue(parseInt(e.target.value, 10))}
                   className="w-full accent-blue-600"
                 />
+                <div className="relative w-24 shrink-0">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={Number.isFinite(progressValue) ? progressValue : 0}
+                    onChange={(e) => {
+                      const next = Math.max(0, Math.min(100, parseInt(e.target.value || '0', 10)));
+                      setProgressValue(Number.isFinite(next) ? next : 0);
+                    }}
+                    className="pr-7 text-right"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-600">
+                    %
+                  </span>
+                </div>
               </div>
               <div className="mt-3 flex justify-end">
                 <Button

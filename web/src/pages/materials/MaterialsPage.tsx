@@ -24,6 +24,7 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { Plus, Search, Package, AlertTriangle, Trash2, Edit, Truck } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import {
@@ -514,13 +515,19 @@ export function MaterialsPage() {
                         <Button size="icon" variant="ghost" onClick={() => handleEdit(material)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => deleteMutation.mutate(material.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete material?"
+                          description="This permanently removes the material. This cannot be undone."
+                          confirmText="Delete"
+                          confirmVariant="destructive"
+                          confirmDisabled={deleteMutation.isPending}
+                          onConfirm={() => deleteMutation.mutate(material.id)}
+                          trigger={
+                            <Button size="icon" variant="ghost">
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

@@ -32,6 +32,7 @@ import {
 } from '../../components/ui/select';
 import { Label } from '../../components/ui/label';
 import { useToast } from '../../components/ui/use-toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 interface Bid {
   id: string;
@@ -466,9 +467,19 @@ export function BidsPage() {
                         <Button size="icon" variant="ghost" onClick={() => handleEdit(bid)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(bid.id)}>
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete bid?"
+                          description="This permanently removes the bid. This cannot be undone."
+                          confirmText="Delete"
+                          confirmVariant="destructive"
+                          confirmDisabled={deleteMutation.isPending}
+                          onConfirm={() => deleteMutation.mutate(bid.id)}
+                          trigger={
+                            <Button size="icon" variant="ghost">
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

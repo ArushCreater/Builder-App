@@ -27,6 +27,7 @@ import { useToast } from '../../components/ui/use-toast';
 import { Plus, Search, Mail, Phone, Eye, Pencil, Trash, User, Calendar, DollarSign, Building } from 'lucide-react';
 import { formatDate, cn } from '../../lib/utils';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
+import ConfirmDialog from '../../components/ConfirmDialog';
 interface Lead {
   id: string;
   firstName: string;
@@ -192,9 +193,7 @@ export function LeadsPage() {
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Delete this lead?')) {
-      deleteMutation.mutate(id);
-    }
+    deleteMutation.mutate(id);
   };
 
   return (
@@ -454,19 +453,28 @@ export function LeadsPage() {
                                             >
                                                 <Pencil className="h-4 w-4" />
                                             </Button>
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
-                                                className="h-8 w-8 text-slate-400 hover:text-red-600" 
-                                                onClick={() => handleDelete(lead.id)}
-                                                title="Delete Lead"
-                                            >
-                                                <Trash className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))
+                                              <ConfirmDialog
+                                                title="Delete lead?"
+                                                description="This permanently removes the lead. This cannot be undone."
+                                                confirmText="Delete"
+                                                confirmVariant="destructive"
+                                                confirmDisabled={deleteMutation.isPending}
+                                                onConfirm={() => handleDelete(lead.id)}
+                                                trigger={
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-slate-400 hover:text-red-600"
+                                                    title="Delete Lead"
+                                                  >
+                                                    <Trash className="h-4 w-4" />
+                                                  </Button>
+                                                }
+                                              />
+                                          </div>
+                                      </td>
+                                  </tr>
+                              ))
                         )}
                     </tbody>
                 </table>

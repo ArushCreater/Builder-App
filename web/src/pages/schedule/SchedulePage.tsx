@@ -18,6 +18,7 @@ import { Label } from '../../components/ui/label';
 import { Calendar as CalendarIcon, List, Plus, Clock3, MapPin, GanttChartSquare, Trash2, Edit, ChevronLeft, ChevronRight, Search, User, ZoomIn, ZoomOut, X } from 'lucide-react';
 import { formatDate, cn } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 
 interface ScheduleEvent {
@@ -707,9 +708,19 @@ export function SchedulePage() {
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-indigo-600" onClick={() => handleEdit(event)}>
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-red-600" onClick={() => deleteMutation.mutate(event.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <ConfirmDialog
+                        title="Delete schedule item?"
+                        description="This permanently removes the schedule item. This cannot be undone."
+                        confirmText="Delete"
+                        confirmVariant="destructive"
+                        confirmDisabled={deleteMutation.isPending}
+                        onConfirm={() => deleteMutation.mutate(event.id)}
+                        trigger={
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-red-600">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        }
+                      />
                     </div>
                   </div>
                 ))

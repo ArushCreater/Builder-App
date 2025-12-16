@@ -24,6 +24,7 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Checkbox } from '../../components/ui/checkbox';
 import { useToast } from '../../components/ui/use-toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { Plus, Search, Filter, Calendar, Clock3 } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 import { Progress } from '../../components/ui/progress';
@@ -90,6 +91,11 @@ export function TasksPage() {
     projectName: string;
     projectId?: string;
     dueDate: string;
+    createExpense: boolean;
+    expenseAmount: string;
+    expenseCategory: string;
+    expenseVendor: string;
+    expenseDate: string;
   }>({
     title: '',
     description: '',
@@ -98,6 +104,11 @@ export function TasksPage() {
     projectName: '',
     projectId: undefined,
     dueDate: '',
+    createExpense: false,
+    expenseAmount: '',
+    expenseCategory: 'Labor',
+    expenseVendor: '',
+    expenseDate: '',
   });
   const [viewTask, setViewTask] = useState<Task | null>(null);
   const [viewForm, setViewForm] = useState({
@@ -156,6 +167,10 @@ export function TasksPage() {
     mutationFn: (data: Partial<Task>) => apiClient.post('/tasks', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['project-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['project-expenses-all'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       setIsCreateDialogOpen(false);
       setFormData({
         title: '',
@@ -165,6 +180,11 @@ export function TasksPage() {
         projectName: '',
         projectId: undefined,
         dueDate: '',
+        createExpense: false,
+        expenseAmount: '',
+        expenseCategory: 'Labor',
+        expenseVendor: '',
+        expenseDate: '',
       });
       toast({
         title: 'Success',
@@ -185,6 +205,7 @@ export function TasksPage() {
       apiClient.patch(`/tasks/${id}`, { completed }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['project-tasks'] });
     },
   });
 
@@ -192,6 +213,7 @@ export function TasksPage() {
     mutationFn: ({ id, data }: { id: string; data: Partial<Task> }) => apiClient.patch(`/tasks/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['project-tasks'] });
       setViewTask(null);
       toast({ title: 'Task updated' });
     },
@@ -211,9 +233,28 @@ export function TasksPage() {
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     createMutation.mutate({
-      ...formData,
+      title: formData.title,
+      description: formData.description,
+      priority: formData.priority,
+      assignee: formData.assignee,
+      projectId: formData.projectId,
+      projectName: formData.projectName,
+      dueDate: formData.dueDate,
       completed: false,
-    });
+      createExpense: formData.createExpense,
+      expense: formData.createExpense
+        ? {
+            amount: formData.expenseAmount,
+            category: formData.expenseCategory,
+            vendor: formData.expenseVendor,
+            date: formData.expenseDate || formData.dueDate || '',
+            projectId: formData.projectId,
+            projectName: formData.projectName,
+            title: `Task: ${formData.title}`,
+            notes: formData.description,
+          }
+        : undefined,
+    } as any);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -339,12 +380,81 @@ export function TasksPage() {
                     />
                   </div>
                 </div>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <Label className="text-sm font-semibold text-slate-900">Expense</Label>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Optionally create a linked project expense when this task is created.
+                      </p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={formData.createExpense}
+                        onChange={(e) => setFormData({ ...formData, createExpense: e.target.checked })}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-200"
+                      />
+                      Create expense
+                    </label>
+                  </div>
+
+                  {formData.createExpense && (
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="expenseAmount">Amount</Label>
+                        <Input
+                          id="expenseAmount"
+                          type="number"
+                          value={formData.expenseAmount}
+                          onChange={(e) => setFormData({ ...formData, expenseAmount: e.target.value })}
+                          placeholder="0.00"
+                          min={0}
+                          step="0.01"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="expenseDate">Expense Date</Label>
+                        <Input
+                          id="expenseDate"
+                          type="date"
+                          value={formData.expenseDate}
+                          onChange={(e) => setFormData({ ...formData, expenseDate: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="expenseCategory">Category</Label>
+                        <Input
+                          id="expenseCategory"
+                          value={formData.expenseCategory}
+                          onChange={(e) => setFormData({ ...formData, expenseCategory: e.target.value })}
+                          placeholder="Labor"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="expenseVendor">Vendor</Label>
+                        <Input
+                          id="expenseVendor"
+                          value={formData.expenseVendor}
+                          onChange={(e) => setFormData({ ...formData, expenseVendor: e.target.value })}
+                          placeholder="Supplier / Contractor"
+                        />
+                      </div>
+                      {!formData.projectId && (
+                        <div className="sm:col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                          Select a project to create a project expense.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
+                <Button type="submit" disabled={createMutation.isPending || (formData.createExpense && !formData.projectId)}>
                   {createMutation.isPending ? 'Creating...' : 'Create Task'}
                 </Button>
               </DialogFooter>
@@ -638,9 +748,19 @@ export function TasksPage() {
               </div>
             </div>
             <DialogFooter className="flex justify-between gap-2">
-              <Button variant="destructive" onClick={() => deleteMutation.mutate(viewTask.id)} disabled={deleteMutation.isPending}>
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-              </Button>
+              <ConfirmDialog
+                title="Delete task?"
+                description="This permanently removes the task. This cannot be undone."
+                confirmText="Delete"
+                confirmVariant="destructive"
+                confirmDisabled={deleteMutation.isPending}
+                onConfirm={() => deleteMutation.mutate(viewTask.id)}
+                trigger={
+                  <Button variant="destructive" disabled={deleteMutation.isPending}>
+                    {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                  </Button>
+                }
+              />
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setViewTask(null)}>Close</Button>
                 <Button

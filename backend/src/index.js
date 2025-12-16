@@ -162,6 +162,25 @@ async function ensureTables() {
       );
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS daily_logs (
+        id uuid PRIMARY KEY,
+        project_id text,
+        project_name text,
+        date date,
+        weather text,
+        temperature text,
+        work_performed text,
+        crew_size int,
+        hours_worked numeric,
+        equipment_used text,
+        materials_received text,
+        notes text,
+        photos int,
+        created_by text,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
         id uuid PRIMARY KEY,
         invoice_number text,
@@ -184,6 +203,7 @@ async function ensureTables() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id uuid PRIMARY KEY,
+        task_id uuid,
         title text,
         type text,
         category text,
@@ -203,6 +223,7 @@ async function ensureTables() {
         receipt_type text,
         created_at timestamptz DEFAULT now()
       );
+      ALTER TABLE expenses ADD COLUMN IF NOT EXISTS task_id uuid;
       ALTER TABLE expenses ADD COLUMN IF NOT EXISTS receipt_url text;
       ALTER TABLE expenses ADD COLUMN IF NOT EXISTS receipt_name text;
       ALTER TABLE expenses ADD COLUMN IF NOT EXISTS receipt_type text;
@@ -1377,7 +1398,7 @@ app.put('/api/projects/:id', (req, res) => {
     .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
-app.post('/api/projects/:id/tasks', (req, res) => {
+app.post('/api/projects/:id/tasks', async (req, res) => {
   const body = req.body || {};
   const task = {
     id: randomUUID(),
@@ -1397,6 +1418,19 @@ app.post('/api/projects/:id/tasks', (req, res) => {
     projectTasks[req.params.id] = projectTasks[req.params.id] || [];
     projectTasks[req.params.id].push(task);
     // Global task list is derived from projectTasks in the /api/tasks handler, avoid double-inserting here.
+    try {
+      await maybeCreateExpenseForTask(
+        {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          dueDate: task.dueDate,
+          projectId: task.projectId,
+          projectName: task.projectName,
+        },
+        body
+      );
+    } catch {}
     return res.json({ task });
   }
   pool
@@ -1417,15 +1451,30 @@ app.post('/api/projects/:id/tasks', (req, res) => {
         task.status === 'completed' || task.status === 'done',
       ]
     )
-    .then(result => res.json({ task: { ...task, ...result.rows[0] } }))
+    .then(async result => {
+      try {
+        await maybeCreateExpenseForTask(
+          {
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            dueDate: task.dueDate,
+            projectId: task.projectId,
+            projectName: task.projectName,
+          },
+          body
+        );
+      } catch {}
+      res.json({ task: { ...task, ...result.rows[0] } });
+    })
     .catch(() => res.json({ task }));
 });
 
 app.put('/api/projects/:id/tasks/:taskId', (req, res) => {
   const body = req.body || {};
   if (!pool) {
-    const tasks = (projectTasks[req.params.id] = projectTasks[req.params.id] || []);
-    let task = tasks.find(t => t.id === req.params.taskId);
+    const bucket = (projectTasks[req.params.id] = projectTasks[req.params.id] || []);
+    let task = bucket.find(t => t.id === req.params.taskId);
     if (!task) {
       task = {
         id: req.params.taskId,
@@ -1440,7 +1489,7 @@ app.put('/api/projects/:id/tasks/:taskId', (req, res) => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      tasks.push(task);
+      bucket.push(task);
     } else {
       task.title = body.title ?? task.title;
       task.description = body.description ?? task.description;
@@ -1449,6 +1498,19 @@ app.put('/api/projects/:id/tasks/:taskId', (req, res) => {
       task.assignedTo = body.assignedTo ?? task.assignedTo;
       task.dueDate = body.dueDate ?? task.dueDate;
       task.updatedAt = new Date().toISOString();
+    }
+    // Keep global tasks list in sync so Tasks page reflects project updates immediately.
+    const globalTask = tasks.find(t => t.id === task.id);
+    if (globalTask) {
+      globalTask.title = task.title;
+      globalTask.description = task.description;
+      globalTask.status = task.status;
+      globalTask.priority = task.priority;
+      globalTask.assignee = task.assignedTo || '';
+      globalTask.projectId = task.projectId;
+      globalTask.projectName = task.projectName || globalTask.projectName || '';
+      globalTask.dueDate = task.dueDate;
+      globalTask.completed = task.status === 'done' || task.status === 'completed';
     }
     return res.json({ task });
   }
@@ -1794,6 +1856,110 @@ app.delete('/api/leads/:id', (req, res) => {
 });
 
 // Tasks
+function parseMoney(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function resolveProjectName({ projectId, projectName }) {
+  if (projectName) return projectName;
+  if (!projectId) return '';
+  if (!pool) {
+    const proj = (projects || []).find(p => p.id === projectId);
+    return proj ? proj.name : '';
+  }
+  try {
+    const result = await pool.query('SELECT name FROM projects WHERE id = $1', [projectId]);
+    return result.rows?.[0]?.name || '';
+  } catch {
+    return '';
+  }
+}
+
+async function maybeCreateExpenseForTask(task, body) {
+  const expenseInput = body.expense || {};
+  const createExpense =
+    body.createExpense === true ||
+    expenseInput.create === true ||
+    expenseInput.enabled === true;
+  if (!createExpense) return null;
+
+  const amount = parseMoney(expenseInput.amount ?? body.expenseAmount);
+  const tax = parseMoney(expenseInput.tax ?? body.expenseTax);
+  const total =
+    expenseInput.total !== undefined || body.expenseTotal !== undefined
+      ? parseMoney(expenseInput.total ?? body.expenseTotal)
+      : amount + tax;
+
+  if (total <= 0) return null;
+
+  const projectId = expenseInput.projectId ?? body.projectId ?? task.projectId ?? '';
+  const type = projectId ? 'project' : 'non-project';
+  const projectName = await resolveProjectName({
+    projectId,
+    projectName: expenseInput.projectName ?? body.projectName ?? task.projectName,
+  });
+
+  const expense = {
+    id: randomUUID(),
+    taskId: task.id,
+    title: expenseInput.title ?? `Task: ${task.title}`,
+    type,
+    category: expenseInput.category ?? body.expenseCategory ?? 'Labor',
+    vendor: expenseInput.vendor ?? body.expenseVendor ?? '',
+    amount,
+    tax,
+    total,
+    status: expenseInput.status ?? body.expenseStatus ?? 'pending',
+    paymentMethod: expenseInput.paymentMethod ?? body.expensePaymentMethod ?? 'credit_card',
+    date: expenseInput.date ?? body.expenseDate ?? task.dueDate ?? null,
+    dueDate: expenseInput.dueDate ?? body.expenseDueDate ?? null,
+    projectId,
+    projectName,
+    notes: expenseInput.notes ?? body.expenseNotes ?? task.description ?? '',
+    receiptUrl: expenseInput.receiptUrl ?? '',
+    receiptName: expenseInput.receiptName ?? '',
+    receiptType: expenseInput.receiptType ?? '',
+  };
+
+  if (!pool) {
+    expenses.unshift(expense);
+    return expense;
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO expenses (id, task_id, title, type, category, vendor, amount, tax, total, status, payment_method, date, due_date, project_id, project_name, notes, receipt_url, receipt_name, receipt_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+      [
+        expense.id,
+        expense.taskId,
+        expense.title,
+        expense.type,
+        expense.category,
+        expense.vendor,
+        expense.amount,
+        expense.tax,
+        expense.total,
+        expense.status,
+        expense.paymentMethod,
+        expense.date || null,
+        expense.dueDate || null,
+        expense.projectId,
+        expense.projectName,
+        expense.notes,
+        expense.receiptUrl,
+        expense.receiptName,
+        expense.receiptType,
+      ]
+    );
+    return expense;
+  } catch {
+    return null;
+  }
+}
+
 app.get('/api/tasks', (req, res) => {
   const { search, status, projectId } = req.query;
   if (!pool) {
@@ -1862,7 +2028,7 @@ app.get('/api/tasks', (req, res) => {
     .catch(() => res.json({ tasks: [] }));
 });
 
-app.post('/api/tasks', (req, res) => {
+app.post('/api/tasks', async (req, res) => {
   const body = req.body || {};
   const task = {
     id: randomUUID(),
@@ -1896,6 +2062,9 @@ app.post('/api/tasks', (req, res) => {
         updatedAt: new Date().toISOString(),
       });
     }
+    try {
+      await maybeCreateExpenseForTask(task, body);
+    } catch {}
     return res.json(task);
   }
 
@@ -1916,7 +2085,12 @@ app.post('/api/tasks', (req, res) => {
         task.completed,
       ]
     )
-    .then(result => res.json({ task: { ...task, ...result.rows[0] } }))
+    .then(async result => {
+      try {
+        await maybeCreateExpenseForTask(task, body);
+      } catch {}
+      res.json({ task: { ...task, ...result.rows[0] } });
+    })
     .catch(() => res.json({ task }));
 });
 
@@ -2527,15 +2701,59 @@ app.delete('/api/selections/:id', (req, res) => {
 });
 
 // Daily Logs
-app.get('/api/daily-logs', (_req, res) => {
-  res.json({ logs: dailyLogs });
+app.get('/api/daily-logs', (req, res) => {
+  const { projectId, projectName } = req.query;
+  if (!pool) {
+    let list = [...dailyLogs];
+    if (projectId) list = list.filter(l => l.projectId === projectId);
+    if (projectName) list = list.filter(l => l.projectName === projectName);
+    return res.json({ logs: list });
+  }
+  const clauses = [];
+  const values = [];
+  if (projectId) {
+    clauses.push(`project_id = $${clauses.length + 1}`);
+    values.push(projectId);
+  }
+  if (projectName) {
+    clauses.push(`project_name = $${clauses.length + 1}`);
+    values.push(projectName);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  pool
+    .query(`SELECT * FROM daily_logs ${where} ORDER BY date DESC NULLS LAST, created_at DESC`, values)
+    .then(result =>
+      res.json({
+        logs: result.rows.map(r => ({
+          id: r.id,
+          projectId: r.project_id,
+          projectName: r.project_name,
+          date: r.date,
+          weather: r.weather,
+          temperature: r.temperature,
+          workPerformed: r.work_performed,
+          crewSize: r.crew_size,
+          hoursWorked: Number(r.hours_worked || 0),
+          equipmentUsed: r.equipment_used,
+          materialsReceived: r.materials_received,
+          notes: r.notes,
+          photos: r.photos,
+          createdBy: r.created_by,
+        })),
+      })
+    )
+    .catch(() => res.json({ logs: dailyLogs }));
 });
 
 app.post('/api/daily-logs', (req, res) => {
   const body = req.body || {};
   const log = {
     id: randomUUID(),
-    projectName: body.projectName || '',
+    projectId: body.projectId || '',
+    projectName:
+      body.projectName ||
+      projects.find(p => p.id === body.projectId)?.name ||
+      '',
     date: body.date || new Date().toISOString().split('T')[0],
     weather: body.weather || '',
     temperature: body.temperature || '',
@@ -2548,8 +2766,34 @@ app.post('/api/daily-logs', (req, res) => {
     photos: body.photos || 0,
     createdBy: body.createdBy || 'System',
   };
-  dailyLogs.push(log);
-  res.json(log);
+  if (!pool) {
+    dailyLogs.push(log);
+    return res.json(log);
+  }
+  pool
+    .query(
+      `INSERT INTO daily_logs (id, project_id, project_name, date, weather, temperature, work_performed, crew_size, hours_worked, equipment_used, materials_received, notes, photos, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       RETURNING *`,
+      [
+        log.id,
+        log.projectId,
+        log.projectName,
+        log.date || null,
+        log.weather,
+        log.temperature,
+        log.workPerformed,
+        log.crewSize,
+        log.hoursWorked,
+        log.equipmentUsed,
+        log.materialsReceived,
+        log.notes,
+        log.photos,
+        log.createdBy,
+      ]
+    )
+    .then(result => res.json(result.rows[0]))
+    .catch(() => res.json(log));
 });
 
 // Documents

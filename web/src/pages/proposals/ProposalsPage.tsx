@@ -31,6 +31,7 @@ import {
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../components/ui/use-toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { Plus, Search, FileText, Download, Filter, ChevronDown, Trash2, Edit, Eye, Image as ImageIcon } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 
@@ -540,13 +541,19 @@ export function ProposalsPage() {
                                 <Button size="icon" variant="ghost" onClick={() => handleEdit(proposal)}>
                                   <Edit className="h-4 w-4" />
                                 </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => deleteMutation.mutate(proposal.id)}
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </Button>
+                                <ConfirmDialog
+                                  title="Delete proposal?"
+                                  description="This permanently removes the proposal. This cannot be undone."
+                                  confirmText="Delete"
+                                  confirmVariant="destructive"
+                                  confirmDisabled={deleteMutation.isPending}
+                                  onConfirm={() => deleteMutation.mutate(proposal.id)}
+                                  trigger={
+                                    <Button size="icon" variant="ghost">
+                                      <Trash2 className="h-4 w-4 text-red-600" />
+                                    </Button>
+                                  }
+                                />
                               </div>
                             </div>
                           </div>
@@ -634,9 +641,19 @@ export function ProposalsPage() {
                                 <Button size="icon" variant="ghost" onClick={() => handleEdit(proposal)}>
                                   <Edit className="h-4 w-4" />
                                 </Button>
-                                <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(proposal.id)}>
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </Button>
+                                <ConfirmDialog
+                                  title="Delete proposal?"
+                                  description="This permanently removes the proposal. This cannot be undone."
+                                  confirmText="Delete"
+                                  confirmVariant="destructive"
+                                  confirmDisabled={deleteMutation.isPending}
+                                  onConfirm={() => deleteMutation.mutate(proposal.id)}
+                                  trigger={
+                                    <Button size="icon" variant="ghost">
+                                      <Trash2 className="h-4 w-4 text-red-600" />
+                                    </Button>
+                                  }
+                                />
                               </div>
                             </TableCell>
                           </TableRow>

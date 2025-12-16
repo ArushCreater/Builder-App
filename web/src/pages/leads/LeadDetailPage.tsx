@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { useToast } from '../../components/ui/use-toast';
 import { ArrowLeft, Mail, Phone, Calendar, DollarSign, Edit, Trash2 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 interface Lead {
   id: string;
@@ -99,10 +100,20 @@ export function LeadDetailPage() {
             <Edit className="mr-2 h-4 w-4" />
             Edit
           </Button>
-          <Button variant="destructive" onClick={() => deleteMutation.mutate()}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete
-          </Button>
+          <ConfirmDialog
+            title="Delete lead?"
+            description="This permanently removes the lead. This cannot be undone."
+            confirmText="Delete"
+            confirmVariant="destructive"
+            confirmDisabled={deleteMutation.isPending}
+            onConfirm={() => deleteMutation.mutate()}
+            trigger={
+              <Button variant="destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            }
+          />
         </div>
       </div>
 

@@ -31,6 +31,7 @@ import {
   TableRow,
 } from '../../components/ui/table';
 import { useToast } from '../../components/ui/use-toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { Plus, Search, Banknote, Building, CreditCard, Calendar as CalendarIcon, Receipt, LayoutGrid, List } from 'lucide-react';
 import { formatCurrency, formatDateShort } from '../../lib/utils';
 
@@ -253,9 +254,19 @@ export default function ExpensesPage() {
         <Button size="sm" variant="ghost" onClick={() => startEdit(exp)}>
           Edit
         </Button>
-        <Button size="sm" variant="ghost" className="text-red-600" onClick={() => deleteMutation.mutate(exp.id)}>
-          Delete
-        </Button>
+        <ConfirmDialog
+          title="Delete expense?"
+          description="This permanently removes the expense. This cannot be undone."
+          confirmText="Delete"
+          confirmVariant="destructive"
+          confirmDisabled={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(exp.id)}
+          trigger={
+            <Button size="sm" variant="ghost" className="text-red-600">
+              Delete
+            </Button>
+          }
+        />
       </div>
     </div>
   );

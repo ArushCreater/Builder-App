@@ -15,6 +15,7 @@ import {
 } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
 import { useToast } from '../../components/ui/use-toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { Plus, Search, Mail, Phone, MapPin, Trash2, Pencil, Briefcase, Building2, LayoutGrid, List, Star } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
@@ -175,15 +176,24 @@ export function ContactsPage() {
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 text-slate-400 hover:text-red-600" 
-                  onClick={() => deleteMutation.mutate(contact.id)}
-                  title="Delete Contact"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <ConfirmDialog
+                  title="Delete contact?"
+                  description="This permanently removes the contact. This cannot be undone."
+                  confirmText="Delete"
+                  confirmVariant="destructive"
+                  confirmDisabled={deleteMutation.isPending}
+                  onConfirm={() => deleteMutation.mutate(contact.id)}
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-slate-400 hover:text-red-600"
+                      title="Delete Contact"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  }
+                />
               </div>
             </div>
             
@@ -280,15 +290,24 @@ export function ContactsPage() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-slate-400 hover:text-red-600" 
-                      onClick={() => deleteMutation.mutate(contact.id)}
-                      title="Delete Contact"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <ConfirmDialog
+                      title="Delete contact?"
+                      description="This permanently removes the contact. This cannot be undone."
+                      confirmText="Delete"
+                      confirmVariant="destructive"
+                      confirmDisabled={deleteMutation.isPending}
+                      onConfirm={() => deleteMutation.mutate(contact.id)}
+                      trigger={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-slate-400 hover:text-red-600"
+                          title="Delete Contact"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      }
+                    />
                   </div>
                 </TableCell>
               </TableRow>
