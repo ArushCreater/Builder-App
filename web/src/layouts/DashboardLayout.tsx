@@ -15,7 +15,6 @@ import {
   FileCheck,
   Briefcase,
   Hammer,
-  MessageSquare,
   BarChart3,
   Settings,
   Bell,
@@ -64,10 +63,8 @@ const navigation: NavItem[] = [
   { name: 'Daily Logs', path: '/daily-logs', icon: BookOpen },
   { name: 'Documents', path: '/documents', icon: FileCheck },
   { name: 'Manage Sold', path: '/sold', icon: FileCheck },
-  { name: 'Bids', path: '/bids', icon: Briefcase },
   { name: 'Inspections', path: '/inspections', icon: Briefcase },
   { name: 'Equipment', path: '/equipment', icon: Hammer },
-  { name: 'Messages', path: '/messages', icon: MessageSquare },
   { name: 'Analytics', path: '/analytics', icon: BarChart3 },
   { name: 'Users', path: '/users', icon: Users },
   { name: 'Settings', path: '/settings', icon: Settings },
@@ -95,7 +92,15 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col dashboard-enter">
+      <style>{`
+        .dashboard-enter { animation: dashboard-fade-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+        @keyframes dashboard-fade-in {
+          0% { opacity: 0; transform: translateY(8px) scale(0.995); filter: blur(4px); }
+          100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+        }
+        @media (prefers-reduced-motion: reduce) { .dashboard-enter { animation: none !important; } }
+      `}</style>
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -125,8 +130,11 @@ export function DashboardLayout() {
                     B
                   </div>
                 </div>
-                <div>
+                <div className="flex flex-col items-start leading-none">
                   <h1 className="text-2xl font-extrabold tracking-tight">BuilderOS</h1>
+                  <span className="mt-1 self-end text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                    powered by Baaz Homes
+                  </span>
                 </div>
               </div>
             )}
@@ -193,9 +201,10 @@ export function DashboardLayout() {
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-md hover:bg-gray-100"
+                aria-label="Open menu"
+                className="lg:hidden p-2 rounded-md border border-slate-200 bg-white text-slate-900 hover:bg-slate-100"
               >
-                <Menu className="h-6 w-6" />
+                <Menu className="h-6 w-6" strokeWidth={2.5} />
               </button>
               <div className="hidden md:flex items-center flex-1 min-w-[200px]">
                 <div className="relative flex items-center w-full">
@@ -273,7 +282,7 @@ export function DashboardLayout() {
         </header>
 
         {/* Page content */}
-        <main className="py-6 px-4 sm:px-6 lg:px-10 pb-24 min-h-screen">
+        <main className="py-4 sm:py-6 px-3 sm:px-6 lg:px-10 pb-24 min-h-screen">
           <Outlet />
         </main>
       </div>

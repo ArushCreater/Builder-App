@@ -1,21 +1,21 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { supabase } from './supabase';
 
-// Create axios instance with default config
 const api: AxiosInstance = axios.create({
   baseURL: (import.meta as any)?.env?.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 seconds
+  timeout: 30000,
 });
 
 api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    // Auth is currently disabled; ensure no stray Authorization header is set
-    if (config.headers) {
-      delete config.headers.Authorization;
+  async (config: InternalAxiosRequestConfig) => {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
-
     return config;
   },
   (error: AxiosError) => {
@@ -37,9 +37,7 @@ api.interceptors.response.use(
 
       switch (status) {
         case 401:
-          // Unauthorized - clear token and redirect to login
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('auth_user');
+          supabase.auth.signOut();
           if (window.location.pathname !== '/login') {
             window.location.href = '/login';
           }

@@ -75,23 +75,28 @@ interface Project {
   dueDate: string;
 }
 
-const projectChartData = [
-  { name: 'Jan', projects: 12 },
-  { name: 'Feb', projects: 19 },
-  { name: 'Mar', projects: 15 },
-  { name: 'Apr', projects: 25 },
-  { name: 'May', projects: 22 },
-  { name: 'Jun', projects: 30 },
-];
+function buildMonthlyBuckets() {
+  const months: { key: string; name: string; start: Date; end: Date }[] = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+    months.push({
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      name: d.toLocaleString('en-US', { month: 'short' }),
+      start: d,
+      end,
+    });
+  }
+  return months;
+}
 
-const revenueChartData = [
-  { name: 'Jan', revenue: 45000 },
-  { name: 'Feb', revenue: 52000 },
-  { name: 'Mar', revenue: 48000 },
-  { name: 'Apr', revenue: 61000 },
-  { name: 'May', revenue: 55000 },
-  { name: 'Jun', revenue: 67000 },
-];
+function bucketKey(dateStr: string | null | undefined) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${d.getMonth()}`;
+}
 
 export function DashboardHome() {
   const { toast } = useToast();
@@ -150,15 +155,34 @@ export function DashboardHome() {
     onError: () => toast({ title: 'Error', description: 'Could not create project', variant: 'destructive' }),
   });
 
+  const months = buildMonthlyBuckets();
+  const projectChartData = months.map((m) => ({
+    name: m.name,
+    projects: projects.filter((p: any) => bucketKey(p.createdAt) === m.key).length,
+  }));
+  const revenueChartData = months.map((m) => ({
+    name: m.name,
+    revenue: invoices
+      .filter((i: any) => i.status === 'paid' && bucketKey(i.issueDate) === m.key)
+      .reduce((sum: number, i: any) => sum + Number(i.amount || 0), 0),
+  }));
+  const lastMonthRev = revenueChartData[revenueChartData.length - 2]?.revenue || 0;
+  const thisMonthRev = revenueChartData[revenueChartData.length - 1]?.revenue || 0;
+  const revenueGrowth = lastMonthRev > 0
+    ? Number((((thisMonthRev - lastMonthRev) / lastMonthRev) * 100).toFixed(1))
+    : 0;
+
   const stats: DashboardStats = {
     totalProjects: projects.length,
     activeProjects: projects.filter((p: any) => p.status === 'IN_PROGRESS').length,
     planningProjects: projects.filter((p: any) => p.status === 'PLANNING').length,
     totalLeads: leads.length,
-    totalRevenue: projects.reduce((sum: number, p: any) => sum + (p.actualCost || 0), 0),
-    revenueGrowth: 12.5, // TODO: Calculate from historical data
-    completedTasks: tasks.filter((t: any) => t.status === 'done').length,
-    pendingTasks: tasks.filter((t: any) => t.status !== 'done').length,
+    totalRevenue: invoices
+      .filter((i: any) => i.status === 'paid')
+      .reduce((sum: number, i: any) => sum + Number(i.amount || 0), 0),
+    revenueGrowth,
+    completedTasks: tasks.filter((t: any) => t.status === 'done' || t.completed).length,
+    pendingTasks: tasks.filter((t: any) => t.status !== 'done' && !t.completed).length,
     overdueProjects: projects.filter((p: any) => p.endDate && new Date(p.endDate) < new Date()).length,
     atRiskBudget: projects.filter((p: any) => {
       const est = Number(p.estimatedBudget || 0);

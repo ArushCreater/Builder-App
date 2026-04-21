@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from './components/ui/toaster'
+import { useAuth } from './hooks/useAuth'
 
 // Layouts
 import DashboardLayout from './layouts/DashboardLayout'
@@ -8,7 +10,6 @@ import AuthLayout from './layouts/AuthLayout'
 
 // Auth Pages
 import LoginPage from './pages/auth/LoginPage'
-import RegisterPage from './pages/auth/RegisterPage'
 
 // Dashboard Pages
 import DashboardHome from './pages/dashboard/DashboardHome'
@@ -50,19 +51,40 @@ const queryClient = new QueryClient({
 })
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  // Auth checks are disabled for now; allow all routes through
+  const { isAuthenticated, isLoading } = useAuth()
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center text-gray-500">
+        Loading...
+      </div>
+    )
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+  return <>{children}</>
+}
+
+function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth()
+  if (isLoading) return null
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
 
 function App() {
+  const { checkAuth } = useAuth()
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
           {/* Auth Routes */}
-          <Route element={<AuthLayout />}>
+          <Route element={<PublicOnlyRoute><AuthLayout /></PublicOnlyRoute>}>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
           </Route>
 
           {/* Dashboard Routes */}

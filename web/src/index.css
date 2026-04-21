@@ -68,6 +68,15 @@
   }
 }
 
+/* Hide scrollbars while keeping scroll behaviour */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Smooth select corners and hover states */
 .shad-select-content,
 .shad-select-item {

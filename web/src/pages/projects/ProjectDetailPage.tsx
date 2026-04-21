@@ -203,10 +203,9 @@ export function ProjectDetailPage() {
   const [folderPath, setFolderPath] = useState('');
   const [projectFile, setProjectFile] = useState<File | null>(null);
   const [docSearch, setDocSearch] = useState('');
-  const [docPages, setDocPages] = useState<DocPage[]>([
-    { id: 'page-1', title: 'Site notes', content: 'Add your site notes here...', images: [] },
-  ]);
-  const [selectedPageId, setSelectedPageId] = useState<string>('page-1');
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftContent, setDraftContent] = useState('');
   const [pageImageUrl, setPageImageUrl] = useState('');
   const [taskForm, setTaskForm] = useState({
     title: '',
@@ -386,13 +385,60 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
     return [...events, ...taskEvents].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
   }, [scheduleEvents, tasks]);
 
+  const { data: docPagesData } = useQuery({
+    queryKey: ['project-doc-pages', id],
+    queryFn: () => apiClient.get<{ pages: DocPage[] }>(`/projects/${id}/doc-pages`),
+    enabled: !!id,
+  });
+  const docPages = useMemo<DocPage[]>(() => docPagesData?.pages || [], [docPagesData]);
+
+  const createPageMutation = useMutation({
+    mutationFn: (data: Partial<DocPage>) =>
+      apiClient.post<{ page: DocPage }>(`/projects/${id}/doc-pages`, data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['project-doc-pages', id] });
+      setSelectedPageId(res.page.id);
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not create page', variant: 'destructive' }),
+  });
+
+  const updatePageMutation = useMutation({
+    mutationFn: ({ pageId, ...data }: { pageId: string } & Partial<DocPage>) =>
+      apiClient.put<{ page: DocPage }>(`/projects/${id}/doc-pages/${pageId}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project-doc-pages', id] }),
+    onError: () => toast({ title: 'Error', description: 'Could not save page', variant: 'destructive' }),
+  });
+
+  const deletePageMutation = useMutation({
+    mutationFn: (pageId: string) =>
+      apiClient.delete<{ page: DocPage }>(`/projects/${id}/doc-pages/${pageId}`),
+    onSuccess: (_res, pageId) => {
+      queryClient.invalidateQueries({ queryKey: ['project-doc-pages', id] });
+      if (selectedPageId === pageId) setSelectedPageId(null);
+      toast({ title: 'Page deleted' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not delete page', variant: 'destructive' }),
+  });
+
   const filteredDocPages = useMemo(() => {
     if (!docSearch) return docPages;
     const q = docSearch.toLowerCase();
     return docPages.filter(p => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q));
   }, [docPages, docSearch]);
 
-  const selectedPage = filteredDocPages.find(p => p.id === selectedPageId) || filteredDocPages[0];
+  useEffect(() => {
+    if (selectedPageId && docPages.some((p) => p.id === selectedPageId)) return;
+    if (docPages.length > 0) setSelectedPageId(docPages[0].id);
+    else setSelectedPageId(null);
+  }, [docPages, selectedPageId]);
+
+  useEffect(() => {
+    const page = docPages.find((p) => p.id === selectedPageId);
+    setDraftTitle(page?.title || '');
+    setDraftContent(page?.content || '');
+  }, [selectedPageId, docPages]);
+
+  const selectedPage = docPages.find(p => p.id === selectedPageId) || null;
   useEffect(() => {
     if (project?.progress !== undefined && project.progress !== null) {
       setProgressValue(Math.round(project.progress));
@@ -526,19 +572,23 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex items-start gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/projects')}>
+        <div className="flex items-start gap-2 sm:gap-4 min-w-0">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/projects')} className="shrink-0">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
-              <Badge className="uppercase tracking-wide">{project.status}</Badge>
-              <Badge variant="outline" className="font-semibold">{progressValue}%</Badge>
+          <div className="space-y-1.5 sm:space-y-2 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 break-words">
+                {project.name}
+              </h1>
+              <Badge className="uppercase tracking-wide text-[10px] sm:text-xs">{project.status}</Badge>
+              <Badge variant="outline" className="font-semibold text-[10px] sm:text-xs">{progressValue}%</Badge>
             </div>
-            <p className="text-gray-500">{project.description}</p>
+            {project.description && (
+              <p className="text-sm text-gray-500 line-clamp-3 sm:line-clamp-none">{project.description}</p>
+            )}
           </div>
         </div>
 
@@ -586,15 +636,16 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
               </div>
             </div>
           )}
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-stretch lg:justify-end gap-2">
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" onClick={openEdit}>
+                <Button variant="outline" onClick={openEdit} className="flex-1 lg:flex-none">
                   <Edit className="mr-2 h-4 w-4" />
-                  Edit Project
+                  <span className="sm:hidden">Edit</span>
+                  <span className="hidden sm:inline">Edit Project</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-3xl">
+              <DialogContent className="w-[calc(100vw-1.5rem)] max-w-3xl max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -726,12 +777,12 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
             </Dialog>
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="destructive" disabled={deleteMutation.isPending}>
+                <Button variant="destructive" disabled={deleteMutation.isPending} className="flex-1 lg:flex-none">
                   <Trash2 className="mr-2 h-4 w-4" />
                   {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="w-[calc(100vw-1.5rem)] max-w-lg">
                 <DialogHeader>
                   <DialogTitle>Delete project?</DialogTitle>
                   <DialogDescription>
@@ -755,7 +806,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
       </div>
 
       {/* Overview Cards */}
-      <div className="grid gap-6 md:grid-cols-4">
+      <div className="grid gap-3 sm:gap-6 grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-gray-600">Status</CardTitle>
@@ -836,22 +887,24 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
 
       {/* Tabs */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="flex flex-wrap">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="tasks">Tasks ({tasks.length})</TabsTrigger>
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="plan">Plan</TabsTrigger>
-          <TabsTrigger value="docs">Docs</TabsTrigger>
-          <TabsTrigger value="invoices">Deposits ({invoices.length})</TabsTrigger>
-          <TabsTrigger value="project-invoices">Invoices ({projectInvoices.length})</TabsTrigger>
-          <TabsTrigger value="expenses">Expenses ({projectExpenses.length})</TabsTrigger>
-          <TabsTrigger value="materials">Materials ({materials.length})</TabsTrigger>
-          <TabsTrigger value="selections">Selections ({selections.length})</TabsTrigger>
-          <TabsTrigger value="daily-logs">Daily Logs ({dailyLogs.length})</TabsTrigger>
-          <TabsTrigger value="inspections">Inspections ({inspections.length})</TabsTrigger>
-          <TabsTrigger value="budget">Budget</TabsTrigger>
-          <TabsTrigger value="files">Files ({documents.length})</TabsTrigger>
-        </TabsList>
+        <div className="-mx-4 sm:mx-0 overflow-x-auto no-scrollbar">
+          <TabsList className="flex w-max min-w-full h-auto flex-nowrap gap-1 px-4 sm:px-1">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="tasks">Tasks ({tasks.length})</TabsTrigger>
+            <TabsTrigger value="schedule">Schedule</TabsTrigger>
+            <TabsTrigger value="plan">Plan</TabsTrigger>
+            <TabsTrigger value="docs">Docs</TabsTrigger>
+            <TabsTrigger value="invoices">Deposits ({invoices.length})</TabsTrigger>
+            <TabsTrigger value="project-invoices">Invoices ({projectInvoices.length})</TabsTrigger>
+            <TabsTrigger value="expenses">Expenses ({projectExpenses.length})</TabsTrigger>
+            <TabsTrigger value="materials">Materials ({materials.length})</TabsTrigger>
+            <TabsTrigger value="selections">Selections ({selections.length})</TabsTrigger>
+            <TabsTrigger value="daily-logs">Daily Logs ({dailyLogs.length})</TabsTrigger>
+            <TabsTrigger value="inspections">Inspections ({inspections.length})</TabsTrigger>
+            <TabsTrigger value="budget">Budget</TabsTrigger>
+            <TabsTrigger value="files">Files ({documents.length})</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="overview" className="space-y-4">
           <Card>
@@ -887,7 +940,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                   />
                 )}
               </div>
-              <div className="grid md:grid-cols-4 gap-3 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
                   <p className="text-gray-500">Budget</p>
                   <p className="font-semibold">{formatCurrency(project.estimatedBudget)}</p>
@@ -919,7 +972,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                   Add Task
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="w-[calc(100vw-1.5rem)] max-w-lg max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1000,7 +1053,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
               </DialogContent>
             </Dialog>
           </div>
-          <div className="grid md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {['todo', 'in-progress', 'review', 'completed'].map((column) => {
               const columnTasks = tasks.filter((t) => {
                 const normalized = t.status === 'in_progress' ? 'in-progress' : t.status === 'done' ? 'completed' : t.status;
@@ -1090,7 +1143,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                   Add Deposit
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="w-[calc(100vw-1.5rem)] max-w-lg max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1625,15 +1678,13 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                 />
                 <Button
                   size="sm"
+                  disabled={createPageMutation.isPending}
                   onClick={() => {
-                    const newPage: DocPage = {
-                      id: crypto.randomUUID(),
+                    createPageMutation.mutate({
                       title: `Page ${docPages.length + 1}`,
                       content: 'Start writing...',
                       images: [],
-                    };
-                    setDocPages([newPage, ...docPages]);
-                    setSelectedPageId(newPage.id);
+                    });
                   }}
                 >
                   <Plus className="h-4 w-4 mr-1" /> New Page
@@ -1645,19 +1696,39 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                 <p className="text-xs font-semibold text-gray-500">Pages</p>
                 <div className="space-y-2 max-h-[380px] overflow-auto pr-1">
                   {filteredDocPages.map((page) => (
-                    <button
+                    <div
                       key={page.id}
-                      className={`w-full text-left rounded-lg border p-3 transition hover:border-blue-300 ${
+                      className={`group flex items-start gap-2 rounded-lg border p-3 transition hover:border-blue-300 ${
                         selectedPageId === page.id ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200'
                       }`}
-                      onClick={() => setSelectedPageId(page.id)}
                     >
-                      <p className="font-semibold text-gray-900">{page.title}</p>
-                      <p className="text-xs text-gray-500 line-clamp-2">{page.content}</p>
-                    </button>
+                      <button
+                        type="button"
+                        className="flex-1 text-left"
+                        onClick={() => setSelectedPageId(page.id)}
+                      >
+                        <p className="font-semibold text-gray-900">{page.title}</p>
+                        <p className="text-xs text-gray-500 line-clamp-2">{page.content}</p>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${page.title}`}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition"
+                        disabled={deletePageMutation.isPending}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!confirm(`Delete "${page.title}"? This cannot be undone.`)) return;
+                          deletePageMutation.mutate(page.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   ))}
                   {filteredDocPages.length === 0 && (
-                    <p className="text-sm text-gray-500">No pages match that search.</p>
+                    <p className="text-sm text-gray-500">
+                      {docPages.length === 0 ? 'No pages yet. Click "New Page" to create one.' : 'No pages match that search.'}
+                    </p>
                   )}
                 </div>
               </div>
@@ -1665,22 +1736,23 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                 {selectedPage ? (
                   <>
                     <Input
-                      value={selectedPage.title}
-                      onChange={(e) => {
-                        setDocPages((prev) =>
-                          prev.map((p) => (p.id === selectedPage.id ? { ...p, title: e.target.value } : p))
-                        );
+                      value={draftTitle}
+                      onChange={(e) => setDraftTitle(e.target.value)}
+                      onBlur={() => {
+                        if (draftTitle !== selectedPage.title) {
+                          updatePageMutation.mutate({ pageId: selectedPage.id, title: draftTitle });
+                        }
                       }}
                       className="text-xl font-semibold"
                     />
                     <textarea
                       className="w-full min-h-[220px] rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
-                      value={selectedPage.content}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setDocPages((prev) =>
-                          prev.map((p) => (p.id === selectedPage.id ? { ...p, content: value } : p))
-                        );
+                      value={draftContent}
+                      onChange={(e) => setDraftContent(e.target.value)}
+                      onBlur={() => {
+                        if (draftContent !== selectedPage.content) {
+                          updatePageMutation.mutate({ pageId: selectedPage.id, content: draftContent });
+                        }
                       }}
                       placeholder="Type notes, decisions, links... basic rich text style"
                     />
@@ -1699,11 +1771,10 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                           variant="outline"
                           onClick={() => {
                             if (!pageImageUrl) return;
-                            setDocPages((prev) =>
-                              prev.map((p) =>
-                                p.id === selectedPage.id ? { ...p, images: [...p.images, pageImageUrl] } : p
-                              )
-                            );
+                            updatePageMutation.mutate({
+                              pageId: selectedPage.id,
+                              images: [...selectedPage.images, pageImageUrl],
+                            });
                             setPageImageUrl('');
                           }}
                         >
@@ -1786,7 +1857,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                         Add File
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-xl">
+                    <DialogContent className="w-[calc(100vw-1.5rem)] max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto">
                       <form
                         onSubmit={async (e) => {
                           e.preventDefault();

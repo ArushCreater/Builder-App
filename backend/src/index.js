@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const multer = require('multer');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const port = process.env.PORT || 8081;
@@ -53,6 +54,33 @@ app.use(express.json({ limit: BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
+
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+const PUBLIC_PATHS = new Set(['/', '/health', '/api/ping']);
+
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
+  if (PUBLIC_PATHS.has(req.path)) return next();
+  if (!JWT_SECRET) {
+    return res.status(500).json({ error: 'SUPABASE_JWT_SECRET not configured' });
+  }
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Missing bearer token' });
+  }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+    };
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
 
 async function ensureTables() {
   if (!pool) return;
@@ -322,6 +350,18 @@ async function ensureTables() {
         created_at timestamptz DEFAULT now()
       );
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS project_doc_pages (
+        id uuid PRIMARY KEY,
+        project_id text NOT NULL,
+        title text,
+        content text,
+        images jsonb DEFAULT '[]'::jsonb,
+        created_at timestamptz DEFAULT now(),
+        updated_at timestamptz DEFAULT now()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`);
     await seedDemoData(client);
   } finally {
     client.release();
@@ -329,12 +369,29 @@ async function ensureTables() {
 }
 
 async function seedDemoData(client) {
+  const ids = {
+    proj1: randomUUID(),
+    proj2: randomUUID(),
+    task1: randomUUID(),
+    task2: randomUUID(),
+    prop1: randomUUID(),
+    prop2: randomUUID(),
+    inv1: randomUUID(),
+    inv2: randomUUID(),
+    mat1: randomUUID(),
+    mat2: randomUUID(),
+    sel1: randomUUID(),
+    sel2: randomUUID(),
+    insp1: randomUUID(),
+    insp2: randomUUID(),
+  };
+
   // Projects
   const projCount = await client.query('SELECT count(*)::int AS c FROM projects');
   if (projCount.rows[0].c === 0) {
     const demoProjects = [
       {
-        id: 'demo-proj-1',
+        id: ids.proj1,
         name: 'Harborview Residences',
         description: '12-story mixed-use tower with retail podium',
         type: 'residential',
@@ -351,7 +408,7 @@ async function seedDemoData(client) {
         progress: 38,
       },
       {
-        id: 'demo-proj-2',
+        id: ids.proj2,
         name: 'Northbridge Logistics Hub',
         description: 'Distribution center with automated racking',
         type: 'commercial',
@@ -398,24 +455,24 @@ async function seedDemoData(client) {
   if (taskCount.rows[0].c === 0) {
     const tasksSeed = [
       {
-        id: 'demo-task-1',
+        id: ids.task1,
         title: 'Site prep & utilities',
         description: 'Trenching and temporary power',
         status: 'IN_PROGRESS',
         priority: 'high',
         assignee: 'Foreman Lee',
-        project_id: 'demo-proj-1',
+        project_id: ids.proj1,
         project_name: 'Harborview Residences',
         due_date: '2024-12-05',
       },
       {
-        id: 'demo-task-2',
+        id: ids.task2,
         title: 'Core & shell level 4',
         description: 'Pour slab, set rebar cages',
         status: 'PLANNING',
         priority: 'medium',
         assignee: 'Concrete Crew',
-        project_id: 'demo-proj-1',
+        project_id: ids.proj1,
         project_name: 'Harborview Residences',
         due_date: '2025-01-15',
       },
@@ -448,10 +505,10 @@ async function seedDemoData(client) {
        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
        ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
       [
-        'demo-prop-1',
+        ids.prop1,
         'Facade & glazing package',
         'Skyline Glass',
-        'demo-proj-1',
+        ids.proj1,
         'Harborview Residences',
         4800000,
         'sent',
@@ -459,10 +516,10 @@ async function seedDemoData(client) {
         null,
         null,
         null,
-        'demo-prop-2',
+        ids.prop2,
         'Fire systems and sprinklers',
         'SafeFlow',
-        'demo-proj-2',
+        ids.proj2,
         'Northbridge Logistics Hub',
         725000,
         'draft',
@@ -483,9 +540,9 @@ async function seedDemoData(client) {
        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
        ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
       [
-        'demo-inv-1',
+        ids.inv1,
         'INV-001',
-        'demo-proj-1',
+        ids.proj1,
         'Harborview Residences',
         'Acme Developments',
         320000,
@@ -494,9 +551,9 @@ async function seedDemoData(client) {
         '2024-12-01',
         'Progress claim #3 - structure',
         'invoice',
-        'demo-inv-2',
+        ids.inv2,
         'INV-002',
-        'demo-proj-2',
+        ids.proj2,
         'Northbridge Logistics Hub',
         'Global Logistics Pty',
         185000,
@@ -518,7 +575,7 @@ async function seedDemoData(client) {
        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
        ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
       [
-        'demo-mat-1',
+        ids.mat1,
         'Post-tension cables',
         'PT kits for levels 3-5',
         45,
@@ -527,9 +584,9 @@ async function seedDemoData(client) {
         42750,
         'CableCo',
         'Harborview Residences',
-        'demo-proj-1',
+        ids.proj1,
         'ordered',
-        'demo-mat-2',
+        ids.mat2,
         'HVAC air handlers',
         'Rooftop AHUs with VFD',
         4,
@@ -538,7 +595,7 @@ async function seedDemoData(client) {
         88000,
         'CoolAir',
         'Northbridge Logistics Hub',
-        'demo-proj-2',
+        ids.proj2,
         'in-stock',
       ]
     );
@@ -553,7 +610,7 @@ async function seedDemoData(client) {
        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
        ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
       [
-        'demo-sel-1',
+        ids.sel1,
         'Lobby finishes',
         'Flooring',
         'Large format porcelain tile',
@@ -561,17 +618,18 @@ async function seedDemoData(client) {
         145000,
         'approved',
         'Harborview Residences',
-        'demo-proj-1',
+        ids.proj1,
         'Acme Developments',
         '2025-01-15',
-        'demo-sel-2',
+        ids.sel2,
         'Warehouse lighting',
         'High-bay LEDs',
+        'General warehouse illumination',
         'Neutral white 4000K',
         82000,
         'pending',
         'Northbridge Logistics Hub',
-        'demo-proj-2',
+        ids.proj2,
         'Global Logistics Pty',
         '2025-02-10',
       ]
@@ -587,25 +645,25 @@ async function seedDemoData(client) {
        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
        ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
       [
-        'demo-insp-1',
+        ids.insp1,
         'Framing Inspection L2',
         'framing',
         'scheduled',
         '2025-01-08',
         '2025-01-08',
         'Harborview Residences',
-        'demo-proj-1',
+        ids.proj1,
         'City Inspector',
         'Check shear walls and PT cables',
         null,
-        'demo-insp-2',
+        ids.insp2,
         'Fire system hydro',
         'fire',
         'pending',
         '2025-02-05',
         '2025-02-05',
         'Northbridge Logistics Hub',
-        'demo-proj-2',
+        ids.proj2,
         'SafeFlow',
         'Witness hydrostatic test',
         null,
@@ -2985,43 +3043,117 @@ app.post('/api/documents/upload', upload.single('file'), handleDocumentUpload);
 app.post('/documents/upload', upload.single('file'), handleDocumentUpload);
 
 // Project doc pages (lightweight wiki/notes per project)
+const mapDocPage = (row) => ({
+  id: row.id,
+  projectId: row.project_id,
+  title: row.title,
+  content: row.content,
+  images: Array.isArray(row.images) ? row.images : [],
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 app.get('/api/projects/:id/doc-pages', (req, res) => {
-  const pages = projectDocPages[req.params.id] || [];
-  res.json({ pages });
+  if (!pool) {
+    const pages = projectDocPages[req.params.id] || [];
+    return res.json({ pages });
+  }
+  pool
+    .query('SELECT * FROM project_doc_pages WHERE project_id = $1 ORDER BY created_at DESC', [req.params.id])
+    .then(result => res.json({ pages: result.rows.map(mapDocPage) }))
+    .catch(err => {
+      console.error('doc-pages GET failed', err);
+      res.status(500).json({ message: 'Failed to load pages' });
+    });
 });
 
 app.post('/api/projects/:id/doc-pages', (req, res) => {
   const body = req.body || {};
   const page = {
     id: randomUUID(),
+    projectId: req.params.id,
     title: body.title || 'Untitled Page',
     content: body.content || '',
     images: Array.isArray(body.images) ? body.images : [],
-    updatedAt: new Date().toISOString(),
   };
-  projectDocPages[req.params.id] = projectDocPages[req.params.id] || [];
-  projectDocPages[req.params.id].unshift(page);
-  res.json({ page });
+  if (!pool) {
+    projectDocPages[req.params.id] = projectDocPages[req.params.id] || [];
+    projectDocPages[req.params.id].unshift({ ...page, updatedAt: new Date().toISOString() });
+    return res.json({ page });
+  }
+  pool
+    .query(
+      `INSERT INTO project_doc_pages (id, project_id, title, content, images)
+       VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING *`,
+      [page.id, page.projectId, page.title, page.content, JSON.stringify(page.images)]
+    )
+    .then(result => res.json({ page: mapDocPage(result.rows[0]) }))
+    .catch(err => {
+      console.error('doc-pages POST failed', err);
+      res.status(500).json({ message: 'Failed to create page' });
+    });
 });
 
 app.put('/api/projects/:id/doc-pages/:pageId', (req, res) => {
   const body = req.body || {};
-  const pages = projectDocPages[req.params.id] || [];
-  const page = pages.find(p => p.id === req.params.pageId);
-  if (!page) return res.status(404).json({ message: 'Not found' });
-  page.title = body.title ?? page.title;
-  page.content = body.content ?? page.content;
-  page.images = Array.isArray(body.images) ? body.images : page.images;
-  page.updatedAt = new Date().toISOString();
-  res.json({ page });
+  if (!pool) {
+    const pages = projectDocPages[req.params.id] || [];
+    const page = pages.find(p => p.id === req.params.pageId);
+    if (!page) return res.status(404).json({ message: 'Not found' });
+    page.title = body.title ?? page.title;
+    page.content = body.content ?? page.content;
+    page.images = Array.isArray(body.images) ? body.images : page.images;
+    page.updatedAt = new Date().toISOString();
+    return res.json({ page });
+  }
+  const fields = [];
+  const values = [];
+  if (body.title !== undefined) { fields.push(`title = $${fields.length + 1}`); values.push(body.title); }
+  if (body.content !== undefined) { fields.push(`content = $${fields.length + 1}`); values.push(body.content); }
+  if (Array.isArray(body.images)) {
+    fields.push(`images = $${fields.length + 1}::jsonb`);
+    values.push(JSON.stringify(body.images));
+  }
+  fields.push(`updated_at = now()`);
+  values.push(req.params.pageId, req.params.id);
+  pool
+    .query(
+      `UPDATE project_doc_pages SET ${fields.join(', ')}
+       WHERE id = $${values.length - 1} AND project_id = $${values.length}
+       RETURNING *`,
+      values
+    )
+    .then(result => {
+      if (result.rowCount === 0) return res.status(404).json({ message: 'Not found' });
+      res.json({ page: mapDocPage(result.rows[0]) });
+    })
+    .catch(err => {
+      console.error('doc-pages PUT failed', err);
+      res.status(500).json({ message: 'Failed to update page' });
+    });
 });
 
 app.delete('/api/projects/:id/doc-pages/:pageId', (req, res) => {
-  const pages = projectDocPages[req.params.id] || [];
-  const idx = pages.findIndex(p => p.id === req.params.pageId);
-  if (idx === -1) return res.status(404).json({ message: 'Not found' });
-  const [removed] = pages.splice(idx, 1);
-  res.json({ page: removed });
+  if (!pool) {
+    const pages = projectDocPages[req.params.id] || [];
+    const idx = pages.findIndex(p => p.id === req.params.pageId);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = pages.splice(idx, 1);
+    return res.json({ page: removed });
+  }
+  pool
+    .query(
+      'DELETE FROM project_doc_pages WHERE id = $1 AND project_id = $2 RETURNING *',
+      [req.params.pageId, req.params.id]
+    )
+    .then(result => {
+      if (result.rowCount === 0) return res.status(404).json({ message: 'Not found' });
+      res.json({ page: mapDocPage(result.rows[0]) });
+    })
+    .catch(err => {
+      console.error('doc-pages DELETE failed', err);
+      res.status(500).json({ message: 'Failed to delete page' });
+    });
 });
 
 // Bids
@@ -4030,7 +4162,25 @@ app.get('/api/invoices', (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   pool
     .query(`SELECT * FROM invoices ${where} ORDER BY created_at DESC`, values)
-    .then(result => res.json({ invoices: result.rows }))
+    .then(result => res.json({
+      invoices: result.rows.map(row => ({
+        id: row.id,
+        invoiceNumber: row.invoice_number,
+        projectId: row.project_id,
+        projectName: row.project_name,
+        clientName: row.client_name,
+        amount: Number(row.amount || 0),
+        status: row.status,
+        dueDate: row.due_date,
+        issueDate: row.issue_date,
+        description: row.description,
+        fileUrl: row.file_url,
+        fileName: row.file_name,
+        fileType: row.file_type,
+        type: row.type,
+        createdAt: row.created_at,
+      })),
+    }))
     .catch(() => res.json({ invoices }));
 });
 

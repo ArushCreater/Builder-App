@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 
 export interface User {
   id: string;
@@ -23,119 +25,76 @@ interface AuthState {
 
 interface AuthActions {
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   setUser: (user: User) => void;
-  setToken: (token: string) => void;
   clearError: () => void;
   checkAuth: () => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
 }
 
-interface RegisterData {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-  company?: string;
-  phone?: string;
-}
-
 type AuthStore = AuthState & AuthActions;
 
-// Initialize state from localStorage
-const getInitialState = (): AuthState => {
-  const token = localStorage.getItem('auth_token');
-  const userStr = localStorage.getItem('auth_user');
-  const user = userStr ? JSON.parse(userStr) : null;
-
+const toAppUser = (su: SupabaseUser): User => {
+  const meta = (su.user_metadata || {}) as Record<string, any>;
+  const email = su.email || '';
+  const emailPrefix = email.split('@')[0] || 'User';
   return {
-    user,
-    token,
-    isAuthenticated: !!(token && user),
-    isLoading: false,
-    error: null,
+    id: su.id,
+    email,
+    firstName: meta.firstName || meta.first_name || emailPrefix,
+    lastName: meta.lastName || meta.last_name || '',
+    role: meta.role || 'ADMIN',
+    avatar: meta.avatar,
+    company: meta.company,
+    phone: meta.phone,
+    createdAt: su.created_at || new Date().toISOString(),
+    updatedAt: su.updated_at || new Date().toISOString(),
   };
 };
 
-export const useAuthStore = create<AuthStore>((set, get) => ({
-  ...getInitialState(),
-
-  login: async (email: string, _password: string) => {
-    set({ isLoading: true, error: null });
-
-    // Temporary: allow any credentials and create a local user
-    const fakeUser: User = {
-      id: crypto.randomUUID(),
-      email,
-      firstName: email.split('@')[0] || 'User',
-      lastName: 'User',
-      role: 'ADMIN',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    localStorage.setItem('auth_token', 'demo-token');
-    localStorage.setItem('auth_user', JSON.stringify(fakeUser));
-
-    set({
-      user: fakeUser,
-      token: 'demo-token',
+const applySession = (session: Session | null) => {
+  if (session?.user) {
+    useAuthStore.setState({
+      user: toAppUser(session.user),
+      token: session.access_token,
       isAuthenticated: true,
       isLoading: false,
       error: null,
     });
-  },
-
-  register: async (data: RegisterData) => {
-    set({ isLoading: true, error: null });
-
-    const fakeUser: User = {
-      id: crypto.randomUUID(),
-      email: data.email,
-      firstName: data.firstName || 'New',
-      lastName: data.lastName || 'User',
-      role: 'ADMIN',
-      company: data.company,
-      phone: data.phone,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    localStorage.setItem('auth_token', 'demo-token');
-    localStorage.setItem('auth_user', JSON.stringify(fakeUser));
-
-    set({
-      user: fakeUser,
-      token: 'demo-token',
-      isAuthenticated: true,
-      isLoading: false,
-      error: null,
-    });
-  },
-
-  logout: () => {
-    // Clear localStorage
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
-
-    // Reset state
-    set({
+  } else {
+    useAuthStore.setState({
       user: null,
       token: null,
       isAuthenticated: false,
-      error: null,
+      isLoading: false,
     });
+  }
+};
+
+export const useAuthStore = create<AuthStore>((set, get) => ({
+  user: null,
+  token: null,
+  isAuthenticated: false,
+  isLoading: true,
+  error: null,
+
+  login: async (email: string, password: string) => {
+    set({ isLoading: true, error: null });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.session) {
+      set({ isLoading: false, error: error?.message || 'Login failed' });
+      throw new Error(error?.message || 'Invalid email or password');
+    }
+    applySession(data.session);
+  },
+
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({ user: null, token: null, isAuthenticated: false, error: null });
   },
 
   setUser: (user: User) => {
-    localStorage.setItem('auth_user', JSON.stringify(user));
     set({ user });
-  },
-
-  setToken: (token: string) => {
-    localStorage.setItem('auth_token', token);
-    set({ token, isAuthenticated: true });
   },
 
   clearError: () => {
@@ -143,49 +102,34 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   checkAuth: async () => {
-    const { token, user } = get();
-
-    // Backend is disabled; treat any stored token as valid
-    if (token && user) {
-      set({ isAuthenticated: true, isLoading: false });
-      return;
-    }
-
-    // No stored session; remain logged out without redirect enforcement
-    set({ isAuthenticated: false, user: null, isLoading: false });
+    set({ isLoading: true });
+    const { data } = await supabase.auth.getSession();
+    applySession(data.session);
   },
 
   updateUser: async (data: Partial<User>) => {
-    try {
-      set({ isLoading: true, error: null });
+    const current = get().user;
+    if (!current) throw new Error('No user logged in');
 
-      // TEMPORARY: Skip API - just update local user
-      const currentUser = get().user;
-      if (!currentUser) {
-        throw new Error('No user logged in');
-      }
-
-      const updatedUser = {
-        ...currentUser,
-        ...data,
-        updatedAt: new Date().toISOString(),
-      };
-
-      localStorage.setItem('auth_user', JSON.stringify(updatedUser));
-
-      set({
-        user: updatedUser,
-        isLoading: false,
-      });
-
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-    } catch (error: any) {
-      set({
-        error: error.message || 'Failed to update user',
-        isLoading: false,
-      });
-      throw error;
+    set({ isLoading: true, error: null });
+    const { data: updated, error } = await supabase.auth.updateUser({
+      data: {
+        firstName: data.firstName ?? current.firstName,
+        lastName: data.lastName ?? current.lastName,
+        role: data.role ?? current.role,
+        avatar: data.avatar ?? current.avatar,
+        company: data.company ?? current.company,
+        phone: data.phone ?? current.phone,
+      },
+    });
+    if (error || !updated.user) {
+      set({ isLoading: false, error: error?.message || 'Failed to update user' });
+      throw new Error(error?.message || 'Failed to update user');
     }
+    set({ user: toAppUser(updated.user), isLoading: false });
   },
 }));
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  applySession(session);
+});
