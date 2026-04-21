@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "http://awseb-e-d-AWSEBLoa-1B8NTPJD8VBWE-1357826715.ap-southeast-2.elb.amazonaws.com/api/$1"
+      "destination": "https://builder-app-i71c.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
