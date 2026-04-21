@@ -57,20 +57,70 @@ app.options('*', cors(corsOptions));
 
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 const PUBLIC_PATHS = new Set(['/', '/health', '/api/ping']);
+const jwksCache = new Map();
+let joseModulePromise;
 
-app.use((req, res, next) => {
+function getJose() {
+  if (!joseModulePromise) {
+    joseModulePromise = import('jose');
+  }
+  return joseModulePromise;
+}
+
+function getTokenMetadata(token) {
+  const decoded = jwt.decode(token, { complete: true }) || {};
+  return {
+    header: decoded.header || {},
+    payload: decoded.payload || {},
+  };
+}
+
+async function getJwksForIssuer(issuer) {
+  if (!jwksCache.has(issuer)) {
+    const { createRemoteJWKSet } = await getJose();
+    const issuerUrl = issuer.endsWith('/') ? issuer : `${issuer}/`;
+    const jwksUrl = new URL('.well-known/jwks.json', issuerUrl);
+    jwksCache.set(issuer, createRemoteJWKSet(jwksUrl));
+  }
+  return jwksCache.get(issuer);
+}
+
+async function verifyAccessToken(token) {
+  const { header, payload } = getTokenMetadata(token);
+  const algorithm = header.alg;
+
+  if (algorithm === 'HS256') {
+    if (!JWT_SECRET) {
+      throw new Error('SUPABASE_JWT_SECRET not configured');
+    }
+    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+  }
+
+  if (!payload.iss) {
+    throw new Error('JWT issuer missing');
+  }
+
+  const { jwtVerify } = await getJose();
+  const jwks = await getJwksForIssuer(String(payload.iss));
+  const verificationOptions = { issuer: String(payload.iss) };
+  if (payload.aud) {
+    verificationOptions.audience = payload.aud;
+  }
+
+  const verified = await jwtVerify(token, jwks, verificationOptions);
+  return verified.payload;
+}
+
+app.use(async (req, res, next) => {
   if (req.method === 'OPTIONS') return next();
   if (PUBLIC_PATHS.has(req.path)) return next();
-  if (!JWT_SECRET) {
-    return res.status(500).json({ error: 'SUPABASE_JWT_SECRET not configured' });
-  }
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) {
     return res.status(401).json({ error: 'Missing bearer token' });
   }
   try {
-    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    const payload = await verifyAccessToken(token);
     req.user = {
       id: payload.sub,
       email: payload.email,
