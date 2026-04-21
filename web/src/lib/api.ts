@@ -1,8 +1,48 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { supabase } from './supabase';
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
+
+function resolveApiBaseUrl() {
+  const raw = ((import.meta as any)?.env?.VITE_API_URL as string | undefined)?.trim();
+  const allowCrossOriginApi = ((import.meta as any)?.env?.VITE_ALLOW_CROSS_ORIGIN_API as string | undefined) === 'true';
+  if (!raw) return '/api';
+  if (typeof window === 'undefined') return raw;
+
+  try {
+    const currentUrl = new URL(window.location.origin);
+    const candidateUrl = new URL(raw, window.location.origin);
+    const isLocalPage = LOCAL_HOSTS.has(currentUrl.hostname);
+    const isLocalTarget = LOCAL_HOSTS.has(candidateUrl.hostname);
+    const isCrossOrigin = candidateUrl.origin !== currentUrl.origin;
+    const isInsecureFromSecurePage = currentUrl.protocol === 'https:' && candidateUrl.protocol === 'http:';
+    const isDeprecatedAwsTarget =
+      candidateUrl.hostname.includes('elb.amazonaws.com') || candidateUrl.hostname.startsWith('awseb-');
+
+    if (!isLocalPage && (isLocalTarget || isInsecureFromSecurePage || isDeprecatedAwsTarget)) {
+      console.warn(`Ignoring unsafe VITE_API_URL "${raw}" in production and falling back to /api`);
+      return '/api';
+    }
+
+    if (!isLocalPage && isCrossOrigin && !allowCrossOriginApi) {
+      console.warn(`Ignoring cross-origin VITE_API_URL "${candidateUrl.origin}" in production and falling back to /api`);
+      return '/api';
+    }
+
+    if (!isLocalPage && isCrossOrigin) {
+      console.warn(`Using cross-origin API base URL "${candidateUrl.origin}" in production because VITE_ALLOW_CROSS_ORIGIN_API=true`);
+    }
+
+    return raw;
+  } catch {
+    return raw;
+  }
+}
+
+const apiBaseURL = resolveApiBaseUrl();
+
 const api: AxiosInstance = axios.create({
-  baseURL: (import.meta as any)?.env?.VITE_API_URL || '/api',
+  baseURL: apiBaseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -75,10 +115,19 @@ api.interceptors.response.use(
       });
     } else if (error.request) {
       // Request made but no response received
-      console.error('Network error - no response received');
+      const requestPath = error.config?.url || '';
+      const baseUrl = error.config?.baseURL || apiBaseURL || window.location.origin;
+      const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl)
+        ? baseUrl
+        : new URL(baseUrl, window.location.origin).toString();
+      const requestUrl = requestPath
+        ? new URL(requestPath, normalizedBaseUrl).toString()
+        : normalizedBaseUrl;
+      console.error('Network error - no response received', { requestUrl });
       return Promise.reject({
         status: 0,
         message: 'Network error. Please check your connection.',
+        requestUrl,
       });
     } else {
       // Error in request setup
