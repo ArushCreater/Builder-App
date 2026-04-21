@@ -2,6 +2,7 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import { supabase } from './supabase';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
+let handlingUnauthorized = false;
 
 function resolveApiBaseUrl() {
   const raw = ((import.meta as any)?.env?.VITE_API_URL as string | undefined)?.trim();
@@ -66,6 +67,22 @@ function getRequestUrl(config?: InternalAxiosRequestConfig | any) {
   }
 }
 
+async function handleUnauthorized() {
+  if (handlingUnauthorized) return;
+  handlingUnauthorized = true;
+
+  try {
+    // Clear the local session without making an extra logout network call.
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch (signOutError) {
+    console.error('Local sign-out failed:', signOutError);
+  } finally {
+    window.setTimeout(() => {
+      handlingUnauthorized = false;
+    }, 0);
+  }
+}
+
 api.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     const { data } = await supabase.auth.getSession();
@@ -98,10 +115,7 @@ api.interceptors.response.use(
 
       switch (status) {
         case 401:
-          supabase.auth.signOut();
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
+          handleUnauthorized();
           break;
 
         case 403:
