@@ -326,26 +326,26 @@ export function InvoicesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Invoices</h1>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Invoices</h1>
           <p className="text-gray-500 mt-1">Manage and track all project invoices</p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               New Invoice
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-2xl">
             <form onSubmit={handleCreateInvoice}>
               <DialogHeader>
                 <DialogTitle>Create New Invoice</DialogTitle>
                 <DialogDescription>Add a new invoice with optional file attachment</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="invoiceNumber">Invoice Number</Label>
                     <Input
@@ -376,7 +376,7 @@ export function InvoicesPage() {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="projectName">Project</Label>
                     <Select
@@ -424,7 +424,7 @@ export function InvoicesPage() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="issueDate">Issue Date</Label>
                     <Input
@@ -460,7 +460,7 @@ export function InvoicesPage() {
                 </div>
                   <div className="space-y-2">
                     <Label htmlFor="file">Upload Invoice (Image/PDF)</Label>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <Input
                         ref={fileInputRef}
                         id="file"
@@ -510,14 +510,14 @@ export function InvoicesPage() {
             }
           }}
         >
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-2xl">
             <form onSubmit={handleUpdateInvoice}>
               <DialogHeader>
                 <DialogTitle>Edit Invoice</DialogTitle>
                 <DialogDescription>Update an existing invoice and its attachment.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="invoiceNumber-edit">Invoice Number</Label>
                     <Input
@@ -548,7 +548,7 @@ export function InvoicesPage() {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="projectName-edit">Project</Label>
                     <Select
@@ -596,7 +596,7 @@ export function InvoicesPage() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="issueDate-edit">Issue Date</Label>
                     <Input
@@ -630,7 +630,7 @@ export function InvoicesPage() {
                 </div>
                   <div className="space-y-2">
                     <Label>Attachment</Label>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                       <Input
                         type="file"
                         ref={fileInputRef}
@@ -777,6 +777,117 @@ export function InvoicesPage() {
           </div>
         </CardHeader>
         <CardContent>
+          <div className="space-y-3 md:hidden">
+            {filteredInvoices.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                No invoices found
+              </div>
+            ) : (
+              filteredInvoices.map((invoice) => (
+                <div key={invoice.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-900">{invoice.invoiceNumber}</div>
+                      <div className="mt-1 text-sm text-slate-600">{invoice.projectName || 'No project'}</div>
+                      <div className="text-sm text-slate-500">{invoice.clientName}</div>
+                    </div>
+                    <Badge variant={statusColors[invoice.status as Invoice['status']]}>
+                      {invoice.status}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm text-slate-600">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Amount</span>
+                      <span className="font-semibold text-slate-900">{formatCurrency(invoice.amount)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Issue</span>
+                      <span>{invoice.issueDate ? formatDate(invoice.issueDate) : '—'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Due</span>
+                      <span>{invoice.dueDate ? formatDate(invoice.dueDate) : '—'}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <Select
+                      value={invoice.status}
+                      onValueChange={(value) =>
+                        statusMutation.mutate({ id: invoice.id, status: value as Invoice['status'] })
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="unpaid">Unpaid</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="overdue">Overdue</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleViewInvoice(invoice)}
+                    >
+                      <Eye className="mr-2 h-4 w-4" />
+                      View
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        setEditingInvoice(invoice);
+                        setFormData({
+                          invoiceNumber: invoice.invoiceNumber,
+                          projectId: invoice.projectId || '',
+                          projectName: invoice.projectName,
+                          clientName: invoice.clientName,
+                          amount: invoice.amount.toString(),
+                          status: invoice.status,
+                          dueDate: invoice.dueDate,
+                          issueDate: invoice.issueDate,
+                          description: invoice.description,
+                        });
+                        setUploadedFile(
+                          invoice.fileUrl
+                            ? { url: invoice.fileUrl, name: invoice.fileName || '', type: invoice.fileType || '' }
+                            : null
+                        );
+                        setIsEditDialogOpen(true);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    {invoice.fileUrl && (
+                      <Button variant="outline" size="icon" onClick={() => handleDownloadInvoice(invoice)}>
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <ConfirmDialog
+                      title="Delete invoice?"
+                      description="This permanently removes the invoice. This cannot be undone."
+                      confirmText="Delete"
+                      confirmVariant="destructive"
+                      confirmDisabled={deleteMutation.isPending}
+                      onConfirm={() => deleteMutation.mutate(invoice.id)}
+                      trigger={
+                        <Button variant="outline" size="icon">
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      }
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -911,18 +1022,19 @@ export function InvoicesPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
       {/* View Invoice Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="text-gray-900">Invoice Details</DialogTitle>
           </DialogHeader>
           {selectedInvoice && (
             <div className="space-y-5 text-gray-900">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <Label className="text-gray-500">Invoice Number</Label>
                   <p className="font-semibold">{selectedInvoice.invoiceNumber}</p>
@@ -934,7 +1046,7 @@ export function InvoicesPage() {
                   </Badge>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <Label className="text-gray-500">Project</Label>
                   <p className="font-semibold">{selectedInvoice.projectName || '—'}</p>
@@ -950,7 +1062,7 @@ export function InvoicesPage() {
                   {formatCurrency(selectedInvoice.amount)}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <Label className="text-gray-500">Issue Date</Label>
                   <p className="font-semibold">

@@ -65,6 +65,15 @@ const normalizeDate = (value?: string | null) => {
   return value.split('T')[0];
 };
 
+const DAY_IN_MS = 1000 * 60 * 60 * 24;
+
+const getDurationDays = (start?: string, end?: string) => {
+  if (!start || !end) return 0;
+  const startTime = new Date(start).getTime();
+  const endTime = new Date(end).getTime();
+  return Math.max(1, Math.round((endTime - startTime) / DAY_IN_MS) + 1);
+};
+
 export function SchedulePage() {
   const [view, setView] = useState<'calendar' | 'list' | 'gantt'>('gantt');
   const [selectedProject, setSelectedProject] = useState<string>('all');
@@ -344,6 +353,8 @@ export function SchedulePage() {
     return { left, width };
   };
 
+  const totalTimelineDays = Math.max(timelineDays.length, 1);
+
   const updateEventDates = (id: string, newStart: string, newEnd: string) => {
     setLocalEvents(prev =>
       prev.map(ev => (ev.id === id ? { ...ev, startDate: newStart, endDate: newEnd } : ev))
@@ -570,9 +581,9 @@ export function SchedulePage() {
 
       <Card className="flex-1 flex flex-col shadow-sm border-slate-200 overflow-hidden">
         <CardHeader className="border-b border-slate-100 pb-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative w-[200px]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="relative w-full sm:w-[220px]">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                 <Input 
                     placeholder="Search events..." 
@@ -582,7 +593,7 @@ export function SchedulePage() {
                 />
               </div>
               <Select value={selectedProject} onValueChange={setSelectedProject}>
-                <SelectTrigger className="w-[180px] h-9">
+                <SelectTrigger className="h-9 w-full sm:w-[180px]">
                   <SelectValue placeholder="Project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -595,7 +606,7 @@ export function SchedulePage() {
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-[140px] h-9">
+                <SelectTrigger className="h-9 w-full sm:w-[140px]">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -608,9 +619,9 @@ export function SchedulePage() {
               </Select>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 {view === 'gantt' && (
-                    <div className="flex items-center gap-1 mr-2 bg-slate-100 rounded-md p-1">
+                    <div className="hidden items-center gap-1 rounded-md bg-slate-100 p-1 md:flex">
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleZoom('out')}>
                             <ZoomOut className="h-3.5 w-3.5" />
                         </Button>
@@ -620,17 +631,17 @@ export function SchedulePage() {
                     </div>
                 )}
                 
-                <Tabs value={view} onValueChange={(v) => setView(v as typeof view)} className="bg-slate-100 p-1 rounded-md">
-                <TabsList className="h-8 bg-transparent">
-                    <TabsTrigger value="gantt" className="h-7 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                <Tabs value={view} onValueChange={(v) => setView(v as typeof view)} className="rounded-md bg-slate-100 p-1">
+                <TabsList className="grid h-auto w-full grid-cols-3 gap-1 bg-transparent sm:h-8 sm:w-auto sm:flex">
+                    <TabsTrigger value="gantt" className="h-8 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                     <GanttChartSquare className="mr-2 h-3.5 w-3.5" />
                     Gantt
                     </TabsTrigger>
-                    <TabsTrigger value="calendar" className="h-7 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <TabsTrigger value="calendar" className="h-8 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                     <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                     Calendar
                     </TabsTrigger>
-                    <TabsTrigger value="list" className="h-7 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <TabsTrigger value="list" className="h-8 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                     <List className="mr-2 h-3.5 w-3.5" />
                     List
                     </TabsTrigger>
@@ -733,7 +744,99 @@ export function SchedulePage() {
                     <p>No timeline data available.</p>
                 </div>
               ) : (
-                <div className="flex flex-1 overflow-hidden">
+                <>
+                  <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:hidden">
+                    <div className="mb-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Timeline</p>
+                          <p className="text-xs text-slate-500">
+                            {minDate && maxDate ? `${formatDate(minDate)} - ${formatDate(maxDate)}` : 'Project schedule overview'}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">
+                          {ganttItems.length} items
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {ganttItems.map((item) => {
+                        const bar = computeBar(item.start, item.end);
+                        const durationDays = getDurationDays(item.start, item.end);
+                        const leftPercent = (bar.left / totalTimelineDays) * 100;
+                        const widthPercent = Math.max((bar.width / totalTimelineDays) * 100, 8);
+                        const isProject = Boolean(item.isProject);
+
+                        return (
+                          <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  {isProject ? (
+                                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                      PROJ
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant={typeBadges[item.type].variant} className="h-5 px-1.5 text-[10px]">
+                                      {typeBadges[item.type].label}
+                                    </Badge>
+                                  )}
+                                  <h3 className="truncate text-sm font-semibold text-slate-900">{item.label}</h3>
+                                </div>
+                                <p className="mt-1 truncate text-xs text-slate-500">{item.projectName}</p>
+                              </div>
+                              {item.assignee && (
+                                <Avatar className="h-8 w-8 shrink-0 border border-white shadow-sm">
+                                  <AvatarFallback className="text-[11px] bg-indigo-100 text-indigo-700">
+                                    {item.assignee.substring(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
+                            </div>
+
+                            <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                              <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-medium text-slate-500">
+                                <span>{formatDate(item.start)}</span>
+                                <span>{durationDays} {durationDays === 1 ? 'day' : 'days'}</span>
+                                <span>{formatDate(item.end)}</span>
+                              </div>
+                              <div className="relative h-3 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                  className={cn(
+                                    "absolute top-0 h-full rounded-full",
+                                    isProject ? "bg-slate-800" :
+                                    item.type === 'meeting' ? "bg-emerald-500" :
+                                    item.type === 'inspection' ? "bg-amber-500" :
+                                    item.type === 'delivery' ? "bg-purple-500" :
+                                    "bg-blue-500"
+                                  )}
+                                  style={{
+                                    left: `${leftPercent}%`,
+                                    width: `${Math.min(widthPercent, 100 - leftPercent)}%`,
+                                    minWidth: '18px',
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                              {item.assignee && (
+                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                                  {item.assignee}
+                                </span>
+                              )}
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                                {item.start === item.end ? 'Single-day item' : 'Scheduled range'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="hidden flex-1 overflow-hidden md:flex">
                   <div className="w-[300px] flex-shrink-0 border-r border-slate-200 bg-white flex flex-col z-10 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)]">
                     <div className="h-[80px] border-b border-slate-200 bg-slate-50/80 p-4 font-semibold text-sm text-slate-700 flex items-center">
                         Task Name
@@ -900,6 +1003,7 @@ export function SchedulePage() {
                     </div>
                   </div>
                 </div>
+                </>
               )}
             </div>
           ) : (

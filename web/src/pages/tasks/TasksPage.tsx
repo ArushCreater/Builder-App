@@ -270,22 +270,46 @@ export function TasksPage() {
     tasks: filtered.filter(t => normalizeStatus(t.status) === col.key),
   }));
 
+  const getTaskProgress = (task: Task) => (
+    task.completed
+      ? 100
+      : normalizeStatus(task.status) === 'in-progress'
+        ? 50
+        : normalizeStatus(task.status) === 'review'
+          ? 75
+          : 10
+  );
+
+  const openTaskDetails = (task: Task) => {
+    setViewTask(task);
+    setViewForm({
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      assignee: task.assignee,
+      projectId: task.projectId || '',
+      projectName: task.projectName || '',
+      dueDate: task.dueDate || '',
+      status: normalizeStatus(task.status),
+    });
+  };
+
   return (
     <>
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Tasks</h1>
           <p className="text-gray-500 mt-1">All tasks across projects with fast filters and sorting.</p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               New Task
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="sm:max-w-2xl">
             <form onSubmit={handleCreateTask}>
               <DialogHeader>
                 <DialogTitle>Create New Task</DialogTitle>
@@ -312,7 +336,7 @@ export function TasksPage() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="projectName">Project</Label>
                     <Select
@@ -352,7 +376,7 @@ export function TasksPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="priority">Priority</Label>
                     <Select
@@ -382,7 +406,7 @@ export function TasksPage() {
                 </div>
 
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <Label className="text-sm font-semibold text-slate-900">Expense</Label>
                       <p className="text-xs text-slate-500 mt-1">
@@ -495,9 +519,9 @@ export function TasksPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <Select value={projectFilter} onValueChange={setProjectFilter}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -508,7 +532,7 @@ export function TasksPage() {
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -520,7 +544,7 @@ export function TasksPage() {
                 </SelectContent>
               </Select>
               <Select value={sortBy} onValueChange={(v: 'project' | 'due' | 'priority') => setSortBy(v)}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="Sort" />
                 </SelectTrigger>
                 <SelectContent>
@@ -538,8 +562,57 @@ export function TasksPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
-            <div className="overflow-x-auto pb-2">
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 min-w-[960px] sm:min-w-0">
+            <>
+              <div className="space-y-3 md:hidden">
+                {filtered.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                    No tasks found for this filter.
+                  </div>
+                ) : (
+                  filtered.map((task) => (
+                    <div key={task.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-900">{task.title}</div>
+                          <p className="mt-1 text-sm text-slate-600 line-clamp-3">{task.description}</p>
+                        </div>
+                        <Checkbox
+                          checked={task.completed}
+                          onCheckedChange={(checked) =>
+                            toggleMutation.mutate({ id: task.id, completed: !!checked })
+                          }
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {task.projectName && <Badge variant="secondary">{task.projectName}</Badge>}
+                        <Badge variant={priorityColors[task.priority]}>{task.priority}</Badge>
+                        <Badge variant={statusColors[normalizeStatus(task.status)] || 'secondary'}>
+                          {normalizeStatus(task.status)}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 space-y-2 text-sm text-slate-600">
+                        <div className="flex items-center gap-2">
+                          <Clock3 className="h-4 w-4 text-slate-400" />
+                          <span>{task.assignee || 'Unassigned'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-slate-400" />
+                          <span>{task.dueDate ? formatDate(task.dueDate) : 'No due date'}</span>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-3">
+                        <Progress value={getTaskProgress(task)} className="flex-1" />
+                        <Button size="sm" variant="outline" onClick={() => openTaskDetails(task)}>
+                          View
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="hidden overflow-x-auto pb-2 md:block">
+                <div className="grid min-w-[960px] gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {groupedByStatus.map((col) => (
                   <div
                     key={col.key}
@@ -608,34 +681,11 @@ export function TasksPage() {
                               </span>
                             </div>
                             <div className="mt-2 flex items-center justify-between">
-                              <Progress
-                                value={
-                                  task.completed
-                                    ? 100
-                                    : normalizeStatus(task.status) === 'in-progress'
-                                      ? 50
-                                      : normalizeStatus(task.status) === 'review'
-                                        ? 75
-                                        : 10
-                                }
-                                className="w-[70%]"
-                              />
+                              <Progress value={getTaskProgress(task)} className="w-[70%]" />
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                  setViewTask(task);
-                                  setViewForm({
-                                    title: task.title,
-                                    description: task.description,
-                                    priority: task.priority,
-                                    assignee: task.assignee,
-                                    projectId: task.projectId || '',
-                                    projectName: task.projectName || '',
-                                    dueDate: task.dueDate || '',
-                                    status: normalizeStatus(task.status),
-                                  });
-                                }}
+                                onClick={() => openTaskDetails(task)}
                               >
                                 View
                               </Button>
@@ -647,21 +697,22 @@ export function TasksPage() {
                   </div>
                 ))}
               </div>
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
     </div>
 
     <Dialog open={!!viewTask} onOpenChange={(open) => !open && setViewTask(null)}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Task Details</DialogTitle>
           <DialogDescription>Review, edit, or delete this task.</DialogDescription>
         </DialogHeader>
         {viewTask && (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>Title</Label>
                 <Input
@@ -691,7 +742,7 @@ export function TasksPage() {
                 onChange={(e) => setViewForm({ ...viewForm, description: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>Priority</Label>
                 <Select value={viewForm.priority} onValueChange={(v: Task['priority']) => setViewForm({ ...viewForm, priority: v })}>
@@ -713,7 +764,7 @@ export function TasksPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>Project</Label>
                 <Select
@@ -747,7 +798,7 @@ export function TasksPage() {
                 />
               </div>
             </div>
-            <DialogFooter className="flex justify-between gap-2">
+            <DialogFooter className="flex gap-2 sm:justify-between">
               <ConfirmDialog
                 title="Delete task?"
                 description="This permanently removes the task. This cannot be undone."
@@ -761,7 +812,7 @@ export function TasksPage() {
                   </Button>
                 }
               />
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Button variant="outline" onClick={() => setViewTask(null)}>Close</Button>
                 <Button
                   onClick={() =>

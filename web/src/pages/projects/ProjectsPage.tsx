@@ -381,7 +381,7 @@ export function ProjectsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
@@ -404,7 +404,7 @@ export function ProjectsPage() {
                 <SelectItem value="CANCELLED">Cancelled</SelectItem>
               </SelectContent>
             </Select>
-            <div className="flex gap-2">
+            <div className="hidden gap-2 sm:flex">
               <Button
                 type="button"
                 variant={viewMode === 'grid' ? 'default' : 'outline'}

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
@@ -6,7 +7,10 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Search, Plus, DollarSign, Home, TrendingUp, Clock3 } from 'lucide-react';
+import { Search, Plus, DollarSign, Home, TrendingUp, Clock3, Trash2 } from 'lucide-react';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ui/use-toast';
+import { apiClient } from '../../lib/api';
 import { formatCurrency, formatDate } from '../../lib/utils';
 
 type SaleStatus = 'pending' | 'closed' | 'handoff';
@@ -30,6 +34,8 @@ const statusVariants: Record<SaleStatus, 'secondary' | 'default' | 'success'> = 
 };
 
 export function SoldPage() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | SaleStatus>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -44,29 +50,31 @@ export function SoldPage() {
     address: '',
   });
 
-  const [records, setRecords] = useState<SoldRecord[]>([
-    {
-      id: 's-1',
-      projectName: 'Sunrise Apartments',
-      buyer: 'Acme Holdings',
-      salePrice: 2200000,
-      profit: 450000,
-      closeDate: '2024-09-15',
-      status: 'handoff',
-      address: '12 Main St, Sydney',
-      handoffNotes: 'Handover to client facilities team.',
+  const { data: soldData, isLoading } = useQuery({
+    queryKey: ['sold', search, statusFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      return apiClient.get<{ sold: any[] }>(`/sold?${params}`);
     },
-    {
-      id: 's-2',
-      projectName: 'Downtown Office',
-      buyer: 'Beta Property Group',
-      salePrice: 4150000,
-      profit: 780000,
-      closeDate: '2024-11-01',
-      status: 'pending',
-      address: '200 George St, Sydney',
-    },
-  ]);
+  });
+
+  const records = useMemo<SoldRecord[]>(
+    () =>
+      (soldData?.sold || []).map((record: any) => ({
+        id: record.id,
+        projectName: record.projectName || record.project_name || '',
+        buyer: record.buyer || '',
+        salePrice: Number(record.salePrice ?? record.sale_price ?? 0),
+        profit: Number(record.profit ?? 0),
+        closeDate: record.closeDate || record.close_date || '',
+        status: (record.status || 'pending') as SaleStatus,
+        handoffNotes: record.handoffNotes || record.handoff_notes || '',
+        address: record.address || '',
+      })),
+    [soldData?.sold]
+  );
 
   const filtered = useMemo(() => {
     let list = [...records];
@@ -91,10 +99,48 @@ export function SoldPage() {
     return { total, profit };
   }, [filtered]);
 
+  const createMutation = useMutation({
+    mutationFn: (payload: Omit<SoldRecord, 'id'>) => apiClient.post('/sold', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sold'] });
+      setIsDialogOpen(false);
+      setForm({
+        projectName: '',
+        buyer: '',
+        salePrice: '',
+        profit: '',
+        closeDate: '',
+        status: 'pending',
+        handoffNotes: '',
+        address: '',
+      });
+      toast({ title: 'Saved', description: 'Sale record added successfully' });
+    },
+    onError: (error: any) =>
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to save sale record',
+        variant: 'destructive',
+      }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/sold/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sold'] });
+      toast({ title: 'Deleted', description: 'Sale record removed' });
+    },
+    onError: (error: any) =>
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete sale record',
+        variant: 'destructive',
+      }),
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const rec: SoldRecord = {
-      id: crypto.randomUUID(),
+    createMutation.mutate({
       projectName: form.projectName,
       buyer: form.buyer,
       salePrice: parseFloat(form.salePrice) || 0,
@@ -103,18 +149,6 @@ export function SoldPage() {
       status: form.status,
       address: form.address,
       handoffNotes: form.handoffNotes,
-    };
-    setRecords([rec, ...records]);
-    setIsDialogOpen(false);
-    setForm({
-      projectName: '',
-      buyer: '',
-      salePrice: '',
-      profit: '',
-      closeDate: '',
-      status: 'pending',
-      handoffNotes: '',
-      address: '',
     });
   };
 
@@ -127,18 +161,18 @@ export function SoldPage() {
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Add Sale
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="sm:max-w-2xl">
             <form onSubmit={handleSubmit}>
               <DialogHeader>
                 <DialogTitle>Add Sold Property</DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Project</Label>
                     <Input
@@ -156,7 +190,7 @@ export function SoldPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Sale Price</Label>
                     <Input
@@ -176,7 +210,7 @@ export function SoldPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Close/Handoff Date</Label>
                     <Input
@@ -220,7 +254,9 @@ export function SoldPage() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">Save</Button>
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? 'Saving...' : 'Save'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -281,6 +317,11 @@ export function SoldPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16 text-sm text-gray-500">
+              Loading sold properties...
+            </div>
+          ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {filtered.map((record) => (
               <Card key={record.id} className="border border-gray-200 shadow-sm">
@@ -324,6 +365,22 @@ export function SoldPage() {
                   {record.handoffNotes && (
                     <div className="text-xs text-gray-500">Notes: {record.handoffNotes}</div>
                   )}
+                  <div className="pt-2 flex justify-end">
+                    <ConfirmDialog
+                      title="Delete sold property?"
+                      description="This permanently removes the sale record. This cannot be undone."
+                      confirmText="Delete"
+                      confirmVariant="destructive"
+                      confirmDisabled={deleteMutation.isPending}
+                      onConfirm={() => deleteMutation.mutate(record.id)}
+                      trigger={
+                        <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </Button>
+                      }
+                    />
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -333,6 +390,7 @@ export function SoldPage() {
               </div>
             )}
           </div>
+          )}
         </CardContent>
       </Card>
     </div>
