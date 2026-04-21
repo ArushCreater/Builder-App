@@ -92,14 +92,21 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col dashboard-enter">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <style>{`
         .dashboard-enter { animation: dashboard-fade-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
         @keyframes dashboard-fade-in {
-          0% { opacity: 0; transform: translateY(8px) scale(0.995); filter: blur(4px); }
-          100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+          0% { opacity: 0; }
+          100% { opacity: 1; }
         }
-        @media (prefers-reduced-motion: reduce) { .dashboard-enter { animation: none !important; } }
+        .dashboard-enter-main { animation: dashboard-main-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+        @keyframes dashboard-main-in {
+          0% { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+          100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .dashboard-enter, .dashboard-enter-main { animation: none !important; }
+        }
       `}</style>
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
@@ -282,7 +289,7 @@ export function DashboardLayout() {
         </header>
 
         {/* Page content */}
-        <main className="py-4 sm:py-6 px-3 sm:px-6 lg:px-10 pb-24 min-h-screen">
+        <main className="py-4 sm:py-6 px-3 sm:px-6 lg:px-10 pb-24 min-h-screen dashboard-enter-main">
           <Outlet />
         </main>
       </div>
