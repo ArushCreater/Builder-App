@@ -49,6 +49,23 @@ const api: AxiosInstance = axios.create({
   timeout: 30000,
 });
 
+function getRequestUrl(config?: InternalAxiosRequestConfig | any) {
+  if (!config) return apiBaseURL || window.location.origin;
+  try {
+    const uri = api.getUri(config);
+    return /^https?:\/\//i.test(uri) ? uri : new URL(uri, window.location.origin).toString();
+  } catch {
+    const requestPath = config?.url || '';
+    const baseUrl = config?.baseURL || apiBaseURL || window.location.origin;
+    const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl)
+      ? baseUrl
+      : new URL(baseUrl, window.location.origin).toString();
+    return requestPath
+      ? new URL(requestPath, normalizedBaseUrl).toString()
+      : normalizedBaseUrl;
+  }
+}
+
 api.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     const { data } = await supabase.auth.getSession();
@@ -70,6 +87,10 @@ api.interceptors.response.use(
   },
   (error: AxiosError) => {
     // Handle different error scenarios
+    if (axios.isCancel(error) || error.code === 'ERR_CANCELED') {
+      return Promise.reject(error);
+    }
+
     if (error.response) {
       // Server responded with error status
       const status = error.response.status;
@@ -112,17 +133,11 @@ api.interceptors.response.use(
         status,
         message,
         data: error.response.data,
+        requestUrl: getRequestUrl(error.config),
       });
     } else if (error.request) {
       // Request made but no response received
-      const requestPath = error.config?.url || '';
-      const baseUrl = error.config?.baseURL || apiBaseURL || window.location.origin;
-      const normalizedBaseUrl = /^https?:\/\//i.test(baseUrl)
-        ? baseUrl
-        : new URL(baseUrl, window.location.origin).toString();
-      const requestUrl = requestPath
-        ? new URL(requestPath, normalizedBaseUrl).toString()
-        : normalizedBaseUrl;
+      const requestUrl = getRequestUrl(error.config);
       console.error('Network error - no response received', { requestUrl });
       return Promise.reject({
         status: 0,
