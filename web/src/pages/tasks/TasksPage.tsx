@@ -643,13 +643,10 @@ export function TasksPage() {
                         col.tasks.map((task) => (
                           <div
                             key={task.id}
-                            className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm cursor-move"
+                            className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm cursor-grab active:cursor-grabbing active:opacity-60 active:scale-95 transition-all"
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/plain', task.id);
-                              const img = new Image();
-                              img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
-                              e.dataTransfer.setDragImage(img, 0, 0);
                               e.dataTransfer.effectAllowed = 'move';
                             }}
                           >
@@ -689,6 +686,24 @@ export function TasksPage() {
                               >
                                 View
                               </Button>
+                            </div>
+                            <div className="mt-2">
+                              <Select
+                                value={col.key}
+                                onValueChange={(newStatus) =>
+                                  updateMutation.mutate({ id: task.id, data: { status: newStatus, completed: newStatus === 'completed' } })
+                                }
+                              >
+                                <SelectTrigger className="h-6 text-xs w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="todo">To Do</SelectItem>
+                                  <SelectItem value="in-progress">In Progress</SelectItem>
+                                  <SelectItem value="review">Review</SelectItem>
+                                  <SelectItem value="completed">Completed</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
                         ))

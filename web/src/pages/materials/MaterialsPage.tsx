@@ -110,6 +110,7 @@ export function MaterialsPage() {
     mutationFn: (data: Partial<Material>) => apiClient.post('/materials', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['materials'] });
+      queryClient.invalidateQueries({ queryKey: ['project-materials'] });
       setIsCreateDialogOpen(false);
       setFormData({
         name: '',
@@ -164,6 +165,7 @@ export function MaterialsPage() {
       apiClient.put(`/materials/${payload.id}`, payload.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['materials'] });
+      queryClient.invalidateQueries({ queryKey: ['project-materials'] });
       setIsCreateDialogOpen(false);
       setEditingId(null);
       setFormData({
@@ -186,6 +188,7 @@ export function MaterialsPage() {
     mutationFn: (id: string) => apiClient.delete(`/materials/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['materials'] });
+      queryClient.invalidateQueries({ queryKey: ['project-materials'] });
       toast({ title: 'Deleted', description: 'Material removed' });
     },
     onError: () => toast({ title: 'Error', description: 'Delete failed', variant: 'destructive' }),

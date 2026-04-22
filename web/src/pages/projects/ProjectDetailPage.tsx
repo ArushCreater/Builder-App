@@ -338,7 +338,13 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
       })),
     [projectInvoicesData?.invoices]
   );
-  const materials = materialsData?.materials || [];
+  const materials = (materialsData?.materials || []).map((m: any) => ({
+    ...m,
+    name: m.name || 'Material',
+    totalCost: Number(m.totalCost ?? m.total_cost ?? 0) || (Number(m.quantity ?? 0) * Number(m.costPerUnit ?? m.cost_per_unit ?? 0)),
+    quantity: Number(m.quantity ?? 0),
+    costPerUnit: Number(m.costPerUnit ?? m.cost_per_unit ?? 0),
+  }));
   const projectExpenses = projectExpensesData?.expenses || [];
   const selections = selectionsData?.selections || [];
   const inspections = inspectionsData?.inspections || [];
@@ -1073,6 +1079,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                   className="rounded-lg border border-gray-200 bg-white shadow-sm"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
+                    e.preventDefault();
                     const taskId = e.dataTransfer.getData('text/plain');
                     if (taskId) {
                       taskUpdateMutation.mutate({ id: taskId, status: column });
@@ -1090,19 +1097,38 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                       columnTasks.map((task) => (
                         <div
                           key={task.id}
-                          className="rounded-md border border-gray-200 bg-gray-50 p-3 shadow-sm cursor-move"
+                          className="rounded-md border border-gray-200 bg-white p-3 shadow-sm cursor-grab active:cursor-grabbing active:opacity-60 active:scale-95 transition-all"
                           draggable
                           onDragStart={(e) => {
                             e.dataTransfer.setData('text/plain', task.id);
+                            e.dataTransfer.effectAllowed = 'move';
                           }}
                         >
-                          <div className="font-medium text-gray-900">{task.title}</div>
-                          <div className="text-sm text-gray-600 mt-1">{task.description}</div>
-                          <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
-                            <span>{task.assignedTo || 'Unassigned'}</span>
-                            <Badge variant={task.priority === 'HIGH' ? 'destructive' : 'secondary'}>
+                          <div className="font-medium text-gray-900 text-sm">{task.title}</div>
+                          {task.description && (
+                            <div className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</div>
+                          )}
+                          <div className="flex items-center justify-between mt-2">
+                            <span className="text-xs text-gray-500">{task.assignedTo || 'Unassigned'}</span>
+                            <Badge variant={task.priority === 'HIGH' ? 'destructive' : 'secondary'} className="text-xs">
                               {task.priority}
                             </Badge>
+                          </div>
+                          <div className="mt-2">
+                            <Select
+                              value={column}
+                              onValueChange={(newStatus) => taskUpdateMutation.mutate({ id: task.id, status: newStatus })}
+                            >
+                              <SelectTrigger className="h-6 text-xs w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="todo">To Do</SelectItem>
+                                <SelectItem value="in-progress">In Progress</SelectItem>
+                                <SelectItem value="review">Review</SelectItem>
+                                <SelectItem value="completed">Completed</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                       ))
@@ -1484,22 +1510,28 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
               {materials.length === 0 ? (
                 <p className="text-sm text-gray-500">No materials linked to this project yet.</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {materials.map((m: any) => (
-                      <TableRow key={m.id}>
-                        <TableCell className="font-medium">{m.name || 'Material'}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(m.totalCost || 0)}</TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Supplier</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Cost</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {materials.map((m: any) => (
+                        <TableRow key={m.id}>
+                          <TableCell className="font-medium">{m.name}</TableCell>
+                          <TableCell className="text-sm text-gray-500">{m.supplier || '—'}</TableCell>
+                          <TableCell className="text-right text-sm">{m.quantity}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(m.totalCost)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
