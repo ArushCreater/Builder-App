@@ -414,22 +414,22 @@ export function DashboardHome() {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Stats Grid — 6 cards, 2 cols → 3 cols at md */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
         {statCards.map((stat, index) => {
           const Icon = stat.icon;
           return (
             <Card key={index} className="border border-slate-200 shadow-sm bg-white">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">{stat.title}</CardTitle>
-                <div className={`p-2 rounded-xl ${stat.bgColor}`}>
-                  <Icon className={`h-5 w-5 ${stat.color}`} />
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs sm:text-sm font-medium text-gray-600 leading-tight">{stat.title}</CardTitle>
+                <div className={`p-1.5 sm:p-2 rounded-xl flex-shrink-0 ${stat.bgColor}`}>
+                  <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="text-3xl font-bold tracking-tight">{stat.value}</div>
+              <CardContent className="space-y-1 pt-0">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight truncate">{stat.value}</div>
                 {stat.growth && (
-                  <p className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                  <p className="text-xs text-green-600 font-semibold">
                     +{stat.growth}% vs last month
                   </p>
                 )}
@@ -491,7 +491,7 @@ export function DashboardHome() {
       </div>
 
       {/* Active Projects and Recent Activity */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3">
         <Card className="border border-slate-200 shadow-sm bg-white lg:col-span-2">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Active Projects</CardTitle>
@@ -514,7 +514,7 @@ export function DashboardHome() {
                   </div>
                   <Progress value={project.progress} />
                   <p className="text-xs text-gray-500">
-                    Due: {new Date(project.dueDate).toLocaleDateString()}
+                    Due: {project.dueDate ? new Date(project.dueDate).toLocaleDateString() : 'TBD'}
                   </p>
                 </div>
               ))}
@@ -589,31 +589,27 @@ export function DashboardHome() {
       </div>
 
       {/* Tasks Summary & Operations */}
-      <div className="grid gap-6 xl:grid-cols-4">
+      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="border border-slate-200 shadow-sm bg-white">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Tasks Summary</CardTitle>
             <Badge className="bg-purple-50 text-purple-700 border-purple-100">Team</Badge>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="flex items-center gap-4 rounded-2xl border border-gray-100 p-4">
-                <div className="p-3 bg-emerald-50 rounded-xl">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-2 rounded-2xl border border-gray-100 p-3">
+                <div className="p-2 bg-emerald-50 rounded-xl w-fit">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                 </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats?.completedTasks || 0}</p>
-                  <p className="text-sm text-gray-500">Completed Tasks</p>
-                </div>
+                <p className="text-2xl font-bold">{stats?.completedTasks || 0}</p>
+                <p className="text-xs text-gray-500">Completed</p>
               </div>
-              <div className="flex items-center gap-4 rounded-2xl border border-gray-100 p-4">
-                <div className="p-3 bg-amber-50 rounded-xl">
-                  <Clock className="h-6 w-6 text-amber-600" />
+              <div className="flex flex-col gap-2 rounded-2xl border border-gray-100 p-3">
+                <div className="p-2 bg-amber-50 rounded-xl w-fit">
+                  <Clock className="h-5 w-5 text-amber-600" />
                 </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats?.pendingTasks || 0}</p>
-                  <p className="text-sm text-gray-500">Pending Tasks</p>
-                </div>
+                <p className="text-2xl font-bold">{stats?.pendingTasks || 0}</p>
+                <p className="text-xs text-gray-500">Pending</p>
               </div>
             </div>
           </CardContent>
@@ -642,7 +638,7 @@ export function DashboardHome() {
           </CardContent>
         </Card>
 
-        <Card className="border border-slate-200 shadow-sm bg-white xl:col-span-2">
+        <Card className="border border-slate-200 shadow-sm bg-white sm:col-span-2 xl:col-span-2">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Cashflow & Invoices</CardTitle>
             <Badge className="bg-amber-50 text-amber-700 border-amber-100">
@@ -650,10 +646,10 @@ export function DashboardHome() {
             </Badge>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl border border-gray-100 p-4">
+            <div className="grid gap-3 grid-cols-3">
+              <div className="rounded-2xl border border-gray-100 p-3">
                 <p className="text-xs text-gray-500">Outstanding</p>
-                <p className="text-2xl font-semibold">
+                <p className="text-lg font-semibold truncate">
                   {formatCurrency(
                     invoices.filter((i: any) => i.status !== 'paid').reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
                   )}
@@ -662,9 +658,9 @@ export function DashboardHome() {
                   {invoices.filter((i: any) => i.status !== 'paid').length} open
                 </p>
               </div>
-              <div className="rounded-2xl border border-gray-100 p-4">
-                <p className="text-xs text-gray-500">Paid this month</p>
-                <p className="text-2xl font-semibold">
+              <div className="rounded-2xl border border-gray-100 p-3">
+                <p className="text-xs text-gray-500">Paid</p>
+                <p className="text-lg font-semibold truncate">
                   {formatCurrency(
                     invoices
                       .filter((i: any) => i.status === 'paid')
@@ -673,24 +669,24 @@ export function DashboardHome() {
                 </p>
                 <p className="text-xs text-green-600 font-semibold mt-1">Cleared</p>
               </div>
-              <div className="rounded-2xl border border-gray-100 p-4">
+              <div className="rounded-2xl border border-gray-100 p-3">
                 <p className="text-xs text-gray-500">Next due</p>
-                <p className="text-lg font-semibold">
+                <p className="text-base font-semibold">
                   {invoices.find((i: any) => i.dueDate)?.dueDate
                     ? new Date(invoices.find((i: any) => i.dueDate).dueDate).toLocaleDateString()
                     : '—'}
                 </p>
-                <p className="text-xs text-gray-500">Across all projects</p>
+                <p className="text-xs text-gray-500">All projects</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
               {invoices.slice(0, 4).map((inv: any) => (
-                <div key={inv.id} className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2 w-full md:w-[48%]">
-                  <div>
-                    <p className="text-sm font-semibold">{inv.invoiceNumber}</p>
-                    <p className="text-xs text-gray-500">{inv.projectName}</p>
+                <div key={inv.id} className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2 min-w-0">
+                  <div className="min-w-0 flex-1 mr-2">
+                    <p className="text-sm font-semibold truncate">{inv.invoiceNumber}</p>
+                    <p className="text-xs text-gray-500 truncate">{inv.projectName}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex-shrink-0">
                     <p className="text-sm font-semibold">{formatCurrency(inv.amount || 0)}</p>
                     <Badge variant={inv.status === 'paid' ? 'success' : 'secondary'}>{inv.status}</Badge>
                   </div>
@@ -733,8 +729,8 @@ export function DashboardHome() {
       </div>
 
       {/* Schedule + Quick actions */}
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="border border-slate-200 shadow-sm bg-white xl:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="border border-slate-200 shadow-sm bg-white lg:col-span-2">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Schedule Highlights</CardTitle>
             <Badge className="bg-blue-50 text-blue-700 border-blue-100 flex items-center gap-1">
