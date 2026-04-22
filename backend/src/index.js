@@ -1703,7 +1703,6 @@ app.post('/api/projects/:id/documents', (req, res) => {
 app.delete('/api/projects/:id', async (req, res) => {
   const projectId = req.params.id;
 
-  // In-memory fallback
   const deleteFromMemory = () => {
     const idx = projects.findIndex(p => p.id === projectId);
     if (idx !== -1) {
@@ -1720,40 +1719,54 @@ app.delete('/api/projects/:id', async (req, res) => {
   }
 
   try {
+    // Cascade-delete all associated data before removing the project
+    const relatedTables = [
+      'tasks',
+      'proposals',
+      'schedule_events',
+      'daily_logs',
+      'invoices',
+      'expenses',
+      'materials',
+      'selections',
+      'bids',
+      'inspections',
+      'equipment',
+      'project_doc_pages',
+    ];
+    for (const table of relatedTables) {
+      await pool.query(`DELETE FROM ${table} WHERE project_id = $1`, [projectId]);
+    }
+
     const result = await pool.query('DELETE FROM projects WHERE id = $1 RETURNING *', [projectId]);
     const row = result.rows[0];
-    if (row) {
-      return res.json({
-        project: {
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          type: row.type,
-          status: row.status,
-          address: row.address,
-          city: row.city,
-          state: row.state,
-          zipCode: row.zip_code,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          estimatedBudget: Number(row.estimated_budget || 0),
-          actualCost: Number(row.actual_cost || 0),
-          progress: Number(row.progress || 0),
-          ownerId: row.owner_id,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        },
-      });
-    }
+    if (!row) return res.status(404).json({ message: 'Project not found' });
+
+    return res.json({
+      project: {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        type: row.type,
+        status: row.status,
+        address: row.address,
+        city: row.city,
+        state: row.state,
+        zipCode: row.zip_code,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        estimatedBudget: Number(row.estimated_budget || 0),
+        actualCost: Number(row.actual_cost || 0),
+        progress: Number(row.progress || 0),
+        ownerId: row.owner_id,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    });
   } catch (err) {
-    // fall through to memory + success response
+    console.error('Project delete failed', err);
+    return res.status(500).json({ message: 'Failed to delete project' });
   }
-
-  const removed = deleteFromMemory();
-  if (removed) return res.json({ project: removed });
-
-  // If it was already gone, still return success so the UI can continue
-  return res.json({ project: { id: projectId } });
 });
 
 app.get('/api/projects/:id/tasks', (req, res) => {
