@@ -412,10 +412,32 @@ async function ensureTables() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`);
+    await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`);
     await seedDemoData(client);
   } finally {
     client.release();
   }
+}
+
+async function syncTaskToSchedule(task) {
+  if (!pool || !task.dueDate) return;
+  try {
+    const existing = await pool.query('SELECT id FROM schedule_events WHERE task_id = $1', [task.id]);
+    if (existing.rows.length > 0) {
+      await pool.query(
+        `UPDATE schedule_events SET title=$1, project_id=$2, project_name=$3, start_date=$4, end_date=$5, assignee=$6, description=$7, updated_at=now() WHERE task_id=$8`,
+        [task.title, task.projectId || null, task.projectName || null, task.dueDate, task.dueDate, task.assignee || null, task.description || null, task.id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO schedule_events (id, title, project_id, project_name, type, start_date, end_date, assignee, description, task_id)
+         VALUES ($1,$2,$3,$4,'task',$5,$6,$7,$8,$9)
+         ON CONFLICT (id) DO NOTHING`,
+        [randomUUID(), task.title, task.projectId || null, task.projectName || null, task.dueDate, task.dueDate, task.assignee || null, task.description || null, task.id]
+      );
+    }
+  } catch {}
 }
 
 async function seedDemoData(client) {
@@ -2207,10 +2229,11 @@ app.post('/api/tasks', async (req, res) => {
       ]
     )
     .then(async result => {
-      try {
-        await maybeCreateExpenseForTask(task, body);
-      } catch {}
-      res.json({ task: { ...task, ...result.rows[0] } });
+      const row = result.rows[0];
+      const savedTask = { ...task, ...row };
+      try { await maybeCreateExpenseForTask(task, body); } catch {}
+      try { await syncTaskToSchedule(savedTask); } catch {}
+      res.json({ task: savedTask });
     })
     .catch(() => res.json({ task }));
 });
@@ -2293,23 +2316,23 @@ app.patch('/api/tasks/:id', (req, res) => {
         req.params.id,
       ]
     )
-    .then(result => {
+    .then(async result => {
       const row = result.rows[0];
       if (!row) return res.status(404).json({ message: 'Not found' });
-      res.json({
-        task: {
-          id: row.id,
-          title: row.title,
-          description: row.description,
-          status: row.status,
-          priority: row.priority,
-          assignee: row.assignee,
-          projectId: row.project_id,
-          projectName: row.project_name,
-          dueDate: row.due_date,
-          completed: !!row.completed,
-        },
-      });
+      const updatedTask = {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        status: row.status,
+        priority: row.priority,
+        assignee: row.assignee,
+        projectId: row.project_id,
+        projectName: row.project_name,
+        dueDate: row.due_date,
+        completed: !!row.completed,
+      };
+      try { await syncTaskToSchedule(updatedTask); } catch {}
+      res.json({ task: updatedTask });
     })
     .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
@@ -2327,9 +2350,10 @@ app.delete('/api/tasks/:id', (req, res) => {
 
   pool
     .query('DELETE FROM tasks WHERE id = $1 RETURNING *', [req.params.id])
-    .then(result => {
+    .then(async result => {
       const row = result.rows[0];
       if (!row) return res.status(404).json({ message: 'Not found' });
+      try { await pool.query('DELETE FROM schedule_events WHERE task_id = $1', [req.params.id]); } catch {}
       res.json({ task: row });
     })
     .catch(() => res.status(500).json({ message: 'Delete failed' }));
@@ -4499,6 +4523,7 @@ app.get('/api/schedule/events', (req, res) => {
           assignee: row.assignee,
           description: row.description,
           location: row.location,
+          taskId: row.task_id || null,
         })),
       })
     )
@@ -4561,8 +4586,8 @@ app.post('/api/schedule/events', (req, res) => {
   }
   pool
     .query(
-      `INSERT INTO schedule_events (id, title, project_id, project_name, type, start_date, end_date, assignee, description, location)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO schedule_events (id, title, project_id, project_name, type, start_date, end_date, assignee, description, location, task_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         event.id,
         event.title,
@@ -4574,6 +4599,7 @@ app.post('/api/schedule/events', (req, res) => {
         event.assignee,
         event.description,
         event.location,
+        event.type === 'task' ? event.id : null,
       ]
     )
     .then(result => {
