@@ -391,7 +391,7 @@ export function ProposalsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">Total Proposals</CardTitle>
@@ -466,7 +466,7 @@ export function ProposalsPage() {
             </div>
           ) : (
             <>
-              <div className="grid gap-4 md:grid-cols-4 mb-6">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
                 {groupedByStatus.map((group) => (
                   <div key={group.key} className="rounded-lg border border-gray-200 bg-white shadow-sm">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
@@ -503,19 +503,22 @@ export function ProposalsPage() {
                                 <span className="truncate">{proposal.fileName}</span>
                               </div>
                             )}
-                            <div className="mt-3 flex items-center justify-between">
-                              <div className="flex gap-2">
-                                {(['draft', 'sent', 'accepted', 'rejected'] as Proposal['status'][]).map(s => (
-                                  <Button
-                                    key={s}
-                                    size="sm"
-                                    variant={proposal.status === s ? 'default' : 'outline'}
-                                    onClick={() => statusMutation.mutate({ id: proposal.id, status: s })}
-                                  >
-                                    {s}
-                                  </Button>
-                                ))}
-                              </div>
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <Select
+                                value={proposal.status}
+                                onValueChange={(s) => statusMutation.mutate({ id: proposal.id, status: s as Proposal['status'] })}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-[110px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="draft">Draft</SelectItem>
+                                  <SelectItem value="sent">Sent</SelectItem>
+                                  <SelectItem value="viewed">Viewed</SelectItem>
+                                  <SelectItem value="accepted">Accepted</SelectItem>
+                                  <SelectItem value="rejected">Rejected</SelectItem>
+                                </SelectContent>
+                              </Select>
                               <div className="flex gap-1">
                                 {proposal.fileUrl && (
                                   <>
@@ -570,6 +573,7 @@ export function ProposalsPage() {
                     <CardTitle>All Proposals</CardTitle>
                   </CardHeader>
                   <CardContent>
+                    <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -660,6 +664,7 @@ export function ProposalsPage() {
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   </CardContent>
                 </Card>
               </div>

@@ -334,7 +334,7 @@ export function BidsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">Total Bids</CardTitle>
@@ -414,6 +414,7 @@ export function BidsPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -486,6 +487,7 @@ export function BidsPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

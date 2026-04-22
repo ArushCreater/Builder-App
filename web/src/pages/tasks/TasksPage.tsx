@@ -611,8 +611,8 @@ export function TasksPage() {
                 )}
               </div>
 
-              <div className="hidden overflow-x-auto pb-2 md:block">
-                <div className="grid min-w-[960px] gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="hidden pb-2 md:block">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {groupedByStatus.map((col) => (
                   <div
                     key={col.key}

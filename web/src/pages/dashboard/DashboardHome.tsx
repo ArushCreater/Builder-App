@@ -415,7 +415,7 @@ export function DashboardHome() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 sm:gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat, index) => {
           const Icon = stat.icon;
           return (
@@ -440,7 +440,7 @@ export function DashboardHome() {
       </div>
 
       {/* Charts */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <Card className="border border-slate-200 shadow-sm bg-white">
           <CardHeader className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
@@ -491,7 +491,7 @@ export function DashboardHome() {
       </div>
 
       {/* Active Projects and Recent Activity */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card className="border border-slate-200 shadow-sm bg-white lg:col-span-2">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Active Projects</CardTitle>

@@ -479,7 +479,7 @@ export default function ExpensesPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">Total</CardTitle>
@@ -604,6 +604,8 @@ export default function ExpensesPage() {
               </div>
               {view === 'list' ? (
                 <div className="max-h-[650px] overflow-y-auto pr-1">
+                  <div className="overflow-x-auto">
+
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -636,6 +638,7 @@ export default function ExpensesPage() {
                       ))}
                     </TableBody>
                   </Table>
+</div>
                 </div>
               ) : (
                 <div className="max-h-[650px] overflow-y-auto pr-1">

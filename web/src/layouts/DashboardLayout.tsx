@@ -177,10 +177,11 @@ export function DashboardLayout() {
                   to={item.path}
                   onClick={() => setSidebarOpen(false)}
                   className={cn(
-                    'flex items-center px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ease-out',
+                    'flex items-center py-2 text-sm font-semibold rounded-lg transition-all duration-200 ease-out',
+                    sidebarCollapsed ? 'justify-center px-0' : 'px-3',
                     isActive
                       ? 'bg-slate-800 text-white border border-slate-700 shadow-lg'
-                      : 'text-slate-200 hover:bg-slate-800/80 hover:text-white hover:translate-x-1'
+                      : cn('text-slate-200 hover:bg-slate-800/80 hover:text-white', !sidebarCollapsed && 'hover:translate-x-1')
                   )}
                 >
                   <span
@@ -201,7 +202,7 @@ export function DashboardLayout() {
       </aside>
 
       {/* Main content */}
-      <div className={cn('flex-1 flex flex-col transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-24' : 'lg:pl-[22rem]')}>
+      <div className={cn('flex-1 flex flex-col transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
         {/* Top header */}
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
           <div className="flex flex-wrap items-center justify-between gap-3 h-auto py-3 px-4 sm:px-6 lg:px-8">

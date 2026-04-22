@@ -380,7 +380,7 @@ export function MaterialsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">Inventory Value</CardTitle>
@@ -455,6 +455,8 @@ export function MaterialsPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
+            <div className="overflow-x-auto">
+
             <Table>
               <TableHeader>
                 <TableRow>
@@ -534,6 +536,7 @@ export function MaterialsPage() {
                 ))}
               </TableBody>
             </Table>
+</div>
           )}
         </CardContent>
       </Card>

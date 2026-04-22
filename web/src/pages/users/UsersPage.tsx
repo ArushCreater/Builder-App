@@ -235,6 +235,8 @@ export function UsersPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
+            <div className="overflow-x-auto">
+
             <Table>
               <TableHeader>
                 <TableRow>
@@ -292,6 +294,7 @@ export function UsersPage() {
                 ))}
               </TableBody>
             </Table>
+</div>
           )}
         </CardContent>
       </Card>
