@@ -28,6 +28,7 @@ import MaterialsPage from './pages/materials/MaterialsPage'
 import SelectionsPage from './pages/selections/SelectionsPage'
 import DailyLogsPage from './pages/dailyLogs/DailyLogsPage'
 import DocumentsPage from './pages/documents/DocumentsPage'
+import ImagesPage from './pages/images/ImagesPage'
 import SoldPage from './pages/sold/SoldPage'
 import InspectionsPage from './pages/inspections/InspectionsPage'
 import BidsPage from './pages/bids/BidsPage'
@@ -130,6 +131,7 @@ function App() {
 
             {/* Documents & Communication */}
             <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/images" element={<ImagesPage />} />
             <Route path="/messages" element={<MessagesPage />} />
 
             {/* Analytics & Reporting */}
