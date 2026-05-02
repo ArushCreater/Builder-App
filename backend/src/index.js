@@ -3202,9 +3202,9 @@ const deleteDocument = async (req, res) => {
   if (!keyParam) return res.status(400).json({ message: 'Missing key' });
   if (!pool) return res.status(503).json({ message: 'DB not available' });
   try {
-    // Find by id or s3_key
+    // Find by id (cast to text for comparison) or s3_key
     const { rows } = await pool.query(
-      'SELECT * FROM documents WHERE id = $1 OR s3_key = $1 LIMIT 1',
+      'SELECT * FROM documents WHERE id::text = $1 OR s3_key = $1 LIMIT 1',
       [keyParam]
     );
     const doc = rows[0];
