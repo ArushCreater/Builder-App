@@ -57,7 +57,7 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
-const PUBLIC_PATHS = new Set(['/', '/health', '/api/ping']);
+const PUBLIC_PATHS = new Set(['/', '/health', '/api/ping', '/api/onedrive/auth', '/api/onedrive/callback']);
 const jwksCache = new Map();
 let joseModulePromise;
 
