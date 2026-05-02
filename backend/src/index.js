@@ -416,6 +416,12 @@ async function ensureTables() {
     await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key text PRIMARY KEY,
+        value text
+      );
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS app_users (
         id uuid PRIMARY KEY,
         first_name text NOT NULL DEFAULT '',
@@ -4940,76 +4946,81 @@ app.delete('/api/schedule/events/:id', (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OneDrive / Microsoft Graph Integration
-// Required env vars:
-//   AZURE_TENANT_ID        – your Azure AD tenant ID
-//   AZURE_CLIENT_ID        – app registration client ID
-//   AZURE_CLIENT_SECRET    – app registration client secret
-//   ONEDRIVE_USER_ID       – UPN or object ID of the user whose OneDrive to use
-//                            (e.g. admin@contoso.com)
-//
-// The app stores everything under a root folder called "BuilderApp" in that
-// user's OneDrive:
-//   BuilderApp/
-//     Images/
-//       {projectName}/          ← auto-created when project is created
-//         {subfolder}/
-//           photo.jpg
-//     Documents/
-//       {projectName}/
-//         contract.pdf
+// OneDrive / Microsoft Graph — Delegated OAuth2 flow
+// Works with personal Microsoft accounts (hotmail, outlook, live)
+// Required env vars: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
+// One-time setup: visit /api/onedrive/auth to connect your account
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
-const OD_APP_ROOT = 'BuilderApp'; // root folder name in OneDrive
+const OD_APP_ROOT = 'BuilderApp';
+const OD_REDIRECT_URI = 'https://srv-d7jgoefavr4c73c9n8k0.onrender.com/api/onedrive/callback';
+const OD_SCOPES = 'Files.ReadWrite offline_access User.Read';
+const MS_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+const MS_AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
 
-// Token cache (client-credentials tokens are valid for ~1 hour)
-let _graphToken = null;
-let _graphTokenExpiry = 0;
+// In-memory access token cache
+let _odAccessToken = null;
+let _odAccessTokenExpiry = 0;
 
-async function getGraphToken() {
-  const { AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET } = process.env;
-  if (!AZURE_TENANT_ID || !AZURE_CLIENT_ID || !AZURE_CLIENT_SECRET) {
-    throw new Error('Azure credentials not configured (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET)');
-  }
-  if (_graphToken && Date.now() < _graphTokenExpiry - 60_000) return _graphToken;
+async function odGetSetting(key) {
+  if (!pool) return null;
+  try {
+    const r = await pool.query('SELECT value FROM app_settings WHERE key = $1', [key]);
+    return r.rows[0]?.value || null;
+  } catch { return null; }
+}
+
+async function odSetSetting(key, value) {
+  if (!pool) return;
+  await pool.query(
+    'INSERT INTO app_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
+    [key, value]
+  );
+}
+
+async function getOneDriveToken() {
+  // Return cached token if still valid
+  if (_odAccessToken && Date.now() < _odAccessTokenExpiry - 60_000) return _odAccessToken;
+
+  const refreshToken = await odGetSetting('od_refresh_token');
+  if (!refreshToken) throw new Error('OneDrive not authorised. Visit /api/onedrive/auth to connect.');
+
+  const { AZURE_CLIENT_ID, AZURE_CLIENT_SECRET } = process.env;
   const { data } = await axios.post(
-    `https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/token`,
+    MS_TOKEN_URL,
     new URLSearchParams({
-      grant_type: 'client_credentials',
+      grant_type: 'refresh_token',
       client_id: AZURE_CLIENT_ID,
       client_secret: AZURE_CLIENT_SECRET,
-      scope: 'https://graph.microsoft.com/.default',
+      refresh_token: refreshToken,
+      scope: OD_SCOPES,
     }).toString(),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
-  _graphToken = data.access_token;
-  _graphTokenExpiry = Date.now() + data.expires_in * 1000;
-  return _graphToken;
-}
 
-function odUserBase() {
-  const uid = process.env.ONEDRIVE_USER_ID;
-  if (!uid) throw new Error('ONEDRIVE_USER_ID not set');
-  return `${GRAPH_BASE}/users/${uid}/drive`;
+  _odAccessToken = data.access_token;
+  _odAccessTokenExpiry = Date.now() + data.expires_in * 1000;
+  if (data.refresh_token) await odSetSetting('od_refresh_token', data.refresh_token);
+  return _odAccessToken;
 }
 
 async function odGet(token, path) {
-  const { data } = await axios.get(`${odUserBase()}${path}`, {
+  const { data } = await axios.get(`${GRAPH_BASE}/me/drive${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;
 }
 
 async function odPost(token, path, body) {
-  const { data } = await axios.post(`${odUserBase()}${path}`, body, {
+  const { data } = await axios.post(`${GRAPH_BASE}/me/drive${path}`, body, {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   });
   return data;
 }
 
 async function odPut(token, path, buffer, contentType) {
-  const { data } = await axios.put(`${odUserBase()}${path}`, buffer, {
+  const { data } = await axios.put(`${GRAPH_BASE}/me/drive${path}`, buffer, {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': contentType },
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
@@ -5018,27 +5029,22 @@ async function odPut(token, path, buffer, contentType) {
 }
 
 async function odDelete(token, itemId) {
-  await axios.delete(`${odUserBase()}/items/${itemId}`, {
+  await axios.delete(`${GRAPH_BASE}/me/drive/items/${itemId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
-// Ensure a folder exists at the given OneDrive path, creating each segment
-// if missing. Returns the final folder item.
 async function odEnsureFolder(token, folderPath) {
   const segments = folderPath.split('/').filter(Boolean);
   let builtPath = '';
-  let lastItem;
   for (const seg of segments) {
-    const parentApiPath = builtPath
-      ? `/root:/${builtPath}:/children`
-      : '/root/children';
+    const parentApiPath = builtPath ? `/root:/${builtPath}:/children` : '/root/children';
     const fullSeg = builtPath ? `${builtPath}/${seg}` : seg;
     try {
-      lastItem = await odGet(token, `/root:/${fullSeg}`);
+      await odGet(token, `/root:/${fullSeg}`);
     } catch (err) {
       if (err.response?.status === 404) {
-        lastItem = await odPost(token, parentApiPath, {
+        await odPost(token, parentApiPath, {
           name: seg,
           folder: {},
           '@microsoft.graph.conflictBehavior': 'replace',
@@ -5047,74 +5053,94 @@ async function odEnsureFolder(token, folderPath) {
     }
     builtPath = fullSeg;
   }
-  return lastItem;
 }
 
-// Upload a buffer to OneDrive. For files ≤4 MB use simple PUT; larger files
-// would need an upload session but 4 MB covers typical images fine.
 async function odUploadFile(token, folderPath, filename, buffer, contentType) {
   const safeName = filename.replace(/\s+/g, '_');
-  const item = await odPut(
-    token,
-    `/root:/${folderPath}/${safeName}:/content`,
-    buffer,
-    contentType || 'application/octet-stream'
-  );
-  return item;
+  return odPut(token, `/root:/${folderPath}/${safeName}:/content`, buffer, contentType || 'application/octet-stream');
 }
 
-// ── Middleware guard: return 503 when Azure is not configured ────────────────
-function requireOneDrive(req, res, next) {
-  const { AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, ONEDRIVE_USER_ID } = process.env;
-  if (!AZURE_TENANT_ID || !AZURE_CLIENT_ID || !AZURE_CLIENT_SECRET || !ONEDRIVE_USER_ID) {
+// ── Middleware: require OneDrive to be authorised ────────────────────────────
+async function requireOneDrive(req, res, next) {
+  if (!process.env.AZURE_CLIENT_ID || !process.env.AZURE_CLIENT_SECRET) {
     return res.status(503).json({ error: 'OneDrive not configured', configured: false });
+  }
+  const token = await odGetSetting('od_refresh_token');
+  if (!token) {
+    return res.status(503).json({
+      error: 'OneDrive not authorised',
+      configured: false,
+      needsAuth: true,
+      authUrl: '/api/onedrive/auth',
+    });
   }
   next();
 }
 
-// ── GET /api/onedrive/status ─────────────────────────────────────────────────
-app.get('/api/onedrive/status', (req, res) => {
-  const configured = !!(
-    process.env.AZURE_TENANT_ID &&
-    process.env.AZURE_CLIENT_ID &&
-    process.env.AZURE_CLIENT_SECRET &&
-    process.env.ONEDRIVE_USER_ID
-  );
-  res.json({ configured });
+// ── GET /api/onedrive/auth ── redirect user to Microsoft login ───────────────
+app.get('/api/onedrive/auth', (req, res) => {
+  const { AZURE_CLIENT_ID } = process.env;
+  if (!AZURE_CLIENT_ID) return res.status(503).send('AZURE_CLIENT_ID not configured');
+  const url = `${MS_AUTH_URL}?${new URLSearchParams({
+    client_id: AZURE_CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: OD_REDIRECT_URI,
+    scope: OD_SCOPES,
+    response_mode: 'query',
+  }).toString()}`;
+  res.redirect(url);
 });
 
-// ── GET /api/onedrive/test ───────────────────────────────────────────────────
-// Diagnostic endpoint — returns the actual Graph API error so we can debug
-app.get('/api/onedrive/test', async (req, res) => {
-  const results = {};
+// ── GET /api/onedrive/callback ── Microsoft redirects here after login ───────
+app.get('/api/onedrive/callback', async (req, res) => {
+  const { code, error, error_description } = req.query;
+  if (error) return res.status(400).send(`Auth error: ${error} — ${error_description}`);
+  if (!code) return res.status(400).send('No code received from Microsoft');
   try {
-    results.token = 'attempting...';
-    const token = await getGraphToken();
-    results.token = 'OK';
-
-    results.drive = 'attempting...';
-    const drive = await odGet(token, '/root');
-    results.drive = `OK — name: ${drive.name}, id: ${drive.id}`;
-
-    results.buildFolder = 'attempting...';
-    await odEnsureFolder(token, OD_APP_ROOT);
-    results.buildFolder = 'OK';
-
-    res.json({ ok: true, results });
+    const { data } = await axios.post(
+      MS_TOKEN_URL,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: process.env.AZURE_CLIENT_ID,
+        client_secret: process.env.AZURE_CLIENT_SECRET,
+        code,
+        redirect_uri: OD_REDIRECT_URI,
+        scope: OD_SCOPES,
+      }).toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+    await odSetSetting('od_refresh_token', data.refresh_token);
+    await odSetSetting('od_access_token', data.access_token);
+    _odAccessToken = data.access_token;
+    _odAccessTokenExpiry = Date.now() + data.expires_in * 1000;
+    res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:48px;max-width:480px;margin:0 auto;text-align:center">
+      <div style="font-size:48px">✅</div>
+      <h2 style="color:#16a34a;margin-top:16px">OneDrive Connected!</h2>
+      <p style="color:#64748b">Your OneDrive has been linked to BuilderApp.<br>You can close this tab and return to the app.</p>
+    </body></html>`);
   } catch (err) {
-    const graphError = err.response?.data?.error;
-    results.error = graphError
-      ? `${graphError.code}: ${graphError.message}`
-      : err.message;
-    res.status(500).json({ ok: false, results });
+    const detail = err.response?.data || err.message;
+    console.error('OneDrive callback error', detail);
+    res.status(500).send(`Failed to connect OneDrive: ${JSON.stringify(detail)}`);
+  }
+});
+
+// ── GET /api/onedrive/status ─────────────────────────────────────────────────
+app.get('/api/onedrive/status', async (req, res) => {
+  const hasCredentials = !!(process.env.AZURE_CLIENT_ID && process.env.AZURE_CLIENT_SECRET);
+  if (!hasCredentials) return res.json({ configured: false });
+  try {
+    const token = await odGetSetting('od_refresh_token');
+    res.json({ configured: !!token, needsAuth: !token });
+  } catch {
+    res.json({ configured: false });
   }
 });
 
 // ── GET /api/onedrive/browse?path=Images/ProjectName ────────────────────────
-// Lists files and subfolders at the given path under BuilderApp/
 app.get('/api/onedrive/browse', requireOneDrive, async (req, res) => {
   try {
-    const token = await getGraphToken();
+    const token = await getOneDriveToken();
     const rawPath = (req.query.path || '').replace(/^\/+|\/+$/g, '');
     const fullPath = rawPath ? `${OD_APP_ROOT}/${rawPath}` : OD_APP_ROOT;
     await odEnsureFolder(token, fullPath);
@@ -5125,24 +5151,23 @@ app.get('/api/onedrive/browse', requireOneDrive, async (req, res) => {
       type: it.folder ? 'folder' : 'file',
       size: it.size,
       mimeType: it.file?.mimeType,
-      thumbnailUrl: it['@microsoft.graph.downloadUrl'] || null,
       webUrl: it.webUrl,
       createdAt: it.createdDateTime,
     }));
     res.json({ items, path: fullPath });
   } catch (err) {
-    const graphError = err.response?.data?.error;
-    const msg = graphError ? `${graphError.code}: ${graphError.message}` : err.message;
-    console.error('OneDrive browse error', graphError || err.message);
-    res.status(500).json({ error: msg, graphError });
+    const msg = err.response?.data?.error
+      ? `${err.response.data.error.code}: ${err.response.data.error.message}`
+      : err.message;
+    console.error('OneDrive browse error', msg);
+    res.status(500).json({ error: msg });
   }
 });
 
 // ── POST /api/onedrive/folder ────────────────────────────────────────────────
-// body: { path: 'Images/ProjectName', name: 'New Subfolder' }
 app.post('/api/onedrive/folder', requireOneDrive, async (req, res) => {
   try {
-    const token = await getGraphToken();
+    const token = await getOneDriveToken();
     const parentPath = (req.body.path || '').replace(/^\/+|\/+$/g, '');
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'name is required' });
@@ -5155,35 +5180,29 @@ app.post('/api/onedrive/folder', requireOneDrive, async (req, res) => {
     });
     res.json({ id: item.id, name: item.name, type: 'folder', webUrl: item.webUrl });
   } catch (err) {
-    if (err.response?.status === 409) {
-      return res.status(409).json({ error: 'A folder with that name already exists' });
-    }
+    if (err.response?.status === 409) return res.status(409).json({ error: 'Folder already exists' });
     console.error('OneDrive create folder error', err.response?.data || err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 // ── POST /api/onedrive/upload ────────────────────────────────────────────────
-// multipart/form-data: file + path (e.g. "Images/ProjectName")
 app.post('/api/onedrive/upload', requireOneDrive, upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
     if (!file) return res.status(400).json({ error: 'No file uploaded' });
-    const token = await getGraphToken();
+    const token = await getOneDriveToken();
     const folderPath = (req.body.path || '').replace(/^\/+|\/+$/g, '');
     const fullPath = folderPath ? `${OD_APP_ROOT}/${folderPath}` : OD_APP_ROOT;
     await odEnsureFolder(token, fullPath);
     const item = await odUploadFile(token, fullPath, file.originalname, file.buffer, file.mimetype);
-    // Fetch a download URL (temporary, ~1 hour)
-    let downloadUrl = item['@content.downloadUrl'] || item.webUrl;
     res.json({
       id: item.id,
       name: item.name,
       size: item.size,
       mimeType: file.mimetype,
-      url: downloadUrl,
+      url: item['@content.downloadUrl'] || item.webUrl,
       webUrl: item.webUrl,
-      path: `${fullPath}/${item.name}`,
     });
   } catch (err) {
     console.error('OneDrive upload error', err.response?.data || err.message);
@@ -5194,7 +5213,7 @@ app.post('/api/onedrive/upload', requireOneDrive, upload.single('file'), async (
 // ── DELETE /api/onedrive/item/:itemId ────────────────────────────────────────
 app.delete('/api/onedrive/item/:itemId', requireOneDrive, async (req, res) => {
   try {
-    const token = await getGraphToken();
+    const token = await getOneDriveToken();
     await odDelete(token, req.params.itemId);
     res.json({ success: true });
   } catch (err) {
@@ -5204,71 +5223,47 @@ app.delete('/api/onedrive/item/:itemId', requireOneDrive, async (req, res) => {
 });
 
 // ── GET /api/onedrive/thumbnail/:itemId ──────────────────────────────────────
-// Returns a short-lived thumbnail URL for an image item
 app.get('/api/onedrive/thumbnail/:itemId', requireOneDrive, async (req, res) => {
   try {
-    const token = await getGraphToken();
+    const token = await getOneDriveToken();
     const data = await odGet(token, `/items/${req.params.itemId}/thumbnails`);
     const url = data.value?.[0]?.large?.url || data.value?.[0]?.medium?.url || null;
     res.json({ url });
   } catch (err) {
-    console.error('OneDrive thumbnail error', err.response?.data || err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── GET /api/onedrive/download/:itemId ───────────────────────────────────────
-// Redirects to a short-lived direct download URL
-app.get('/api/onedrive/download/:itemId', requireOneDrive, async (req, res) => {
-  try {
-    const token = await getGraphToken();
-    const item = await odGet(token, `/items/${req.params.itemId}`);
-    const url = item['@microsoft.graph.downloadUrl'];
-    if (!url) return res.status(404).json({ error: 'No download URL' });
-    res.redirect(url);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Document upload: prefer OneDrive when configured, fall back to S3 ────────
+// ── Document upload: use OneDrive when authorised, fall back to S3 ───────────
 const handleDocumentUploadV2 = async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ message: 'No file uploaded' });
   const projectId = req.body.projectId || 'global';
   const folder = (req.body.folder || '').replace(/^\//, '');
 
-  const { AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, ONEDRIVE_USER_ID } = process.env;
-  const useOneDrive = AZURE_TENANT_ID && AZURE_CLIENT_ID && AZURE_CLIENT_SECRET && ONEDRIVE_USER_ID;
+  const hasCredentials = !!(process.env.AZURE_CLIENT_ID && process.env.AZURE_CLIENT_SECRET);
+  const refreshToken = hasCredentials ? await odGetSetting('od_refresh_token') : null;
 
-  if (useOneDrive) {
+  if (refreshToken) {
     try {
-      const token = await getGraphToken();
-      const folderPath = folder
-        ? `Documents/${projectId}/${folder}`
-        : `Documents/${projectId}`;
+      const token = await getOneDriveToken();
+      const folderPath = folder ? `Documents/${projectId}/${folder}` : `Documents/${projectId}`;
       const fullPath = `${OD_APP_ROOT}/${folderPath}`;
       await odEnsureFolder(token, fullPath);
       const item = await odUploadFile(token, fullPath, file.originalname, file.buffer, file.mimetype);
       return res.json({
-        key: item.id,
-        url: item['@content.downloadUrl'] || item.webUrl,
-        name: file.originalname,
-        size: file.size,
-        type: file.mimetype,
-        source: 'onedrive',
+        key: item.id, url: item['@content.downloadUrl'] || item.webUrl,
+        name: file.originalname, size: file.size, type: file.mimetype, source: 'onedrive',
       });
     } catch (err) {
-      console.error('OneDrive document upload failed, falling back to S3', err.message);
+      console.error('OneDrive doc upload failed, falling back to S3', err.message);
     }
   }
 
   // S3 fallback
   const key = `documents/${projectId}/${folder ? folder + '/' : ''}${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
   try {
-    await s3.send(new PutObjectCommand({
-      Bucket: FILES_BUCKET, Key: key, Body: file.buffer, ContentType: file.mimetype,
-    }));
+    await s3.send(new PutObjectCommand({ Bucket: FILES_BUCKET, Key: key, Body: file.buffer, ContentType: file.mimetype }));
     const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: FILES_BUCKET, Key: key }), { expiresIn: 60 * 60 * 24 * 7 });
     res.json({ key, url, name: file.originalname, size: file.size, type: file.mimetype, source: 's3' });
   } catch (err) {
