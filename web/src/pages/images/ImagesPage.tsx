@@ -76,10 +76,11 @@ export function ImagesPage() {
   // Check if OneDrive is configured
   const { data: statusData } = useQuery({
     queryKey: ['onedrive-status'],
-    queryFn: () => apiClient.get<{ configured: boolean }>('/onedrive/status'),
+    queryFn: () => apiClient.get<{ configured: boolean; needsAuth?: boolean }>('/onedrive/status'),
     staleTime: 60_000,
   });
   const configured = statusData?.configured ?? false;
+  const needsAuth = statusData?.needsAuth ?? false;
 
   // Fetch projects so we can show project folders at root
   const { data: projectsData } = useQuery({
@@ -220,31 +221,53 @@ export function ImagesPage() {
 
   // ── Not configured banner ──────────────────────────────────────────────────
   if (!configured) {
+    const backendUrl = ((import.meta as any)?.env?.VITE_API_URL as string) || 'https://srv-d7jgoefavr4c73c9n8k0.onrender.com';
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Images</h1>
           <p className="text-gray-500 mt-1">Store and manage project photos in OneDrive</p>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 flex gap-4 items-start">
-          <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-semibold text-amber-900">OneDrive not configured</p>
-            <p className="text-sm text-amber-800 mt-1">
-              Set the following environment variables on your backend server to enable OneDrive storage:
-            </p>
-            <pre className="mt-3 text-xs bg-amber-100 rounded-lg p-3 text-amber-900 font-mono whitespace-pre-wrap">
-{`AZURE_TENANT_ID=<your-tenant-id>
-AZURE_CLIENT_ID=<your-app-registration-client-id>
-AZURE_CLIENT_SECRET=<your-client-secret>
-ONEDRIVE_USER_ID=<user@yourdomain.com>`}
-            </pre>
-            <p className="text-xs text-amber-700 mt-3">
-              In Azure Portal: create an App Registration, add <strong>Files.ReadWrite.All</strong> and{' '}
-              <strong>Sites.ReadWrite.All</strong> application permissions, then grant admin consent.
+        {needsAuth ? (
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-8 flex flex-col items-center text-center gap-4">
+            <div className="h-16 w-16 rounded-full bg-indigo-100 flex items-center justify-center">
+              <Image className="h-8 w-8 text-indigo-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-indigo-900 text-lg">Connect your OneDrive</p>
+              <p className="text-sm text-indigo-700 mt-1">
+                Sign in with your Microsoft account to enable photo storage for all projects.
+              </p>
+            </div>
+            <a
+              href={`${backendUrl}/api/onedrive/auth`}
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-full px-6 py-2.5 transition-colors text-sm"
+            >
+              <Upload className="h-4 w-4" />
+              Connect OneDrive
+            </a>
+            <p className="text-xs text-indigo-500">
+              You'll be redirected to Microsoft to sign in, then brought back here automatically.
             </p>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 flex gap-4 items-start">
+            <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-amber-900">OneDrive not configured</p>
+              <p className="text-sm text-amber-800 mt-1">
+                Set the Azure App Registration credentials on your backend server (Render dashboard):
+              </p>
+              <pre className="mt-3 text-xs bg-amber-100 rounded-lg p-3 text-amber-900 font-mono whitespace-pre-wrap">
+{`AZURE_CLIENT_ID=<your-app-registration-client-id>
+AZURE_CLIENT_SECRET=<your-client-secret>`}
+              </pre>
+              <p className="text-xs text-amber-700 mt-3">
+                Once set and redeployed, this page will show a "Connect OneDrive" button to complete the setup.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
