@@ -4954,7 +4954,7 @@ app.delete('/api/schedule/events/:id', (req, res) => {
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const OD_APP_ROOT = 'BuilderApp';
-const OD_REDIRECT_URI = 'https://srv-d7jgoefavr4c73c9n8k0.onrender.com/api/onedrive/callback';
+const OD_REDIRECT_URI = 'https://builder-app-i71c.onrender.com/api/onedrive/callback';
 const OD_SCOPES = 'Files.ReadWrite offline_access User.Read';
 const MS_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
 const MS_AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';

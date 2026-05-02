@@ -221,7 +221,6 @@ export function ImagesPage() {
 
   // ── Not configured banner ──────────────────────────────────────────────────
   if (!configured) {
-    const backendUrl = ((import.meta as any)?.env?.VITE_API_URL as string) || 'https://srv-d7jgoefavr4c73c9n8k0.onrender.com';
     return (
       <div className="space-y-6">
         <div>
@@ -240,7 +239,7 @@ export function ImagesPage() {
               </p>
             </div>
             <a
-              href={`${backendUrl}/api/onedrive/auth`}
+              href="/api/onedrive/auth"
               className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-full px-6 py-2.5 transition-colors text-sm"
             >
               <Upload className="h-4 w-4" />
