@@ -84,6 +84,8 @@ export function SchedulePage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(new Date().toISOString().split('T')[0]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [localEvents, setLocalEvents] = useState<ScheduleEvent[]>([]);
+  const isDraggingRef = useRef(false);
+  const pendingDragDatesRef = useRef<{ id: string; startDate: string; endDate: string } | null>(null);
   const ganttRef = useRef<HTMLDivElement | null>(null);
   const [dragState, setDragState] = useState<{
     id: string;
@@ -225,7 +227,9 @@ export function SchedulePage() {
   }, [events, tasks, selectedProject, typeFilter, searchQuery]);
 
   useEffect(() => {
-    setLocalEvents(filteredEvents);
+    if (!isDraggingRef.current) {
+      setLocalEvents(filteredEvents);
+    }
   }, [filteredEvents]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -360,7 +364,7 @@ export function SchedulePage() {
       prev.map(ev => (ev.id === id ? { ...ev, startDate: newStart, endDate: newEnd } : ev))
     );
     if (!id.startsWith('task-') && !id.startsWith('proj-')) {
-      updateDatesMutation.mutate({ id, startDate: newStart, endDate: newEnd });
+      pendingDragDatesRef.current = { id, startDate: newStart, endDate: newEnd };
     }
   };
 
@@ -389,7 +393,14 @@ export function SchedulePage() {
         updateEventDates(dragState.id, dragState.start, newEndStr);
       }
     };
-    const handleUp = () => setDragState(null);
+    const handleUp = () => {
+      if (pendingDragDatesRef.current) {
+        updateDatesMutation.mutate(pendingDragDatesRef.current);
+        pendingDragDatesRef.current = null;
+      }
+      isDraggingRef.current = false;
+      setDragState(null);
+    };
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
     return () => {
@@ -400,6 +411,8 @@ export function SchedulePage() {
 
   const handleBarMouseDown = (e: React.MouseEvent, id: string, mode: 'move' | 'start' | 'end', start: string, end: string) => {
     e.preventDefault();
+    isDraggingRef.current = true;
+    pendingDragDatesRef.current = null;
     setDragState({ id, mode, start, end, startX: e.clientX });
   };
 

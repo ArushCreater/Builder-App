@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -34,9 +34,11 @@ interface Conversation {
 }
 
 export function MessagesPage() {
+  const queryClient = useQueryClient();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations } = useQuery({
     queryKey: ['conversations', searchTerm],
@@ -64,6 +66,26 @@ export function MessagesPage() {
   });
   const messageRows: Message[] =
     (messages as any)?.messages || (Array.isArray(messages) ? (messages as Message[]) : []);
+
+  const sendMutation = useMutation({
+    mutationFn: (content: string) =>
+      apiClient.post(`/messages/conversation/${selectedConversation}`, { content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', selectedConversation] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+
+  const handleSend = () => {
+    const text = messageText.trim();
+    if (!text || !selectedConversation) return;
+    setMessageText('');
+    sendMutation.mutate(text);
+  };
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messageRows]);
 
   return (
     <div className="space-y-6">
@@ -122,6 +144,9 @@ export function MessagesPage() {
                   )}
                 </div>
               ))}
+              {conversationRows.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-8">No conversations yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -147,9 +172,7 @@ export function MessagesPage() {
                     </AvatarFallback>
                   </Avatar>
                   <span>
-                    {
-                      conversationRows.find((c) => c.id === selectedConversation)?.participant.name
-                    }
+                    {conversationRows.find((c) => c.id === selectedConversation)?.participant.name}
                   </span>
                 </CardTitle>
               </CardHeader>
@@ -186,6 +209,7 @@ export function MessagesPage() {
                       </div>
                     </div>
                   ))}
+                  <div ref={messagesEndRef} />
                 </div>
               </CardContent>
               <div className="border-t p-4">
@@ -197,13 +221,18 @@ export function MessagesPage() {
                     placeholder="Type a message..."
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' && messageText.trim()) {
-                        setMessageText('');
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
                       }
                     }}
                   />
-                  <Button size="icon">
+                  <Button
+                    size="icon"
+                    onClick={handleSend}
+                    disabled={!messageText.trim() || sendMutation.isPending}
+                  >
                     <Send className="h-5 w-5" />
                   </Button>
                 </div>

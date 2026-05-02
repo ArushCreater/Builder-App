@@ -414,6 +414,19 @@ async function ensureTables() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`);
     await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS app_users (
+        id uuid PRIMARY KEY,
+        first_name text NOT NULL DEFAULT '',
+        last_name text NOT NULL DEFAULT '',
+        email text NOT NULL DEFAULT '',
+        role text NOT NULL DEFAULT 'contractor',
+        phone text DEFAULT '',
+        status text NOT NULL DEFAULT 'active',
+        avatar text,
+        created_at timestamptz DEFAULT now()
+      );
+    `);
     await seedDemoData(client);
   } finally {
     client.release();
@@ -2491,8 +2504,45 @@ app.delete('/api/contacts/:id', (req, res) => {
 });
 
 // Users
-app.get('/api/users', (_req, res) => {
-  res.json(users);
+app.get('/api/users', (req, res) => {
+  const { search } = req.query;
+  if (!pool) {
+    let list = [...users];
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(u =>
+        `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.role || '').toLowerCase().includes(q)
+      );
+    }
+    return res.json(list);
+  }
+  const clauses = [];
+  const values = [];
+  if (search) {
+    clauses.push(`(LOWER(first_name || ' ' || last_name) LIKE $1 OR LOWER(email) LIKE $1 OR LOWER(role) LIKE $1)`);
+    values.push(`%${String(search).toLowerCase()}%`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  pool
+    .query(`SELECT * FROM app_users ${where} ORDER BY created_at DESC`, values)
+    .then(result =>
+      res.json(
+        result.rows.map(row => ({
+          id: row.id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          email: row.email,
+          role: row.role,
+          phone: row.phone || '',
+          status: row.status || 'active',
+          avatar: row.avatar || null,
+          createdAt: row.created_at,
+        }))
+      )
+    )
+    .catch(() => res.json(users));
 });
 
 app.post('/api/users', (req, res) => {
@@ -2507,30 +2557,146 @@ app.post('/api/users', (req, res) => {
     status: 'active',
     createdAt: new Date().toISOString(),
   };
-  users.push(user);
-  res.json(user);
+  if (!pool) {
+    users.push(user);
+    return res.json(user);
+  }
+  pool
+    .query(
+      `INSERT INTO app_users (id, first_name, last_name, email, role, phone, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [user.id, user.firstName, user.lastName, user.email, user.role, user.phone, user.status]
+    )
+    .then(result => {
+      const row = result.rows[0];
+      res.json({
+        id: row.id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        email: row.email,
+        role: row.role,
+        phone: row.phone || '',
+        status: row.status,
+        createdAt: row.created_at,
+      });
+    })
+    .catch(() => {
+      users.push(user);
+      res.json(user);
+    });
 });
 
-// Analytics stub
-app.get('/api/analytics', (_req, res) => {
-  res.json({
-    revenue: { total: 2500000, change: 12, data: [{ month: 'Jan', amount: 300000 }, { month: 'Feb', amount: 320000 }] },
-    projects: { total: projects.length, active: projects.filter(p => p.status === 'IN_PROGRESS').length, completed: projects.filter(p => p.status === 'COMPLETED').length, data: [{ status: 'IN_PROGRESS', count: 1 }, { status: 'PLANNING', count: 1 }] },
-    efficiency: { onTime: 92, delayed: 1, avgDuration: 120 },
-    costs: { data: [{ category: 'Labor', amount: 120000 }, { category: 'Materials', amount: 95000 }] },
-  });
+app.delete('/api/users/:id', (req, res) => {
+  if (!pool) {
+    const idx = users.findIndex(u => u.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ message: 'Not found' });
+    const [removed] = users.splice(idx, 1);
+    return res.json({ user: removed });
+  }
+  pool
+    .query('DELETE FROM app_users WHERE id = $1 RETURNING *', [req.params.id])
+    .then(result => {
+      if (!result.rows[0]) return res.status(404).json({ message: 'Not found' });
+      res.json({ user: result.rows[0] });
+    })
+    .catch(() => res.status(500).json({ message: 'Delete failed' }));
 });
 
-// Budget summary/items stub
-app.get('/api/budget/summary', (_req, res) => {
-  res.json({ totalBudget: 500000, totalSpent: 220000, totalRemaining: 280000, overBudgetItems: 1 });
+// Analytics — derive from real DB data
+app.get('/api/analytics', async (req, res) => {
+  if (!pool) {
+    return res.json({
+      revenue: { total: 2500000, change: 12, data: [{ month: 'Jan', amount: 300000 }, { month: 'Feb', amount: 320000 }] },
+      projects: { total: projects.length, active: projects.filter(p => p.status === 'IN_PROGRESS').length, completed: projects.filter(p => p.status === 'COMPLETED').length, data: [] },
+      efficiency: { onTime: 92, delayed: 1, avgDuration: 120 },
+      costs: { data: [{ category: 'Labor', amount: 120000 }, { category: 'Materials', amount: 95000 }] },
+    });
+  }
+  try {
+    const [projResult, expResult, matResult, invResult] = await Promise.all([
+      pool.query(`SELECT status, COUNT(*)::int as count, COALESCE(SUM(estimated_budget),0)::float as budget, COALESCE(SUM(actual_cost),0)::float as spent FROM projects GROUP BY status`),
+      pool.query(`SELECT COALESCE(SUM(total),0)::float as total FROM expenses`),
+      pool.query(`SELECT COALESCE(SUM(total_cost),0)::float as total FROM materials`),
+      pool.query(`SELECT COALESCE(SUM(amount),0)::float as total FROM invoices WHERE status='paid'`),
+    ]);
+    const projRows = projResult.rows;
+    const totalProjects = projRows.reduce((s, r) => s + r.count, 0);
+    const activeProjects = projRows.filter(r => ['IN_PROGRESS','in_progress','active'].includes((r.status||'').toLowerCase())).reduce((s, r) => s + r.count, 0);
+    const completedProjects = projRows.filter(r => ['COMPLETED','completed'].includes((r.status||'').toLowerCase())).reduce((s, r) => s + r.count, 0);
+    const totalRevenue = invResult.rows[0]?.total || 0;
+    const expenseTotal = expResult.rows[0]?.total || 0;
+    const materialTotal = matResult.rows[0]?.total || 0;
+    res.json({
+      revenue: { total: totalRevenue, change: 0, data: [] },
+      projects: { total: totalProjects, active: activeProjects, completed: completedProjects, data: projRows.map(r => ({ status: r.status, count: r.count })) },
+      efficiency: { onTime: 92, delayed: totalProjects - completedProjects, avgDuration: 120 },
+      costs: { data: [{ category: 'Expenses', amount: expenseTotal }, { category: 'Materials', amount: materialTotal }] },
+    });
+  } catch {
+    res.json({
+      revenue: { total: 0, change: 0, data: [] },
+      projects: { total: 0, active: 0, completed: 0, data: [] },
+      efficiency: { onTime: 0, delayed: 0, avgDuration: 0 },
+      costs: { data: [] },
+    });
+  }
 });
 
-app.get('/api/budget/items', (_req, res) => {
-  res.json([
-    { id: 'b1', category: 'Labor', budgeted: 200000, actual: 180000, variance: 20000, percentage: 40 },
-    { id: 'b2', category: 'Materials', budgeted: 150000, actual: 120000, variance: 30000, percentage: 30 },
-  ]);
+// Budget — derive from real project + expense + material data
+app.get('/api/budget/summary', async (req, res) => {
+  const { project } = req.query;
+  if (!pool) {
+    const filteredProjects = project ? projects.filter(p => p.id === project) : projects;
+    const totalBudget = filteredProjects.reduce((s, p) => s + (p.estimatedBudget || 0), 0);
+    const totalSpent = filteredProjects.reduce((s, p) => s + (p.actualCost || 0), 0);
+    return res.json({ totalBudget, totalSpent, totalRemaining: totalBudget - totalSpent, overBudgetItems: filteredProjects.filter(p => (p.actualCost||0) > (p.estimatedBudget||0)).length });
+  }
+  try {
+    const projectClause = project ? `WHERE id = $1` : '';
+    const projectValues = project ? [project] : [];
+    const projResult = await pool.query(
+      `SELECT COALESCE(SUM(estimated_budget),0)::float as budget, COALESCE(SUM(actual_cost),0)::float as spent, COUNT(CASE WHEN actual_cost > estimated_budget THEN 1 END)::int as over_count FROM projects ${projectClause}`,
+      projectValues
+    );
+    const row = projResult.rows[0];
+    const totalBudget = row.budget || 0;
+    const totalSpent = row.spent || 0;
+    res.json({ totalBudget, totalSpent, totalRemaining: totalBudget - totalSpent, overBudgetItems: row.over_count || 0 });
+  } catch {
+    res.json({ totalBudget: 0, totalSpent: 0, totalRemaining: 0, overBudgetItems: 0 });
+  }
+});
+
+app.get('/api/budget/items', async (req, res) => {
+  const { project } = req.query;
+  if (!pool) {
+    const filteredProjects = project ? projects.filter(p => p.id === project) : projects;
+    return res.json(filteredProjects.map(p => ({
+      id: p.id,
+      category: p.name,
+      budgeted: p.estimatedBudget || 0,
+      actual: p.actualCost || 0,
+      variance: (p.estimatedBudget || 0) - (p.actualCost || 0),
+      percentage: p.estimatedBudget ? Math.round(((p.actualCost || 0) / p.estimatedBudget) * 100) : 0,
+    })));
+  }
+  try {
+    const clause = project ? `WHERE id = $1` : '';
+    const values = project ? [project] : [];
+    const result = await pool.query(
+      `SELECT id, name, estimated_budget, actual_cost FROM projects ${clause} ORDER BY name`,
+      values
+    );
+    res.json(result.rows.map(row => ({
+      id: row.id,
+      category: row.name,
+      budgeted: parseFloat(row.estimated_budget) || 0,
+      actual: parseFloat(row.actual_cost) || 0,
+      variance: (parseFloat(row.estimated_budget) || 0) - (parseFloat(row.actual_cost) || 0),
+      percentage: row.estimated_budget ? Math.round((parseFloat(row.actual_cost) / parseFloat(row.estimated_budget)) * 100) : 0,
+    })));
+  } catch {
+    res.json([]);
+  }
 });
 
 // Materials

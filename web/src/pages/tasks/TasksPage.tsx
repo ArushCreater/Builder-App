@@ -690,7 +690,7 @@ export function TasksPage() {
                             <div className="mt-2">
                               <Select
                                 value={col.key}
-                                onValueChange={(newStatus) =>
+                                onValueChange={(newStatus: Task['status']) =>
                                   updateMutation.mutate({ id: task.id, data: { status: newStatus, completed: newStatus === 'completed' } })
                                 }
                               >

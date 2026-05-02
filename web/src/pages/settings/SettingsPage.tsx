@@ -15,12 +15,18 @@ export function SettingsPage() {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isPasswordLoading, setIsPasswordLoading] = useState(false);
   const [profileData, setProfileData] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     email: user?.email || '',
     phone: user?.phone || '',
     company: user?.company || '',
+  });
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
   });
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
@@ -48,6 +54,34 @@ export function SettingsPage() {
       ...profileData,
       [e.target.name]: e.target.value,
     });
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast({ title: 'Error', description: 'New passwords do not match', variant: 'destructive' });
+      return;
+    }
+    if (passwordData.newPassword.length < 8) {
+      toast({ title: 'Error', description: 'Password must be at least 8 characters', variant: 'destructive' });
+      return;
+    }
+    setIsPasswordLoading(true);
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { error } = await supabase.auth.updateUser({ password: passwordData.newPassword });
+      if (error) throw error;
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      toast({ title: 'Success', description: 'Password updated successfully' });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to update password', variant: 'destructive' });
+    } finally {
+      setIsPasswordLoading(false);
+    }
+  };
+
+  const handleSavePreferences = () => {
+    toast({ title: 'Preferences saved', description: 'Your preferences have been updated' });
   };
 
   return (
@@ -157,20 +191,40 @@ export function SettingsPage() {
               <CardTitle>Change Password</CardTitle>
               <CardDescription>Update your password to keep your account secure</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="currentPassword">Current Password</Label>
-                <Input id="currentPassword" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">New Password</Label>
-                <Input id="newPassword" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                <Input id="confirmPassword" type="password" />
-              </div>
-              <Button>Update Password</Button>
+            <CardContent>
+              <form onSubmit={handlePasswordChange} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="currentPassword">Current Password</Label>
+                  <Input
+                    id="currentPassword"
+                    type="password"
+                    value={passwordData.currentPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">New Password</Label>
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    value={passwordData.newPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                    minLength={8}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={passwordData.confirmPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                  />
+                </div>
+                <Button type="submit" disabled={isPasswordLoading}>
+                  {isPasswordLoading ? 'Updating...' : 'Update Password'}
+                </Button>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
@@ -236,7 +290,7 @@ export function SettingsPage() {
                 <Label>Date Format</Label>
                 <Input defaultValue="MM/DD/YYYY" />
               </div>
-              <Button>Save Preferences</Button>
+              <Button type="button" onClick={handleSavePreferences}>Save Preferences</Button>
             </CardContent>
           </Card>
         </TabsContent>

@@ -32,7 +32,8 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Search, Edit, Trash2 } from 'lucide-react';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import { formatDate, getInitials } from '../../lib/utils';
 
 interface User {
@@ -59,6 +60,7 @@ export function UsersPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<{
     firstName: string;
     lastName: string;
@@ -106,6 +108,16 @@ export function UsersPage() {
         variant: 'destructive',
       });
     },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setDeletingId(null);
+      toast({ title: 'Deleted', description: 'User removed successfully' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Failed to delete user', variant: 'destructive' }),
   });
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -282,12 +294,19 @@ export function UsersPage() {
                     <TableCell>{formatDate(user.createdAt)}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
+                        <ConfirmDialog
+                          title="Delete user?"
+                          description="This will permanently remove the user. This cannot be undone."
+                          confirmText="Delete"
+                          confirmVariant="destructive"
+                          confirmDisabled={deleteMutation.isPending && deletingId === user.id}
+                          onConfirm={() => { setDeletingId(user.id); deleteMutation.mutate(user.id); }}
+                          trigger={
+                            <Button variant="ghost" size="sm">
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </Button>
+                          }
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

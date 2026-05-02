@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -42,6 +43,7 @@ interface BudgetSummary {
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export function BudgetPage() {
+  const navigate = useNavigate();
   const [selectedProject, setSelectedProject] = useState<string>('all');
 
   const { data: summary } = useQuery({
@@ -83,7 +85,7 @@ export function BudgetPage() {
           <h1 className="text-3xl font-bold text-gray-900">Budget Management</h1>
           <p className="text-gray-500 mt-1">Track project budgets and expenses</p>
         </div>
-        <Button>
+        <Button onClick={() => navigate('/expenses')}>
           <Plus className="mr-2 h-4 w-4" />
           Add Expense
         </Button>
