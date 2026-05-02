@@ -222,7 +222,7 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
           style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
           onClick={e => e.stopPropagation()}
         >
-          {allImages.map((img, i) => (
+          {allImages.map((img) => (
             <button
               key={img.id}
               onClick={() => onNavigate(img)}
