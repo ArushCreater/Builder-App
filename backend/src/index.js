@@ -18,7 +18,13 @@ const FILES_BUCKET = process.env.FILES_BUCKET || process.env.FILES_BUCKET_NAME |
 
 let pool;
 if (dbUrl) {
-  pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+  pool = new Pool({
+    connectionString: dbUrl,
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+  });
 }
 
 const s3 = new S3Client({ region: REGION });
@@ -415,6 +421,24 @@ async function ensureTables() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`);
     await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`);
+
+    // Performance indexes
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_project_id     ON tasks(project_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status         ON tasks(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_assignee       ON tasks(assignee);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_due_date       ON tasks(due_date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leads_status         ON leads(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leads_created_at     ON leads(created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_projects_status      ON projects(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_projects_created_at  ON projects(created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_contacts_created_at  ON contacts(created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_start       ON schedule_events(start_date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_project     ON schedule_events(project_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_daily_logs_project   ON daily_logs(project_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_daily_logs_date      ON daily_logs(log_date DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_project    ON documents(project_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_category   ON documents(category);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_uploaded   ON documents(uploaded_at DESC);`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS app_settings (
         key text PRIMARY KEY,
