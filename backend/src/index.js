@@ -5083,6 +5083,33 @@ app.get('/api/onedrive/status', (req, res) => {
   res.json({ configured });
 });
 
+// ── GET /api/onedrive/test ───────────────────────────────────────────────────
+// Diagnostic endpoint — returns the actual Graph API error so we can debug
+app.get('/api/onedrive/test', async (req, res) => {
+  const results = {};
+  try {
+    results.token = 'attempting...';
+    const token = await getGraphToken();
+    results.token = 'OK';
+
+    results.drive = 'attempting...';
+    const drive = await odGet(token, '/root');
+    results.drive = `OK — name: ${drive.name}, id: ${drive.id}`;
+
+    results.buildFolder = 'attempting...';
+    await odEnsureFolder(token, OD_APP_ROOT);
+    results.buildFolder = 'OK';
+
+    res.json({ ok: true, results });
+  } catch (err) {
+    const graphError = err.response?.data?.error;
+    results.error = graphError
+      ? `${graphError.code}: ${graphError.message}`
+      : err.message;
+    res.status(500).json({ ok: false, results });
+  }
+});
+
 // ── GET /api/onedrive/browse?path=Images/ProjectName ────────────────────────
 // Lists files and subfolders at the given path under BuilderApp/
 app.get('/api/onedrive/browse', requireOneDrive, async (req, res) => {
@@ -5104,8 +5131,10 @@ app.get('/api/onedrive/browse', requireOneDrive, async (req, res) => {
     }));
     res.json({ items, path: fullPath });
   } catch (err) {
-    console.error('OneDrive browse error', err.response?.data || err.message);
-    res.status(500).json({ error: err.message });
+    const graphError = err.response?.data?.error;
+    const msg = graphError ? `${graphError.code}: ${graphError.message}` : err.message;
+    console.error('OneDrive browse error', graphError || err.message);
+    res.status(500).json({ error: msg, graphError });
   }
 });
 
