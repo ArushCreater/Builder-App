@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import {
@@ -139,9 +140,11 @@ export function ImagesPage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('path', uploadPath);
-      const baseUrl = ((import.meta as any)?.env?.VITE_API_URL as string) || 'http://localhost:8081';
-      const response = await fetch(`${baseUrl}/api/onedrive/upload`, {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      const response = await fetch('/api/onedrive/upload', {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
       if (!response.ok) {
