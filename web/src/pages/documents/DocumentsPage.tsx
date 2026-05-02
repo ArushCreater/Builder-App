@@ -32,7 +32,7 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Separator } from '../../components/ui/separator';
-import { Search, FileText, Download, Eye, Upload, Folder, Grid, List, Trash2 } from 'lucide-react';
+import { Search, FileText, Download, Eye, Upload, Folder, Grid, List, Trash2, Loader2 } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
 
@@ -79,6 +79,8 @@ export function DocumentsPage() {
   const [newFolder, setNewFolder] = useState('');
   const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -111,11 +113,15 @@ export function DocumentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setIsUploadDialogOpen(false);
+      setIsUploading(false);
       setFormData({ name: '', category: '', projectId: '', projectName: '', folder: '' });
       setFileMeta(null);
       setSelectedFile(null);
     },
-    onError: () => toast({ title: 'Upload failed', description: 'Could not save document record', variant: 'destructive' }),
+    onError: () => {
+      setIsUploading(false);
+      toast({ title: 'Upload failed', description: 'Could not save document record', variant: 'destructive' });
+    },
   });
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -126,6 +132,7 @@ export function DocumentsPage() {
       return;
     }
 
+    setIsUploading(true);
     try {
       const fd = new FormData();
       fd.append('file', selectedFile);
@@ -134,9 +141,7 @@ export function DocumentsPage() {
       const uploadResp = await apiClient.post<{ url: string; key: string; name: string; size: number; type: string }>(
         '/documents/upload',
         fd,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        }
+        { headers: { 'Content-Type': 'multipart/form-data' } }
       );
 
       const sizeLabel =
@@ -155,16 +160,25 @@ export function DocumentsPage() {
         url: uploadResp.url,
         key: uploadResp.key,
       });
-    } catch (err) {
+    } catch {
+      setIsUploading(false);
       toast({ title: 'Upload failed', description: 'Check file size or try again', variant: 'destructive' });
     }
   };
 
+  const handleDelete = (doc: DocumentRow) => {
+    const key = doc.key || doc.id;
+    if (!key || deletingId) return;
+    setDeletingId(doc.id);
+    apiClient
+      .delete('/documents', { data: { key } })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['documents'] }))
+      .catch(() => toast({ title: 'Delete failed', variant: 'destructive' }))
+      .finally(() => setDeletingId(null));
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleFile = (file?: File) => {
@@ -174,18 +188,12 @@ export function DocumentsPage() {
       sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${Math.max(sizeKb, 1).toFixed(0)} KB`;
     setFileMeta({ name: file.name, size: prettySize });
     setSelectedFile(file);
-    if (!formData.name) {
-      setFormData((prev) => ({ ...prev, name: file.name }));
-    }
+    if (!formData.name) setFormData(prev => ({ ...prev, name: file.name }));
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    handleFile(file);
-  };
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => handleFile(e.target.files?.[0]);
 
   useEffect(() => {
-    // Keep the upload form in sync with the selected project folder
     if (selectedFolder !== 'all' && selectedFolder !== 'unassigned') {
       const proj = projectsData?.projects.find(p => p.id === selectedFolder);
       setFormData(prev => ({ ...prev, projectId: selectedFolder, projectName: proj?.name || '' }));
@@ -197,8 +205,7 @@ export function DocumentsPage() {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    const file = e.dataTransfer.files?.[0];
-    handleFile(file);
+    handleFile(e.dataTransfer.files?.[0]);
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -224,7 +231,7 @@ export function DocumentsPage() {
     const ext = (previewDoc.name.split('.').pop() || '').toLowerCase();
     const isPdf = ext === 'pdf';
     const isDoc = ext === 'doc' || ext === 'docx';
-    const isImage = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext);
+    const isImageFile = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext);
     const canPreview = url && url !== '#';
 
     if (!canPreview) {
@@ -236,36 +243,19 @@ export function DocumentsPage() {
         </div>
       );
     }
-
     if (isPdf) {
-      return (
-        <iframe
-          title="Document preview"
-          src={url}
-          className="w-full h-[70vh] rounded-xl border border-gray-200"
-        />
-      );
+      return <iframe title="Document preview" src={url} className="w-full h-[70vh] rounded-xl border border-gray-200" />;
     }
-
     if (isDoc) {
-      const viewerUrl = `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(url)}`;
-      return (
-        <iframe
-          title="Document preview"
-          src={viewerUrl}
-          className="w-full h-[70vh] rounded-xl border border-gray-200"
-        />
-      );
+      return <iframe title="Document preview" src={`https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(url)}`} className="w-full h-[70vh] rounded-xl border border-gray-200" />;
     }
-
-    if (isImage) {
+    if (isImageFile) {
       return (
         <div className="w-full h-[70vh] flex items-center justify-center bg-gray-50 rounded-xl border border-gray-200">
           <img src={url} alt={previewDoc.name} className="max-h-[65vh] object-contain" />
         </div>
       );
     }
-
     return (
       <div className="flex flex-col items-center justify-center h-96 text-gray-500">
         <FileText className="h-12 w-12 mb-3 text-gray-400" />
@@ -299,23 +289,17 @@ export function DocumentsPage() {
         count: docsByProject[p.id]?.length || 0,
       })) || [];
     if (docsByProject['unassigned']?.length) {
-      entries.push({
-        id: 'unassigned',
-        name: 'Unassigned',
-        count: docsByProject['unassigned'].length,
-      });
+      entries.push({ id: 'unassigned', name: 'Unassigned', count: docsByProject['unassigned'].length });
     }
     return entries;
   }, [projectsData, docsByProject]);
 
-  const stats = useMemo(() => {
-    return {
-      total: documents.length,
-      contracts: documents.filter(d => d.category === 'contract').length,
-      plans: documents.filter(d => d.category === 'plans').length,
-      invoices: documents.filter(d => d.category === 'invoice').length,
-    };
-  }, [documents]);
+  const stats = useMemo(() => ({
+    total: documents.length,
+    contracts: documents.filter(d => d.category === 'contract').length,
+    plans: documents.filter(d => d.category === 'plans').length,
+    invoices: documents.filter(d => d.category === 'invoice').length,
+  }), [documents]);
 
   const visibleDocuments = useMemo(() => {
     if (viewMode === 'folders' && selectedFolder !== 'all') {
@@ -323,6 +307,8 @@ export function DocumentsPage() {
     }
     return documents;
   }, [documents, selectedFolder, viewMode]);
+
+  const isBusy = isUploading || uploadMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -335,37 +321,23 @@ export function DocumentsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500">Total docs</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-gray-500">Total docs</CardTitle></CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.total}</div>
             <p className="text-xs text-gray-500">Across all projects</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500">Contracts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.contracts}</div>
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-gray-500">Contracts</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold text-blue-600">{stats.contracts}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500">Plans</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-indigo-600">{stats.plans}</div>
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-gray-500">Plans</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold text-indigo-600">{stats.plans}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-500">Invoices</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{stats.invoices}</div>
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-gray-500">Invoices</CardTitle></CardHeader>
+          <CardContent><div className="text-2xl font-bold text-emerald-600">{stats.invoices}</div></CardContent>
         </Card>
       </div>
 
@@ -375,17 +347,10 @@ export function DocumentsPage() {
             <div className="flex flex-col sm:flex-row gap-3 flex-1">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search documents..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
+                <Input placeholder="Search documents..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
               </div>
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder="Filter by category" />
-                </SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Filter by category" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
                   <SelectItem value="contract">Contracts</SelectItem>
@@ -397,9 +362,7 @@ export function DocumentsPage() {
                 </SelectContent>
               </Select>
               <Select value={projectFilter} onValueChange={setProjectFilter}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder="Filter by project" />
-                </SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Filter by project" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All projects</SelectItem>
                   {projectsData?.projects.map((p) => (
@@ -411,12 +374,8 @@ export function DocumentsPage() {
             </div>
             <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
               <TabsList>
-                <TabsTrigger value="folders" className="flex items-center gap-2">
-                  <Grid className="h-4 w-4" /> Folders
-                </TabsTrigger>
-                <TabsTrigger value="all" className="flex items-center gap-2">
-                  <List className="h-4 w-4" /> All docs
-                </TabsTrigger>
+                <TabsTrigger value="folders" className="flex items-center gap-2"><Grid className="h-4 w-4" /> Folders</TabsTrigger>
+                <TabsTrigger value="all" className="flex items-center gap-2"><List className="h-4 w-4" /> All docs</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -424,7 +383,7 @@ export function DocumentsPage() {
         <CardContent>
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="text-gray-500">Loading...</div>
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
             </div>
           ) : (
             <Tabs value={viewMode}>
@@ -466,9 +425,7 @@ export function DocumentsPage() {
                     <div className="flex gap-2">
                       <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
                         <DialogTrigger asChild>
-                          <Button variant="outline">
-                            New Folder
-                          </Button>
+                          <Button variant="outline">New Folder</Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-md">
                           <DialogHeader>
@@ -477,27 +434,16 @@ export function DocumentsPage() {
                           </DialogHeader>
                           <div className="space-y-3 py-2">
                             <Label htmlFor="folderName">Folder path</Label>
-                            <Input
-                              id="folderName"
-                              placeholder="e.g. specs/2024"
-                              value={newFolder}
-                              onChange={(e) => setNewFolder(e.target.value)}
-                            />
+                            <Input id="folderName" placeholder="e.g. specs/2024" value={newFolder} onChange={(e) => setNewFolder(e.target.value)} />
                           </div>
                           <DialogFooter className="flex gap-2">
                             <Button variant="outline" onClick={() => setIsFolderDialogOpen(false)}>Cancel</Button>
-                            <Button
-                              onClick={() => {
-                                setFormData((prev) => ({ ...prev, folder: newFolder }));
-                                setIsFolderDialogOpen(false);
-                              }}
-                            >
-                              Save
-                            </Button>
+                            <Button onClick={() => { setFormData(prev => ({ ...prev, folder: newFolder })); setIsFolderDialogOpen(false); }}>Save</Button>
                           </DialogFooter>
                         </DialogContent>
                       </Dialog>
-                      <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+
+                      <Dialog open={isUploadDialogOpen} onOpenChange={(open) => { if (!isBusy) setIsUploadDialogOpen(open); }}>
                         <DialogTrigger asChild>
                           <Button>
                             <Upload className="mr-2 h-4 w-4" />
@@ -510,104 +456,98 @@ export function DocumentsPage() {
                               <DialogTitle>Upload Document</DialogTitle>
                               <DialogDescription>Drop a file and tag it to a project folder.</DialogDescription>
                             </DialogHeader>
-                            <div className="grid gap-4 py-4">
-                              <div
-                                onDrop={handleDrop}
-                                onDragOver={handleDragOver}
-                                className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50/80 hover:border-blue-400 transition-all duration-200 p-4 cursor-pointer"
-                                onClick={() => fileInputRef.current?.click()}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner">
-                                    <Upload className="h-6 w-6" />
-                                  </div>
-                                  <div>
-                                    <p className="font-semibold text-gray-900">Drag & drop files here</p>
-                                    <p className="text-sm text-gray-500">or click to browse from your computer</p>
-                                    {fileMeta && (
-                                      <p className="mt-1 text-sm text-gray-700">
-                                        Selected: {fileMeta.name} ({fileMeta.size})
-                                      </p>
-                                    )}
-                                  </div>
+
+                            {/* Loading overlay */}
+                            {isBusy ? (
+                              <div className="flex flex-col items-center justify-center gap-4 py-12">
+                                <div className="relative">
+                                  <div className="h-16 w-16 rounded-full border-4 border-blue-100" />
+                                  <div className="absolute inset-0 h-16 w-16 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
+                                  <Upload className="absolute inset-0 m-auto h-6 w-6 text-blue-500" />
                                 </div>
-                                <input
-                                  ref={fileInputRef}
-                                  type="file"
-                                  className="hidden"
-                                  onChange={handleFileInputChange}
-                                />
+                                <div className="text-center">
+                                  <p className="font-semibold text-gray-800">
+                                    {isUploading && !uploadMutation.isPending ? 'Uploading file…' : 'Saving document…'}
+                                  </p>
+                                  <p className="text-sm text-gray-500 mt-1">This may take a moment</p>
+                                </div>
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                  <Label htmlFor="name">Name</Label>
-                                  <Input
-                                    id="name"
-                                    name="name"
-                                    value={formData.name}
-                                    onChange={handleChange}
-                                    placeholder="Document name"
-                                    required
-                                  />
+                            ) : (
+                              <div className="grid gap-4 py-4">
+                                <div
+                                  onDrop={handleDrop}
+                                  onDragOver={handleDragOver}
+                                  className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50/80 hover:border-blue-400 transition-all duration-200 p-4 cursor-pointer"
+                                  onClick={() => fileInputRef.current?.click()}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner">
+                                      <Upload className="h-6 w-6" />
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-gray-900">Drag & drop files here</p>
+                                      <p className="text-sm text-gray-500">or click to browse from your computer</p>
+                                      {fileMeta && (
+                                        <p className="mt-1 text-sm text-blue-600 font-medium">
+                                          ✓ {fileMeta.name} ({fileMeta.size})
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileInputChange} />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="name">Name</Label>
+                                    <Input id="name" name="name" value={formData.name} onChange={handleChange} placeholder="Document name" required />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="category">Category</Label>
+                                    <Select value={formData.category} onValueChange={(val) => setFormData({ ...formData, category: val })}>
+                                      <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="contract">Contract</SelectItem>
+                                        <SelectItem value="plans">Plans</SelectItem>
+                                        <SelectItem value="permit">Permit</SelectItem>
+                                        <SelectItem value="invoice">Invoice</SelectItem>
+                                        <SelectItem value="photo">Photo</SelectItem>
+                                        <SelectItem value="other">Other</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
                                 </div>
                                 <div className="space-y-2">
-                                  <Label htmlFor="category">Category</Label>
-                                  <Select value={formData.category} onValueChange={(val) => setFormData({ ...formData, category: val })}>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Select category" />
-                                    </SelectTrigger>
+                                  <Label htmlFor="project">Project folder</Label>
+                                  <Select
+                                    value={formData.projectId || 'none'}
+                                    onValueChange={(val) => {
+                                      if (val === 'none') { setFormData({ ...formData, projectId: '', projectName: '', folder: '' }); return; }
+                                      const proj = projectsData?.projects.find(p => p.id === val);
+                                      setFormData({ ...formData, projectId: val, projectName: proj?.name || '' });
+                                    }}
+                                  >
+                                    <SelectTrigger><SelectValue placeholder="Assign to project" /></SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="contract">Contract</SelectItem>
-                                      <SelectItem value="plans">Plans</SelectItem>
-                                      <SelectItem value="permit">Permit</SelectItem>
-                                      <SelectItem value="invoice">Invoice</SelectItem>
-                                      <SelectItem value="photo">Photo</SelectItem>
-                                      <SelectItem value="other">Other</SelectItem>
+                                      <SelectItem value="none">No project</SelectItem>
+                                      {projectsData?.projects.map((p) => (
+                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </div>
+                                <div className="space-y-2">
+                                  <Label>Subfolder (optional)</Label>
+                                  <Input placeholder="e.g. contracts/2024" value={formData.folder} onChange={(e) => setFormData({ ...formData, folder: e.target.value })} />
+                                </div>
                               </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="project">Project folder</Label>
-                                <Select
-                                  value={formData.projectId || 'none'}
-                                  onValueChange={(val) => {
-                                    if (val === 'none') {
-                                      setFormData({ ...formData, projectId: '', projectName: '', folder: '' });
-                                      return;
-                                    }
-                                    const proj = projectsData?.projects.find(p => p.id === val);
-                                    setFormData({ ...formData, projectId: val, projectName: proj?.name || '' });
-                                  }}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Assign to project" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="none">No project</SelectItem>
-                                    {projectsData?.projects.map((p) => (
-                                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Subfolder (optional)</Label>
-                                <Input
-                                  placeholder="e.g. contracts/2024"
-                                  value={formData.folder}
-                                  onChange={(e) => setFormData({ ...formData, folder: e.target.value })}
-                                />
-                              </div>
-                            </div>
-                            <DialogFooter>
-                              <Button type="button" variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
-                                Cancel
-                              </Button>
-                              <Button type="submit" disabled={uploadMutation.isPending}>
-                                {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
-                              </Button>
-                            </DialogFooter>
+                            )}
+
+                            {!isBusy && (
+                              <DialogFooter>
+                                <Button type="button" variant="outline" onClick={() => setIsUploadDialogOpen(false)}>Cancel</Button>
+                                <Button type="submit">Upload</Button>
+                              </DialogFooter>
+                            )}
                           </form>
                         </DialogContent>
                       </Dialog>
@@ -624,14 +564,8 @@ export function DocumentsPage() {
                   projectMap={projectMap}
                   onPreview={setPreviewDoc}
                   onDownload={handleDownload}
-                  onDelete={(doc) => {
-                    const key = doc.key || doc.id;
-                    if (key) {
-                      apiClient
-                        .delete('/documents', { data: { key } })
-                        .then(() => queryClient.invalidateQueries({ queryKey: ['documents'] }));
-                    }
-                  }}
+                  onDelete={handleDelete}
+                  deletingId={deletingId}
                 />
               </TabsContent>
               <TabsContent value="all">
@@ -640,14 +574,8 @@ export function DocumentsPage() {
                   projectMap={projectMap}
                   onPreview={setPreviewDoc}
                   onDownload={handleDownload}
-                  onDelete={(doc) => {
-                    const key = doc.key || doc.id;
-                    if (key) {
-                      apiClient
-                        .delete('/documents', { data: { key } })
-                        .then(() => queryClient.invalidateQueries({ queryKey: ['documents'] }));
-                    }
-                  }}
+                  onDelete={handleDelete}
+                  deletingId={deletingId}
                 />
               </TabsContent>
             </Tabs>
@@ -676,8 +604,7 @@ export function DocumentsPage() {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => handleDownload(previewDoc!)}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
+                  <Download className="h-4 w-4 mr-2" /> Download
                 </Button>
                 <Button onClick={() => setPreviewDoc(null)}>Close</Button>
               </div>
@@ -695,12 +622,14 @@ function DocumentsTable({
   onPreview,
   onDownload,
   onDelete,
+  deletingId,
 }: {
   documents: DocumentRow[];
   projectMap: Map<string, string>;
   onPreview: (doc: DocumentRow) => void;
   onDownload: (doc: DocumentRow) => void;
   onDelete: (doc: DocumentRow) => void;
+  deletingId: string | null;
 }) {
   return (
     <Table>
@@ -718,7 +647,7 @@ function DocumentsTable({
       </TableHeader>
       <TableBody>
         {documents?.map((doc) => (
-          <TableRow key={doc.id}>
+          <TableRow key={doc.id} className={deletingId === doc.id ? 'opacity-50' : ''}>
             <TableCell className="font-medium">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-gray-400" />
@@ -726,9 +655,7 @@ function DocumentsTable({
               </div>
             </TableCell>
             <TableCell>
-              <Badge variant={categoryColors[doc.category]}>
-                {doc.category}
-              </Badge>
+              <Badge variant={categoryColors[doc.category]}>{doc.category}</Badge>
             </TableCell>
             <TableCell>{doc.type}</TableCell>
             <TableCell>{doc.size}</TableCell>
@@ -743,8 +670,16 @@ function DocumentsTable({
                 <Button variant="ghost" size="sm" onClick={() => onDownload(doc)}>
                   <Download className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => onDelete(doc)}>
-                  <Trash2 className="h-4 w-4 text-red-600" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDelete(doc)}
+                  disabled={!!deletingId}
+                >
+                  {deletingId === doc.id
+                    ? <Loader2 className="h-4 w-4 animate-spin text-red-400" />
+                    : <Trash2 className="h-4 w-4 text-red-600" />
+                  }
                 </Button>
               </div>
             </TableCell>
