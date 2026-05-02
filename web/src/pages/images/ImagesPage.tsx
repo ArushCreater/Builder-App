@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -19,11 +19,16 @@ import {
   Upload,
   Plus,
   ChevronRight,
+  ChevronLeft,
   AlertCircle,
   Camera,
   ImagePlus,
   Trash2,
   RefreshCw,
+  X,
+  Download,
+  ExternalLink,
+  ZoomIn,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -54,27 +59,212 @@ function formatBytes(bytes?: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatDate(iso?: string) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// ── Lightbox ────────────────────────────────────────────────────────────────
+interface LightboxProps {
+  item: OdItem;
+  src: string;
+  allImages: OdItem[];
+  thumbnails: Record<string, string>;
+  onClose: () => void;
+  onNavigate: (item: OdItem) => void;
+  onDelete: (item: OdItem) => void;
+  isDeleting: boolean;
+}
+
+function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDelete, isDeleting }: LightboxProps) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
+  const idx = allImages.findIndex(i => i.id === item.id);
+  const hasPrev = idx > 0;
+  const hasNext = idx < allImages.length - 1;
+
+  useEffect(() => {
+    setImgLoaded(false);
+    setImgError(false);
+  }, [item.id]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft' && hasPrev) onNavigate(allImages[idx - 1]);
+      if (e.key === 'ArrowRight' && hasNext) onNavigate(allImages[idx + 1]);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [hasPrev, hasNext, idx, allImages, onClose, onNavigate]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)' }}
+      onClick={onClose}
+    >
+      {/* Close */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+      >
+        <X className="h-5 w-5" />
+      </button>
+
+      {/* Counter */}
+      {allImages.length > 1 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/50 text-sm font-medium">
+          {idx + 1} / {allImages.length}
+        </div>
+      )}
+
+      {/* Prev */}
+      {hasPrev && (
+        <button
+          onClick={e => { e.stopPropagation(); onNavigate(allImages[idx - 1]); }}
+          className="absolute left-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white transition-all hover:scale-110"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+      )}
+
+      {/* Next */}
+      {hasNext && (
+        <button
+          onClick={e => { e.stopPropagation(); onNavigate(allImages[idx + 1]); }}
+          className="absolute right-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white transition-all hover:scale-110"
+        >
+          <ChevronRight className="h-6 w-6" />
+        </button>
+      )}
+
+      {/* Image */}
+      <div
+        className="flex items-center justify-center px-16 py-16 w-full h-full"
+        onClick={e => e.stopPropagation()}
+      >
+        {!imgLoaded && !imgError && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+          </div>
+        )}
+        {imgError ? (
+          <div className="flex flex-col items-center gap-3 text-white/50">
+            <Image className="h-16 w-16" />
+            <p className="text-sm">Could not load image</p>
+          </div>
+        ) : (
+          <img
+            key={item.id}
+            src={src}
+            alt={item.name}
+            className={cn(
+              'max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-opacity duration-300',
+              imgLoaded ? 'opacity-100' : 'opacity-0'
+            )}
+            style={{ maxHeight: 'calc(100vh - 160px)', maxWidth: 'calc(100vw - 128px)' }}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => { setImgLoaded(true); setImgError(true); }}
+          />
+        )}
+      </div>
+
+      {/* Bottom info bar */}
+      <div
+        className="absolute bottom-0 left-0 right-0 px-6 py-4 flex items-center justify-between"
+        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="min-w-0">
+          <p className="text-white font-semibold truncate text-sm">{item.name}</p>
+          <p className="text-white/50 text-xs mt-0.5">
+            {[formatBytes(item.size), formatDate(item.createdAt)].filter(Boolean).join(' · ')}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+          {item.webUrl && (
+            <a
+              href={item.webUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+              title="Open in OneDrive"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
+          {item.webUrl && (
+            <a
+              href={item.webUrl}
+              download={item.name}
+              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+              title="Download"
+            >
+              <Download className="h-4 w-4" />
+            </a>
+          )}
+          <button
+            onClick={() => onDelete(item)}
+            disabled={isDeleting}
+            className="h-9 w-9 rounded-full bg-white/10 hover:bg-red-500/60 flex items-center justify-center text-white transition-colors"
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Filmstrip */}
+      {allImages.length > 1 && (
+        <div
+          className="absolute bottom-20 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-2 rounded-xl"
+          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {allImages.map((img, i) => (
+            <button
+              key={img.id}
+              onClick={() => onNavigate(img)}
+              className={cn(
+                'h-10 w-10 rounded-lg overflow-hidden border-2 transition-all flex-shrink-0',
+                img.id === item.id ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'
+              )}
+            >
+              {thumbnails[img.id] ? (
+                <img src={thumbnails[img.id]} alt={img.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-white/10 flex items-center justify-center">
+                  <Image className="h-4 w-4 text-white/50" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
 export function ImagesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Current browsing path relative to BuilderApp/Images/
-  // e.g. '' = root, 'ProjectName' = inside a project folder
   const [path, setPath] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [lightboxItem, setLightboxItem] = useState<OdItem | null>(null);
 
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
-  // Breadcrumb segments: ['ProjectName', 'SubFolder']
   const segments = path ? path.split('/') : [];
   const browsePath = path ? `Images/${path}` : 'Images';
 
-  // Check if OneDrive is configured
   const { data: statusData } = useQuery({
     queryKey: ['onedrive-status'],
     queryFn: () => apiClient.get<{ configured: boolean; needsAuth?: boolean }>('/onedrive/status'),
@@ -83,7 +273,6 @@ export function ImagesPage() {
   const configured = statusData?.configured ?? false;
   const needsAuth = statusData?.needsAuth ?? false;
 
-  // Fetch projects so we can show project folders at root
   const { data: projectsData } = useQuery({
     queryKey: ['projects'],
     queryFn: () => apiClient.get<{ projects: Project[] }>('/projects'),
@@ -91,34 +280,24 @@ export function ImagesPage() {
   });
   const projects = projectsData?.projects || [];
 
-  // Browse current folder
-  const {
-    data: browseData,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
+  const { data: browseData, isLoading, isError, refetch } = useQuery({
     queryKey: ['onedrive-browse', browsePath],
     queryFn: () => apiClient.get<{ items: OdItem[] }>(`/onedrive/browse?path=${encodeURIComponent(browsePath)}`),
     enabled: configured,
   });
   const items = browseData?.items || [];
 
-  // Fetch thumbnail URLs for image items (lazy, one at a time)
   const fetchThumbnail = useCallback(
     async (item: OdItem) => {
       if (!isImage(item) || thumbnails[item.id]) return;
       try {
         const data = await apiClient.get<{ url: string | null }>(`/onedrive/thumbnail/${item.id}`);
         if (data.url) setThumbnails(prev => ({ ...prev, [item.id]: data.url! }));
-      } catch {
-        // silently ignore
-      }
+      } catch { /* ignore */ }
     },
     [thumbnails]
   );
 
-  // Folder creation
   const createFolderMutation = useMutation({
     mutationFn: ({ folderPath, name }: { folderPath: string; name: string }) =>
       apiClient.post('/onedrive/folder', { path: folderPath, name }),
@@ -134,7 +313,6 @@ export function ImagesPage() {
     },
   });
 
-  // File upload
   const uploadMutation = useMutation({
     mutationFn: async ({ file, uploadPath }: { file: File; uploadPath: string }) => {
       const formData = new FormData();
@@ -163,12 +341,12 @@ export function ImagesPage() {
     },
   });
 
-  // Delete item
   const deleteMutation = useMutation({
     mutationFn: (itemId: string) => apiClient.delete(`/onedrive/item/${itemId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['onedrive-browse'] });
       setDeletingId(null);
+      setLightboxItem(null);
       toast({ title: 'Deleted' });
     },
     onError: (err: any) => {
@@ -185,33 +363,33 @@ export function ImagesPage() {
     e.preventDefault();
     const name = newFolderName.trim();
     if (!name) return;
-    const folderPath = path ? `Images/${path}` : 'Images';
-    createFolderMutation.mutate({ folderPath, name });
+    createFolderMutation.mutate({ folderPath: path ? `Images/${path}` : 'Images', name });
   };
 
-  const navigate = (item: OdItem) => {
+  const navigateFolder = (item: OdItem) => {
     if (item.type !== 'folder') return;
     setPath(prev => (prev ? `${prev}/${item.name}` : item.name));
   };
 
   const navigateTo = (index: number) => {
-    // index = -1 → root, 0 → first segment, etc.
     if (index < 0) setPath('');
     else setPath(segments.slice(0, index + 1).join('/'));
   };
 
-  // At root level, show a project-folder for every project (ensure they exist)
-  // plus any extra folders browsed from OneDrive
+  const handleItemClick = (item: OdItem) => {
+    if (item.type === 'folder') {
+      navigateFolder(item);
+    } else if (isImage(item)) {
+      fetchThumbnail(item);
+      setLightboxItem(item);
+    }
+  };
+
   const displayItems: OdItem[] = path === ''
     ? [
-        // Merge OneDrive folders with project list so unseen projects appear too
         ...projects
           .filter(p => !items.some(i => i.type === 'folder' && i.name === p.name))
-          .map(p => ({
-            id: `proj-${p.id}`,
-            name: p.name,
-            type: 'folder' as const,
-          })),
+          .map(p => ({ id: `proj-${p.id}`, name: p.name, type: 'folder' as const })),
         ...items,
       ].sort((a, b) => {
         if (a.type === b.type) return a.name.localeCompare(b.name);
@@ -221,6 +399,8 @@ export function ImagesPage() {
         if (a.type === b.type) return a.name.localeCompare(b.name);
         return a.type === 'folder' ? -1 : 1;
       });
+
+  const imageItems = displayItems.filter(isImage);
 
   // ── Not configured banner ──────────────────────────────────────────────────
   if (!configured) {
@@ -264,9 +444,6 @@ export function ImagesPage() {
 {`AZURE_CLIENT_ID=<your-app-registration-client-id>
 AZURE_CLIENT_SECRET=<your-client-secret>`}
               </pre>
-              <p className="text-xs text-amber-700 mt-3">
-                Once set and redeployed, this page will show a "Connect OneDrive" button to complete the setup.
-              </p>
             </div>
           </div>
         )}
@@ -275,231 +452,231 @@ AZURE_CLIENT_SECRET=<your-client-secret>`}
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Images</h1>
-          <p className="text-gray-500 mt-1">Project photo library — stored in OneDrive</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowNewFolder(true)}>
-            <Plus className="h-4 w-4 mr-1.5" /> New Folder
-          </Button>
-          <Button size="sm" onClick={() => setUploadDialogOpen(true)}>
-            <Upload className="h-4 w-4 mr-1.5" /> Upload Image
-          </Button>
-        </div>
-      </div>
-
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-sm flex-wrap">
-        <button
-          onClick={() => navigateTo(-1)}
-          className={cn(
-            'font-medium hover:text-indigo-600 transition-colors',
-            path === '' ? 'text-indigo-600' : 'text-slate-600'
-          )}
-        >
-          Images
-        </button>
-        {segments.map((seg, i) => (
-          <span key={i} className="flex items-center gap-1">
-            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-            <button
-              onClick={() => navigateTo(i)}
-              className={cn(
-                'font-medium hover:text-indigo-600 transition-colors',
-                i === segments.length - 1 ? 'text-indigo-600' : 'text-slate-600'
-              )}
-            >
-              {seg}
-            </button>
-          </span>
-        ))}
-      </nav>
-
-      {/* New folder inline form */}
-      {showNewFolder && (
-        <form onSubmit={handleCreateFolder} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-          <Folder className="h-4 w-4 text-indigo-500 flex-shrink-0" />
-          <Input
-            autoFocus
-            value={newFolderName}
-            onChange={e => setNewFolderName(e.target.value)}
-            placeholder="Folder name"
-            className="h-8 flex-1 max-w-xs"
-          />
-          <Button type="submit" size="sm" disabled={createFolderMutation.isPending || !newFolderName.trim()}>
-            {createFolderMutation.isPending ? 'Creating…' : 'Create'}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }}>
-            Cancel
-          </Button>
-        </form>
+    <>
+      {/* Lightbox */}
+      {lightboxItem && thumbnails[lightboxItem.id] && (
+        <Lightbox
+          item={lightboxItem}
+          src={thumbnails[lightboxItem.id]}
+          allImages={imageItems}
+          thumbnails={thumbnails}
+          onClose={() => setLightboxItem(null)}
+          onNavigate={item => { fetchThumbnail(item); setLightboxItem(item); }}
+          onDelete={item => { setDeletingId(item.id); deleteMutation.mutate(item.id); }}
+          isDeleting={deletingId === lightboxItem.id}
+        />
       )}
 
-      {/* Content */}
-      {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="rounded-xl bg-slate-100 aspect-square animate-pulse" />
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Images</h1>
+            <p className="text-gray-500 mt-1">Project photo library — stored in OneDrive</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowNewFolder(true)}>
+              <Plus className="h-4 w-4 mr-1.5" /> New Folder
+            </Button>
+            <Button size="sm" onClick={() => setUploadDialogOpen(true)}>
+              <Upload className="h-4 w-4 mr-1.5" /> Upload Image
+            </Button>
+          </div>
+        </div>
+
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1 text-sm flex-wrap">
+          <button
+            onClick={() => navigateTo(-1)}
+            className={cn('font-medium hover:text-indigo-600 transition-colors', path === '' ? 'text-indigo-600' : 'text-slate-600')}
+          >
+            Images
+          </button>
+          {segments.map((seg, i) => (
+            <span key={i} className="flex items-center gap-1">
+              <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+              <button
+                onClick={() => navigateTo(i)}
+                className={cn('font-medium hover:text-indigo-600 transition-colors', i === segments.length - 1 ? 'text-indigo-600' : 'text-slate-600')}
+              >
+                {seg}
+              </button>
+            </span>
           ))}
-        </div>
-      ) : isError ? (
-        <div className="flex flex-col items-center justify-center h-48 text-center gap-2">
-          <AlertCircle className="h-8 w-8 text-red-400" />
-          <p className="text-slate-500">Failed to load folder contents</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>Try again</Button>
-        </div>
-      ) : displayItems.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
-          {path ? (
-            <>
-              <ImagePlus className="h-12 w-12 text-slate-300" />
-              <p className="text-slate-500 font-medium">This folder is empty</p>
-              <p className="text-slate-400 text-sm">Upload images or create a subfolder</p>
-            </>
-          ) : (
-            <>
-              <FolderOpen className="h-12 w-12 text-slate-300" />
-              <p className="text-slate-500 font-medium">No projects yet</p>
-              <p className="text-slate-400 text-sm">Create a project first — its folder will appear here</p>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {displayItems.map(item => (
-            <div
-              key={item.id}
-              className={cn(
-                'group relative rounded-xl border border-slate-200 bg-white overflow-hidden transition-all',
-                item.type === 'folder' ? 'cursor-pointer hover:border-indigo-400 hover:shadow-md' : 'hover:shadow-md',
-              )}
-              onClick={() => item.type === 'folder' && navigate(item)}
-              onMouseEnter={() => isImage(item) && fetchThumbnail(item)}
-            >
-              {/* Thumbnail / icon area */}
-              <div className="aspect-square flex items-center justify-center bg-slate-50">
-                {item.type === 'folder' ? (
-                  <Folder className="h-16 w-16 text-indigo-400" />
-                ) : thumbnails[item.id] ? (
-                  <img
-                    src={thumbnails[item.id]}
-                    alt={item.name}
-                    className="w-full h-full object-cover"
-                    onError={() => setThumbnails(prev => { const next = { ...prev }; delete next[item.id]; return next; })}
-                  />
-                ) : isImage(item) ? (
-                  <div className="flex items-center justify-center w-full h-full">
-                    <Image className="h-12 w-12 text-slate-300" />
-                  </div>
-                ) : (
-                  <Image className="h-12 w-12 text-slate-300" />
-                )}
-              </div>
+        </nav>
 
-              {/* Label */}
-              <div className="px-2 py-1.5 border-t border-slate-100">
-                <p className="text-xs font-medium text-slate-800 truncate" title={item.name}>
-                  {item.name}
-                </p>
-                {item.size !== undefined && (
-                  <p className="text-[10px] text-slate-400">{formatBytes(item.size)}</p>
-                )}
-              </div>
+        {/* New folder inline form */}
+        {showNewFolder && (
+          <form onSubmit={handleCreateFolder} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <Folder className="h-4 w-4 text-indigo-500 flex-shrink-0" />
+            <Input
+              autoFocus
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              placeholder="Folder name"
+              className="h-8 flex-1 max-w-xs"
+            />
+            <Button type="submit" size="sm" disabled={createFolderMutation.isPending || !newFolderName.trim()}>
+              {createFolderMutation.isPending ? 'Creating…' : 'Create'}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }}>
+              Cancel
+            </Button>
+          </form>
+        )}
 
-              {/* Delete button (only for real OneDrive items, not virtual proj folders) */}
-              {!item.id.startsWith('proj-') && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeletingId(item.id);
-                    deleteMutation.mutate(item.id);
-                  }}
-                  disabled={deletingId === item.id}
-                  className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-white/80 backdrop-blur flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 text-slate-400 hover:text-red-500"
-                  title="Delete"
+        {/* Content */}
+        {isLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="rounded-xl bg-slate-100 aspect-square animate-pulse" />
+            ))}
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center h-48 text-center gap-2">
+            <AlertCircle className="h-8 w-8 text-red-400" />
+            <p className="text-slate-500">Failed to load folder contents</p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>Try again</Button>
+          </div>
+        ) : displayItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
+            {path ? (
+              <>
+                <ImagePlus className="h-12 w-12 text-slate-300" />
+                <p className="text-slate-500 font-medium">This folder is empty</p>
+                <p className="text-slate-400 text-sm">Upload images or create a subfolder</p>
+              </>
+            ) : (
+              <>
+                <FolderOpen className="h-12 w-12 text-slate-300" />
+                <p className="text-slate-500 font-medium">No projects yet</p>
+                <p className="text-slate-400 text-sm">Create a project first — its folder will appear here</p>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {displayItems.map(item => {
+              const img = isImage(item);
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    'group relative rounded-xl border border-slate-200 bg-white overflow-hidden transition-all duration-200',
+                    'cursor-pointer hover:border-indigo-400 hover:shadow-lg hover:-translate-y-0.5',
+                  )}
+                  onClick={() => handleItemClick(item)}
+                  onMouseEnter={() => img && fetchThumbnail(item)}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  {/* Thumbnail / icon area */}
+                  <div className="aspect-square flex items-center justify-center bg-slate-50 relative overflow-hidden">
+                    {item.type === 'folder' ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Folder className="h-14 w-14 text-indigo-400 group-hover:text-indigo-500 transition-colors" />
+                      </div>
+                    ) : thumbnails[item.id] ? (
+                      <>
+                        <img
+                          src={thumbnails[item.id]}
+                          alt={item.name}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          onError={() => setThumbnails(prev => { const next = { ...prev }; delete next[item.id]; return next; })}
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
+                          <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-lg" />
+                        </div>
+                      </>
+                    ) : img ? (
+                      <div className="flex items-center justify-center w-full h-full">
+                        <Image className="h-12 w-12 text-slate-200" />
+                      </div>
+                    ) : (
+                      <Image className="h-12 w-12 text-slate-200" />
+                    )}
+                  </div>
+
+                  {/* Label */}
+                  <div className="px-2.5 py-2 border-t border-slate-100">
+                    <p className="text-xs font-semibold text-slate-700 truncate" title={item.name}>
+                      {item.name}
+                    </p>
+                    {item.size !== undefined && (
+                      <p className="text-[10px] text-slate-400 mt-0.5">{formatBytes(item.size)}</p>
+                    )}
+                  </div>
+
+                  {/* Delete button */}
+                  {!item.id.startsWith('proj-') && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setDeletingId(item.id);
+                        deleteMutation.mutate(item.id);
+                      }}
+                      disabled={deletingId === item.id}
+                      className="absolute top-1.5 right-1.5 h-7 w-7 rounded-full bg-black/40 backdrop-blur flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 text-white"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Upload dialog */}
+        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Upload Image</DialogTitle>
+            </DialogHeader>
+            {uploadMutation.isPending ? (
+              <div className="flex flex-col items-center gap-3 py-6">
+                <div className="h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+                <p className="text-sm text-slate-500">Uploading to OneDrive…</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 py-2">
+                <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+                  onChange={e => handleFileInput(e.target.files?.[0])} />
+                <input ref={galleryRef} type="file" accept="image/*" className="hidden" multiple
+                  onChange={e => { Array.from(e.target.files || []).forEach(f => uploadMutation.mutate({ file: f, uploadPath: browsePath })); }} />
+
+                <button onClick={() => cameraRef.current?.click()}
+                  className="flex items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 p-4 hover:border-indigo-400 hover:bg-indigo-50 transition-colors text-left">
+                  <Camera className="h-8 w-8 text-indigo-500 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-slate-800">Take a Photo</p>
+                    <p className="text-xs text-slate-500">Use your camera</p>
+                  </div>
                 </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
 
-      {/* Upload dialog */}
-      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Upload Image</DialogTitle>
-          </DialogHeader>
-          {uploadMutation.isPending ? (
-            <div className="flex flex-col items-center gap-3 py-6">
-              <div className="h-8 w-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-              <p className="text-sm text-slate-500">Uploading to OneDrive…</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3 py-2">
-              {/* Hidden file inputs */}
-              <input
-                ref={cameraRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={e => handleFileInput(e.target.files?.[0])}
-              />
-              <input
-                ref={galleryRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                multiple
-                onChange={e => {
-                  const files = Array.from(e.target.files || []);
-                  files.forEach(f => uploadMutation.mutate({ file: f, uploadPath: browsePath }));
-                }}
-              />
+                <button onClick={() => galleryRef.current?.click()}
+                  className="flex items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 p-4 hover:border-indigo-400 hover:bg-indigo-50 transition-colors text-left">
+                  <ImagePlus className="h-8 w-8 text-indigo-500 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-slate-800">Choose from Library</p>
+                    <p className="text-xs text-slate-500">Select one or more images</p>
+                  </div>
+                </button>
 
-              <button
-                onClick={() => cameraRef.current?.click()}
-                className="flex items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 p-4 hover:border-indigo-400 hover:bg-indigo-50 transition-colors text-left"
-              >
-                <Camera className="h-8 w-8 text-indigo-500 flex-shrink-0" />
-                <div>
-                  <p className="font-medium text-slate-800">Take a Photo</p>
-                  <p className="text-xs text-slate-500">Use your camera</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => galleryRef.current?.click()}
-                className="flex items-center gap-3 rounded-xl border-2 border-dashed border-slate-200 p-4 hover:border-indigo-400 hover:bg-indigo-50 transition-colors text-left"
-              >
-                <ImagePlus className="h-8 w-8 text-indigo-500 flex-shrink-0" />
-                <div>
-                  <p className="font-medium text-slate-800">Choose from Library</p>
-                  <p className="text-xs text-slate-500">Select one or more images</p>
-                </div>
-              </button>
-
-              <p className="text-[11px] text-center text-slate-400 mt-1">
-                Uploading to: <span className="font-mono">OneDrive / {browsePath}</span>
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+                <p className="text-[11px] text-center text-slate-400 mt-1">
+                  Uploading to: <span className="font-mono">OneDrive / {browsePath}</span>
+                </p>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </>
   );
 }
 
