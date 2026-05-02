@@ -39,13 +39,13 @@ import {
   MapPin,
   LayoutPanelTop,
   BookOpen,
-  Image as ImageIcon,
   Package,
   ClipboardCheck,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { RichDocEditor } from '../../components/RichDocEditor';
 
 interface Project {
   id: string;
@@ -205,8 +205,7 @@ export function ProjectDetailPage() {
   const [docSearch, setDocSearch] = useState('');
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
-  const [draftContent, setDraftContent] = useState('');
-  const [pageImageUrl, setPageImageUrl] = useState('');
+
   const [taskForm, setTaskForm] = useState({
     title: '',
     description: '',
@@ -441,7 +440,6 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   useEffect(() => {
     const page = docPages.find((p) => p.id === selectedPageId);
     setDraftTitle(page?.title || '');
-    setDraftContent(page?.content || '');
   }, [selectedPageId, docPages]);
 
   const selectedPage = docPages.find(p => p.id === selectedPageId) || null;
@@ -1696,141 +1694,116 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
         </TabsContent>
 
         <TabsContent value="docs" className="space-y-4">
-          <Card>
-            <CardHeader className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-blue-600" /> Project Docs
-              </CardTitle>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Search pages..."
-                  value={docSearch}
-                  onChange={(e) => setDocSearch(e.target.value)}
-                  className="w-[200px]"
-                />
-                <Button
-                  size="sm"
-                  disabled={createPageMutation.isPending}
-                  onClick={() => {
-                    createPageMutation.mutate({
-                      title: `Page ${docPages.length + 1}`,
-                      content: 'Start writing...',
-                      images: [],
-                    });
-                  }}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <BookOpen className="h-5 w-5 text-blue-600" /> Project Docs
+            </h2>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Search pages..."
+                value={docSearch}
+                onChange={(e) => setDocSearch(e.target.value)}
+                className="w-[180px]"
+              />
+              <Button
+                size="sm"
+                disabled={createPageMutation.isPending}
+                onClick={() => {
+                  createPageMutation.mutate({
+                    title: `Untitled Page`,
+                    content: '',
+                    images: [],
+                  });
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" /> New Page
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+            {/* Sidebar: page list */}
+            <div className="space-y-1.5">
+              {filteredDocPages.map((page) => (
+                <div
+                  key={page.id}
+                  className={`group flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/40 ${
+                    selectedPageId === page.id
+                      ? 'border-indigo-400 bg-indigo-50 text-indigo-700 font-semibold'
+                      : 'border-slate-200 text-slate-700'
+                  }`}
+                  onClick={() => setSelectedPageId(page.id)}
                 >
-                  <Plus className="h-4 w-4 mr-1" /> New Page
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-gray-500">Pages</p>
-                <div className="space-y-2 max-h-[380px] overflow-auto pr-1">
-                  {filteredDocPages.map((page) => (
-                    <div
-                      key={page.id}
-                      className={`group flex items-start gap-2 rounded-lg border p-3 transition hover:border-blue-300 ${
-                        selectedPageId === page.id ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="flex-1 text-left"
-                        onClick={() => setSelectedPageId(page.id)}
-                      >
-                        <p className="font-semibold text-gray-900">{page.title}</p>
-                        <p className="text-xs text-gray-500 line-clamp-2">{page.content}</p>
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Delete ${page.title}`}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition"
-                        disabled={deletePageMutation.isPending}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!confirm(`Delete "${page.title}"? This cannot be undone.`)) return;
-                          deletePageMutation.mutate(page.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {filteredDocPages.length === 0 && (
-                    <p className="text-sm text-gray-500">
-                      {docPages.length === 0 ? 'No pages yet. Click "New Page" to create one.' : 'No pages match that search.'}
-                    </p>
-                  )}
+                  <FileText className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                  <span className="flex-1 truncate">{page.title || 'Untitled'}</span>
+                  <button
+                    type="button"
+                    className="opacity-0 group-hover:opacity-100 rounded p-0.5 hover:bg-red-100 text-slate-400 hover:text-red-600 transition"
+                    disabled={deletePageMutation.isPending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!confirm(`Delete "${page.title}"? This cannot be undone.`)) return;
+                      deletePageMutation.mutate(page.id);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              </div>
-              <div className="md:col-span-2 space-y-3">
-                {selectedPage ? (
-                  <>
-                    <Input
-                      value={draftTitle}
-                      onChange={(e) => setDraftTitle(e.target.value)}
-                      onBlur={() => {
-                        if (draftTitle !== selectedPage.title) {
-                          updatePageMutation.mutate({ pageId: selectedPage.id, title: draftTitle });
-                        }
-                      }}
-                      className="text-xl font-semibold"
-                    />
-                    <textarea
-                      className="w-full min-h-[220px] rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
-                      value={draftContent}
-                      onChange={(e) => setDraftContent(e.target.value)}
-                      onBlur={() => {
-                        if (draftContent !== selectedPage.content) {
-                          updatePageMutation.mutate({ pageId: selectedPage.id, content: draftContent });
-                        }
-                      }}
-                      placeholder="Type notes, decisions, links... basic rich text style"
-                    />
-                    <div className="rounded-xl border border-dashed border-gray-300 p-3 space-y-3 bg-gray-50">
-                      <div className="flex items-center gap-2">
-                        <ImageIcon className="h-4 w-4 text-blue-600" />
-                        <p className="text-sm font-semibold text-gray-900">Attach image (URL)</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="https://example.com/image.png"
-                          value={pageImageUrl}
-                          onChange={(e) => setPageImageUrl(e.target.value)}
-                        />
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            if (!pageImageUrl) return;
-                            updatePageMutation.mutate({
-                              pageId: selectedPage.id,
-                              images: [...selectedPage.images, pageImageUrl],
-                            });
-                            setPageImageUrl('');
-                          }}
-                        >
-                          Add
-                        </Button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {selectedPage.images.map((img) => (
-                          <div key={img} className="relative overflow-hidden rounded-lg border border-gray-200">
-                            <img src={img} alt="doc img" className="h-24 w-full object-cover" />
-                          </div>
-                        ))}
-                        {selectedPage.images.length === 0 && (
-                          <p className="text-xs text-gray-500">No images yet.</p>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-500">Select or create a page to start editing.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+              ))}
+              {filteredDocPages.length === 0 && (
+                <p className="text-xs text-slate-400 px-2 py-4">
+                  {docPages.length === 0 ? 'No pages yet.' : 'No pages match.'}
+                </p>
+              )}
+            </div>
+
+            {/* Editor panel */}
+            <div className="space-y-3">
+              {selectedPage ? (
+                <>
+                  {/* Title */}
+                  <Input
+                    value={draftTitle}
+                    onChange={(e) => setDraftTitle(e.target.value)}
+                    onBlur={() => {
+                      if (draftTitle !== selectedPage.title) {
+                        updatePageMutation.mutate({ pageId: selectedPage.id, title: draftTitle });
+                      }
+                    }}
+                    className="text-xl font-bold border-none shadow-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-slate-300"
+                    placeholder="Untitled"
+                  />
+
+                  {/* Rich editor */}
+                  <RichDocEditor
+                    key={selectedPage.id}
+                    content={selectedPage.content || ''}
+                    title={draftTitle}
+                    isSaving={updatePageMutation.isPending}
+                    onContentSave={(html) => {
+                      updatePageMutation.mutate({ pageId: selectedPage.id, content: html });
+                    }}
+                    onTitleSave={(t) => {
+                      setDraftTitle(t);
+                      updatePageMutation.mutate({ pageId: selectedPage.id, title: t });
+                    }}
+                  />
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 py-20 text-center">
+                  <BookOpen className="h-10 w-10 text-slate-300 mb-3" />
+                  <p className="text-sm font-medium text-slate-500">Select a page or create one</p>
+                  <Button
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => createPageMutation.mutate({ title: 'Untitled Page', content: '', images: [] })}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> New Page
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="budget" className="space-y-4">

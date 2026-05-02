@@ -3362,7 +3362,7 @@ app.put('/api/projects/:id/doc-pages/:pageId', (req, res) => {
   const fields = [];
   const values = [];
   if (body.title !== undefined) { fields.push(`title = $${fields.length + 1}`); values.push(body.title); }
-  if (body.content !== undefined) { fields.push(`content = $${fields.length + 1}`); values.push(body.content); }
+  if (body.content !== undefined) { fields.push(`content = $${fields.length + 1}`); values.push(body.content || ''); }
   if (Array.isArray(body.images)) {
     fields.push(`images = $${fields.length + 1}::jsonb`);
     values.push(JSON.stringify(body.images));
