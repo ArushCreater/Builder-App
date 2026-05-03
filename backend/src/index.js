@@ -64,6 +64,7 @@ app.options('*', cors(corsOptions));
 
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 const PUBLIC_PATHS = new Set(['/', '/health', '/api/ping', '/api/onedrive/auth', '/api/onedrive/callback']);
+const PUBLIC_PREFIXES = ['/api/shared/'];
 const jwksCache = new Map();
 let joseModulePromise;
 
@@ -121,6 +122,7 @@ async function verifyAccessToken(token) {
 app.use(async (req, res, next) => {
   if (req.method === 'OPTIONS') return next();
   if (PUBLIC_PATHS.has(req.path)) return next();
+  if (PUBLIC_PREFIXES.some(p => req.path.startsWith(p))) return next();
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) {
@@ -419,6 +421,7 @@ async function ensureTables() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`);
+    await client.query(`ALTER TABLE project_doc_pages ADD COLUMN IF NOT EXISTS share_token text UNIQUE;`);
     await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`);
 
@@ -2246,7 +2249,7 @@ app.get('/api/tasks/:id', (req, res) => {
     updatedAt: row.updated_at || row.updatedAt,
   });
 
-  if (!pool) {
+  const findMemoryTask = () => {
     let task = tasks.find(t => t.id === req.params.id);
     if (!task) {
       for (const list of Object.values(projectTasks)) {
@@ -2254,6 +2257,11 @@ app.get('/api/tasks/:id', (req, res) => {
         if (task) break;
       }
     }
+    return task;
+  };
+
+  if (!pool) {
+    const task = findMemoryTask();
     if (!task) return res.status(404).json({ message: 'Not found' });
     return res.json({ task: toTask(task) });
   }
@@ -2265,7 +2273,11 @@ app.get('/api/tasks/:id', (req, res) => {
       if (!row) return res.status(404).json({ message: 'Not found' });
       res.json({ task: toTask(row) });
     })
-    .catch(() => res.status(404).json({ message: 'Not found' }));
+    .catch(() => {
+      const task = findMemoryTask();
+      if (!task) return res.status(404).json({ message: 'Not found' });
+      res.json({ task: toTask(task) });
+    });
 });
 
 app.post('/api/tasks', async (req, res) => {
@@ -2751,10 +2763,10 @@ app.get('/api/dashboard/stats', async (_req, res) => {
     });
   } catch {
     res.json({
-      activeProjects: 0,
-      pendingTasks: 0,
-      completedThisWeek: 0,
-      upcomingDeadlines: 0,
+      activeProjects: projects.filter(p => !['COMPLETED', 'completed', 'cancelled', 'CANCELLED'].includes(p.status)).length,
+      pendingTasks: tasks.filter(t => !t.completed && !['done', 'completed'].includes(t.status)).length,
+      completedThisWeek: tasks.filter(t => t.completed || ['done', 'completed'].includes(t.status)).length,
+      upcomingDeadlines: tasks.filter(t => t.dueDate && new Date(t.dueDate) >= new Date()).length,
     });
   }
 });
@@ -3174,6 +3186,56 @@ app.get('/api/daily-logs', (req, res) => {
     .catch(() => res.json({ logs: dailyLogs }));
 });
 
+const toMobileDailyLog = log => ({
+  id: log.id,
+  projectId: log.project_id || log.projectId,
+  projectName: log.project_name || log.projectName,
+  date: log.date,
+  weather: log.weather && typeof log.weather === 'object'
+    ? log.weather
+    : log.weather
+      ? { condition: log.weather, temperature: Number(log.temperature || 0) }
+      : undefined,
+  workPerformed: log.work_performed || log.workPerformed || '',
+  manpower: log.manpower || {
+    contractors: Number(log.crew_size || log.crewSize || 0),
+    subcontractors: 0,
+    visitors: 0,
+  },
+  materials: log.materials_received || log.materialsReceived,
+  equipment: log.equipment_used || log.equipmentUsed,
+  notes: log.notes,
+  photos: Array.isArray(log.photos) ? log.photos : [],
+  createdBy: typeof log.createdBy === 'object'
+    ? log.createdBy
+    : { id: 'system', name: log.created_by || log.createdBy || 'System' },
+  createdAt: log.created_at || log.createdAt,
+  updatedAt: log.updated_at || log.updatedAt,
+});
+
+app.get('/api/daily-logs/:id', (req, res) => {
+  const findMemoryLog = () => dailyLogs.find(d => d.id === req.params.id);
+
+  if (!pool) {
+    const log = findMemoryLog();
+    if (!log) return res.status(404).json({ message: 'Not found' });
+    return res.json({ log: toMobileDailyLog(log) });
+  }
+
+  pool
+    .query('SELECT * FROM daily_logs WHERE id = $1', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ log: toMobileDailyLog(row) });
+    })
+    .catch(() => {
+      const log = findMemoryLog();
+      if (!log) return res.status(404).json({ message: 'Not found' });
+      res.json({ log: toMobileDailyLog(log) });
+    });
+});
+
 app.post('/api/daily-logs', (req, res) => {
   const body = req.body || {};
   const log = {
@@ -3223,6 +3285,60 @@ app.post('/api/daily-logs', (req, res) => {
     )
     .then(result => res.json(result.rows[0]))
     .catch(() => res.json(log));
+});
+
+app.patch('/api/daily-logs/:id', (req, res) => {
+  const body = req.body || {};
+  if (!pool) {
+    const log = dailyLogs.find(d => d.id === req.params.id);
+    if (!log) return res.status(404).json({ message: 'Not found' });
+    Object.assign(log, {
+      date: body.date ?? log.date,
+      weather: body.weather?.condition ?? body.weather ?? log.weather,
+      temperature: body.weather?.temperature ?? body.temperature ?? log.temperature,
+      workPerformed: body.workPerformed ?? log.workPerformed,
+      crewSize: body.manpower?.contractors ?? body.crewSize ?? log.crewSize,
+      hoursWorked: body.hoursWorked ?? log.hoursWorked,
+      equipmentUsed: body.equipment ?? body.equipmentUsed ?? log.equipmentUsed,
+      materialsReceived: body.materials ?? body.materialsReceived ?? log.materialsReceived,
+      notes: body.notes ?? log.notes,
+    });
+    return res.json({ log: toMobileDailyLog(log) });
+  }
+
+  pool
+    .query(
+      `UPDATE daily_logs SET
+        date=COALESCE($1,date),
+        weather=COALESCE($2,weather),
+        temperature=COALESCE($3,temperature),
+        work_performed=COALESCE($4,work_performed),
+        crew_size=COALESCE($5,crew_size),
+        hours_worked=COALESCE($6,hours_worked),
+        equipment_used=COALESCE($7,equipment_used),
+        materials_received=COALESCE($8,materials_received),
+        notes=COALESCE($9,notes)
+       WHERE id=$10
+       RETURNING *`,
+      [
+        body.date,
+        body.weather?.condition ?? body.weather,
+        body.weather?.temperature ?? body.temperature,
+        body.workPerformed,
+        body.manpower?.contractors ?? body.crewSize,
+        body.hoursWorked,
+        body.equipment ?? body.equipmentUsed,
+        body.materials ?? body.materialsReceived,
+        body.notes,
+        req.params.id,
+      ]
+    )
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ log: toMobileDailyLog(row) });
+    })
+    .catch(() => res.status(500).json({ message: 'Update failed' }));
 });
 
 app.delete('/api/daily-logs/:id', (req, res) => {
@@ -3482,6 +3598,53 @@ app.delete('/api/projects/:id/doc-pages/:pageId', (req, res) => {
       console.error('doc-pages DELETE failed', err);
       res.status(500).json({ message: 'Failed to delete page' });
     });
+});
+
+// ── Doc page sharing ──────────────────────────────────────────────────────────
+// Generate (or return existing) share token for a doc page
+app.post('/api/projects/:id/doc-pages/:pageId/share', async (req, res) => {
+  if (!pool) return res.status(503).json({ message: 'DB not available' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT share_token FROM project_doc_pages WHERE id = $1 AND project_id = $2',
+      [req.params.pageId, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Page not found' });
+    let token = rows[0].share_token;
+    if (!token) {
+      token = randomUUID();
+      await pool.query('UPDATE project_doc_pages SET share_token = $1 WHERE id = $2', [token, req.params.pageId]);
+    }
+    res.json({ token });
+  } catch (err) {
+    console.error('share token error', err);
+    res.status(500).json({ message: 'Failed to generate share link' });
+  }
+});
+
+// Public read-only view of a shared doc page (no auth required)
+app.get('/api/shared/:token', async (req, res) => {
+  if (!pool) return res.status(503).json({ message: 'DB not available' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.title, p.content, p.updated_at, pr.name AS project_name
+       FROM project_doc_pages p
+       LEFT JOIN projects pr ON pr.id::text = p.project_id
+       WHERE p.share_token = $1`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Shared page not found' });
+    const row = rows[0];
+    res.json({
+      title: row.title || 'Untitled',
+      content: row.content || '',
+      projectName: row.project_name || '',
+      updatedAt: row.updated_at,
+    });
+  } catch (err) {
+    console.error('shared page error', err);
+    res.status(500).json({ message: 'Failed to load shared page' });
+  }
 });
 
 // Bids

@@ -41,6 +41,9 @@ import UsersPage from './pages/users/UsersPage'
 // Client Portal
 import ClientPortalPage from './pages/client/ClientPortalPage'
 
+// Shared public pages
+import SharedDocPage from './pages/shared/SharedDocPage'
+
 // Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -144,6 +147,9 @@ function App() {
             {/* Client Portal */}
             <Route path="/client-portal" element={<ClientPortalPage />} />
           </Route>
+
+          {/* Public shared doc view */}
+          <Route path="/shared/:token" element={<SharedDocPage />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

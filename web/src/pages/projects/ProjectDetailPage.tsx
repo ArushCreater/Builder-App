@@ -41,6 +41,7 @@ import {
   BookOpen,
   Package,
   ClipboardCheck,
+  Share2,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
@@ -1761,18 +1762,40 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
             <div className="space-y-3">
               {selectedPage ? (
                 <>
-                  {/* Title */}
-                  <Input
-                    value={draftTitle}
-                    onChange={(e) => setDraftTitle(e.target.value)}
-                    onBlur={() => {
-                      if (draftTitle !== selectedPage.title) {
-                        updatePageMutation.mutate({ pageId: selectedPage.id, title: draftTitle });
-                      }
-                    }}
-                    className="text-xl font-bold border-none shadow-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-slate-300"
-                    placeholder="Untitled"
-                  />
+                  {/* Title row */}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={draftTitle}
+                      onChange={(e) => setDraftTitle(e.target.value)}
+                      onBlur={() => {
+                        if (draftTitle !== selectedPage.title) {
+                          updatePageMutation.mutate({ pageId: selectedPage.id, title: draftTitle });
+                        }
+                      }}
+                      className="text-xl font-bold border-none shadow-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-slate-300 flex-1"
+                      placeholder="Untitled"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-shrink-0 gap-1.5 text-slate-600"
+                      onClick={async () => {
+                        try {
+                          const data = await apiClient.post<{ token: string }>(
+                            `/projects/${id}/doc-pages/${selectedPage.id}/share`
+                          );
+                          const url = `${window.location.origin}/shared/${data.token}`;
+                          await navigator.clipboard.writeText(url);
+                          toast({ title: 'Link copied!', description: 'Anyone with this link can view the document.' });
+                        } catch {
+                          toast({ title: 'Failed to create share link', variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                      Share
+                    </Button>
+                  </div>
 
                   {/* Rich editor */}
                   <RichDocEditor
