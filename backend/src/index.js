@@ -420,10 +420,10 @@ async function ensureTables() {
         updated_at timestamptz DEFAULT now()
       );
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`);
-    await client.query(`ALTER TABLE project_doc_pages ADD COLUMN IF NOT EXISTS share_token text UNIQUE;`);
-    await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`).catch(e => console.warn('idx_project_doc_pages_project skipped:', e.message));
+    await client.query(`ALTER TABLE project_doc_pages ADD COLUMN IF NOT EXISTS share_token text UNIQUE;`).catch(e => console.warn('share_token column skipped:', e.message));
+    await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`).catch(e => console.warn('task_id column skipped:', e.message));
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`).catch(e => console.warn('idx_schedule_events_task_id skipped:', e.message));
 
     // Performance indexes — each wrapped individually so one failure doesn't abort the rest
     const tryIndex = (sql) => client.query(sql).catch(e => console.warn('Index skipped:', e.message));

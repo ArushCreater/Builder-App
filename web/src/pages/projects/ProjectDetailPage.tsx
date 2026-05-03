@@ -1787,8 +1787,8 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                           const url = `${window.location.origin}/shared/${data.token}`;
                           await navigator.clipboard.writeText(url);
                           toast({ title: 'Link copied!', description: 'Anyone with this link can view the document.' });
-                        } catch {
-                          toast({ title: 'Failed to create share link', variant: 'destructive' });
+                        } catch (err: any) {
+                          toast({ title: 'Failed to create share link', description: err?.message || String(err), variant: 'destructive' });
                         }
                       }}
                     >
