@@ -1780,15 +1780,37 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                       size="sm"
                       className="flex-shrink-0 gap-1.5 text-slate-600"
                       onClick={async () => {
+                        let url = '';
                         try {
                           const data = await apiClient.post<{ token: string }>(
                             `/projects/${id}/doc-pages/${selectedPage.id}/share`
                           );
-                          const url = `${window.location.origin}/shared/${data.token}`;
-                          await navigator.clipboard.writeText(url);
-                          toast({ title: 'Link copied!', description: 'Anyone with this link can view the document.' });
+                          url = `${window.location.origin}/shared/${data.token}`;
                         } catch (err: any) {
                           toast({ title: 'Failed to create share link', description: err?.message || String(err), variant: 'destructive' });
+                          return;
+                        }
+                        // Try modern clipboard API, fall back to execCommand
+                        let copied = false;
+                        try {
+                          await navigator.clipboard.writeText(url);
+                          copied = true;
+                        } catch {
+                          try {
+                            const ta = document.createElement('textarea');
+                            ta.value = url;
+                            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+                            document.body.appendChild(ta);
+                            ta.focus();
+                            ta.select();
+                            copied = document.execCommand('copy');
+                            document.body.removeChild(ta);
+                          } catch {}
+                        }
+                        if (copied) {
+                          toast({ title: 'Link copied!', description: 'Anyone with this link can view the document.' });
+                        } else {
+                          toast({ title: 'Share link ready', description: url, variant: 'default' });
                         }
                       }}
                     >
