@@ -422,6 +422,7 @@ async function ensureTables() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`).catch(e => console.warn('idx_project_doc_pages_project skipped:', e.message));
     await client.query(`ALTER TABLE project_doc_pages ADD COLUMN IF NOT EXISTS share_token text UNIQUE;`).catch(e => console.warn('share_token column skipped:', e.message));
+    await client.query(`ALTER TABLE project_doc_pages ADD COLUMN IF NOT EXISTS client_approved_at timestamptz;`).catch(e => console.warn('client_approved_at column skipped:', e.message));
     await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`).catch(e => console.warn('task_id column skipped:', e.message));
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`).catch(e => console.warn('idx_schedule_events_task_id skipped:', e.message));
 
@@ -3496,6 +3497,7 @@ const mapDocPage = (row) => ({
   images: Array.isArray(row.images) ? row.images : [],
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  clientApprovedAt: row.client_approved_at || null,
 });
 
 app.get('/api/projects/:id/doc-pages', (req, res) => {
@@ -3628,7 +3630,7 @@ app.get('/api/shared/:token', async (req, res) => {
   if (!pool) return res.status(503).json({ message: 'DB not available' });
   try {
     const { rows } = await pool.query(
-      `SELECT p.id, p.title, p.content, p.updated_at, pr.name AS project_name
+      `SELECT p.id, p.title, p.content, p.updated_at, p.client_approved_at, pr.name AS project_name
        FROM project_doc_pages p
        LEFT JOIN projects pr ON pr.id::text = p.project_id
        WHERE p.share_token = $1`,
@@ -3641,10 +3643,45 @@ app.get('/api/shared/:token', async (req, res) => {
       content: row.content || '',
       projectName: row.project_name || '',
       updatedAt: row.updated_at,
+      clientApprovedAt: row.client_approved_at || null,
     });
   } catch (err) {
     console.error('shared page error', err);
     res.status(500).json({ message: 'Failed to load shared page' });
+  }
+});
+
+// Client approves a doc via the public share link (no auth required)
+app.post('/api/shared/:token/approve', async (req, res) => {
+  if (!pool) return res.status(503).json({ message: 'DB not available' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE project_doc_pages SET client_approved_at = now()
+       WHERE share_token = $1 RETURNING client_approved_at`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Page not found' });
+    res.json({ clientApprovedAt: rows[0].client_approved_at });
+  } catch (err) {
+    console.error('approve error', err);
+    res.status(500).json({ message: 'Failed to approve' });
+  }
+});
+
+// Builder resets client approval so client can approve again after edits
+app.post('/api/projects/:id/doc-pages/:pageId/request-approval', async (req, res) => {
+  if (!pool) return res.status(503).json({ message: 'DB not available' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE project_doc_pages SET client_approved_at = null
+       WHERE id::text = $1 AND project_id = $2 RETURNING *`,
+      [req.params.pageId, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Page not found' });
+    res.json({ page: mapDocPage(rows[0]) });
+  } catch (err) {
+    console.error('request-approval error', err);
+    res.status(500).json({ message: 'Failed to request approval' });
   }
 });
 

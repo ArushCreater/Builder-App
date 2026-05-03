@@ -1,15 +1,20 @@
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { CheckCircle2, ThumbsUp } from 'lucide-react';
 
 interface SharedDoc {
   title: string;
   content: string;
   projectName: string;
   updatedAt: string;
+  clientApprovedAt: string | null;
 }
 
 export function SharedDocPage() {
   const { token } = useParams<{ token: string }>();
+  const queryClient = useQueryClient();
+  const [justApproved, setJustApproved] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['shared-doc', token],
@@ -19,8 +24,23 @@ export function SharedDocPage() {
       return res.json() as Promise<SharedDoc>;
     },
     enabled: !!token,
-    refetchInterval: 30_000, // refresh every 30s so viewers see live edits
+    refetchInterval: 30_000,
   });
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/shared/${token}/approve`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to approve');
+      return res.json();
+    },
+    onSuccess: () => {
+      setJustApproved(true);
+      queryClient.invalidateQueries({ queryKey: ['shared-doc', token] });
+    },
+  });
+
+  const isApproved = !!(data?.clientApprovedAt || justApproved);
+  const approvedAt = data?.clientApprovedAt;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -47,7 +67,7 @@ export function SharedDocPage() {
 
       {/* Content */}
       <main className="flex-1 py-10 px-4">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto space-y-6">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-64 gap-4">
               <div className="h-10 w-10 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
@@ -64,27 +84,73 @@ export function SharedDocPage() {
               </p>
             </div>
           ) : data ? (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              {/* Doc header */}
-              <div className="px-8 pt-10 pb-6 border-b border-slate-100">
-                <h1 className="text-3xl font-bold text-slate-900 leading-tight">
-                  {data.title || 'Untitled'}
-                </h1>
-                <p className="text-sm text-slate-400 mt-2">
-                  Last updated{' '}
-                  {new Date(data.updatedAt).toLocaleDateString(undefined, {
-                    year: 'numeric', month: 'long', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                  })}
-                </p>
-              </div>
+            <>
+              {/* Approval banner / button */}
+              {isApproved ? (
+                <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-6 py-4">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-500 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold text-emerald-800">Document approved</p>
+                    {approvedAt && (
+                      <p className="text-sm text-emerald-600 mt-0.5">
+                        Approved on{' '}
+                        {new Date(approvedAt).toLocaleDateString(undefined, {
+                          year: 'numeric', month: 'long', day: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </p>
+                    )}
+                    {justApproved && !approvedAt && (
+                      <p className="text-sm text-emerald-600 mt-0.5">Just approved</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl px-6 py-4 shadow-sm">
+                  <div>
+                    <p className="font-semibold text-slate-800">Ready to approve?</p>
+                    <p className="text-sm text-slate-500 mt-0.5">
+                      Click the button to confirm you have reviewed and approved this document.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => approveMutation.mutate()}
+                    disabled={approveMutation.isPending}
+                    className="flex-shrink-0 flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors shadow-sm"
+                  >
+                    {approveMutation.isPending ? (
+                      <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    ) : (
+                      <ThumbsUp className="h-4 w-4" />
+                    )}
+                    Approved by Client
+                  </button>
+                </div>
+              )}
 
-              {/* Doc body — rendered HTML from the editor */}
-              <div
-                className="px-8 py-8 prose prose-slate max-w-none shared-doc-content"
-                dangerouslySetInnerHTML={{ __html: data.content || '<p><em>This page has no content yet.</em></p>' }}
-              />
-            </div>
+              {/* Document card */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                {/* Doc header */}
+                <div className="px-8 pt-10 pb-6 border-b border-slate-100">
+                  <h1 className="text-3xl font-bold text-slate-900 leading-tight">
+                    {data.title || 'Untitled'}
+                  </h1>
+                  <p className="text-sm text-slate-400 mt-2">
+                    Last updated{' '}
+                    {new Date(data.updatedAt).toLocaleDateString(undefined, {
+                      year: 'numeric', month: 'long', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+
+                {/* Doc body */}
+                <div
+                  className="px-8 py-8 prose prose-slate max-w-none shared-doc-content"
+                  dangerouslySetInnerHTML={{ __html: data.content || '<p><em>This page has no content yet.</em></p>' }}
+                />
+              </div>
+            </>
           ) : null}
         </div>
       </main>
@@ -102,7 +168,7 @@ export function SharedDocPage() {
         </div>
       </footer>
 
-      {/* Shared doc styles — mirrors RichDocEditor CSS for the rendered HTML */}
+      {/* Shared doc styles */}
       <style>{`
         .shared-doc-content p { margin: 0.25rem 0; line-height: 1.7; }
         .shared-doc-content h1 { font-size: 2rem; font-weight: 700; margin: 1rem 0 0.5rem; }
@@ -119,8 +185,6 @@ export function SharedDocPage() {
         .shared-doc-content blockquote { border-left: 3px solid #e2e8f0; padding-left: 1rem; color: #64748b; margin: 0.5rem 0; }
         .shared-doc-content code { background: #f1f5f9; border-radius: 3px; padding: 0.1em 0.3em; font-family: monospace; font-size: 0.875em; }
         .shared-doc-content pre { background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 0.5rem 0; }
-
-        /* Task list */
         .shared-doc-content ul[data-type="taskList"] { list-style: none; padding-left: 0; }
         .shared-doc-content ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5rem; }
         .shared-doc-content ul[data-type="taskList"] li label { flex-shrink: 0; padding-top: 0.2rem; }

@@ -42,6 +42,8 @@ import {
   Package,
   ClipboardCheck,
   Share2,
+  CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
@@ -125,6 +127,7 @@ interface DocPage {
   title: string;
   content: string;
   images: string[];
+  clientApprovedAt?: string | null;
 }
 
 interface Invoice {
@@ -424,6 +427,16 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
       toast({ title: 'Page deleted' });
     },
     onError: () => toast({ title: 'Error', description: 'Could not delete page', variant: 'destructive' }),
+  });
+
+  const requestApprovalMutation = useMutation({
+    mutationFn: (pageId: string) =>
+      apiClient.post(`/projects/${id}/doc-pages/${pageId}/request-approval`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-doc-pages', id] });
+      toast({ title: 'Approval requested', description: 'The client can now approve the document again.' });
+    },
+    onError: () => toast({ title: 'Error', description: 'Could not reset approval', variant: 'destructive' }),
   });
 
   const filteredDocPages = useMemo(() => {
@@ -1818,6 +1831,57 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                       Share
                     </Button>
                   </div>
+
+                  {/* Client approval status */}
+                  {selectedPage.clientApprovedAt ? (
+                    <div className="flex items-center justify-between gap-3 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-800">Approved by client</p>
+                          <p className="text-xs text-emerald-600 mt-0.5">
+                            {new Date(selectedPage.clientApprovedAt).toLocaleDateString(undefined, {
+                              year: 'numeric', month: 'long', day: 'numeric',
+                              hour: '2-digit', minute: '2-digit',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-shrink-0 gap-1.5 text-slate-600 border-emerald-200 hover:bg-emerald-100"
+                        disabled={requestApprovalMutation.isPending}
+                        onClick={() => requestApprovalMutation.mutate(selectedPage.id)}
+                      >
+                        {requestApprovalMutation.isPending
+                          ? <span className="h-3.5 w-3.5 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
+                          : <RefreshCw className="h-3.5 w-3.5" />
+                        }
+                        Request New Approval
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-5 w-5 rounded-full border-2 border-slate-300 flex-shrink-0" />
+                        <p className="text-sm text-slate-500">Awaiting client approval</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-shrink-0 gap-1.5 text-slate-600"
+                        disabled={requestApprovalMutation.isPending}
+                        onClick={() => requestApprovalMutation.mutate(selectedPage.id)}
+                      >
+                        {requestApprovalMutation.isPending
+                          ? <span className="h-3.5 w-3.5 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
+                          : <RefreshCw className="h-3.5 w-3.5" />
+                        }
+                        Request Approval
+                      </Button>
+                    </div>
+                  )}
 
                   {/* Rich editor */}
                   <RichDocEditor
