@@ -43,6 +43,56 @@ const FontSize = Mark.create({
   },
 });
 
+// Custom TaskItem NodeView — uses a plain <div> instead of <label> so the
+// browser's label-click-forwarding behaviour can't steal clicks from the text area.
+const CustomTaskItem = TaskItem.extend({
+  addNodeView() {
+    return ({ node, HTMLAttributes, getPos, editor }) => {
+      const li = document.createElement('li');
+      li.dataset.type = 'taskItem';
+      li.dataset.checked = String(node.attrs.checked);
+      Object.entries(HTMLAttributes).forEach(([k, v]) => {
+        if (k !== 'data-checked') li.setAttribute(k, v as string);
+      });
+
+      const wrapper = document.createElement('div');
+      wrapper.contentEditable = 'false';
+      wrapper.style.cssText = 'flex-shrink:0;display:flex;align-items:center;padding-top:0.28rem;padding-right:0.5rem;cursor:pointer;user-select:none;';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = node.attrs.checked;
+      checkbox.style.cssText = 'width:1rem;height:1rem;cursor:pointer;accent-color:#4f46e5;flex-shrink:0;';
+      checkbox.addEventListener('change', () => {
+        const pos = getPos();
+        if (typeof pos !== 'number') return;
+        editor.chain().command(({ tr }) => {
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, checked: checkbox.checked });
+          return true;
+        }).run();
+      });
+
+      const content = document.createElement('div');
+      content.style.cssText = 'flex:1;min-width:0;';
+
+      wrapper.appendChild(checkbox);
+      li.appendChild(wrapper);
+      li.appendChild(content);
+
+      return {
+        dom: li,
+        contentDOM: content,
+        update: (updated) => {
+          if (updated.type !== this.type) return false;
+          li.dataset.checked = String(updated.attrs.checked);
+          checkbox.checked = updated.attrs.checked;
+          return true;
+        },
+      };
+    };
+  },
+}).configure({ nested: false });
+
 const FONT_SIZES = [
   { label: 'Small', value: '12px' },
   { label: 'Normal', value: '16px' },
@@ -161,7 +211,7 @@ export function RichDocEditor({ content, title, onContentSave, onTitleSave, isSa
       Color,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       TaskList,
-      TaskItem.configure({ nested: false }),
+      CustomTaskItem,
     ],
     content,
     onBlur: ({ editor: e }) => {

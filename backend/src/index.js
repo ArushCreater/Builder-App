@@ -435,7 +435,7 @@ async function ensureTables() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_start       ON schedule_events(start_date);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_project     ON schedule_events(project_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_daily_logs_project   ON daily_logs(project_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_daily_logs_date      ON daily_logs(log_date DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_daily_logs_date      ON daily_logs(date DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_project    ON documents(project_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_category   ON documents(category);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_uploaded   ON documents(uploaded_at DESC);`);
