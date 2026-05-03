@@ -425,23 +425,24 @@ async function ensureTables() {
     await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`);
 
-    // Performance indexes
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_project_id     ON tasks(project_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status         ON tasks(status);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_assignee       ON tasks(assignee);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_due_date       ON tasks(due_date);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_leads_status         ON leads(status);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_leads_created_at     ON leads(created_at DESC);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_projects_status      ON projects(status);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_projects_created_at  ON projects(created_at DESC);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_contacts_created_at  ON contacts(created_at DESC);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_start       ON schedule_events(start_date);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_project     ON schedule_events(project_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_daily_logs_project   ON daily_logs(project_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_daily_logs_date      ON daily_logs(date DESC);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_project    ON documents(project_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_category   ON documents(category);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_documents_uploaded   ON documents(uploaded_at DESC);`);
+    // Performance indexes — each wrapped individually so one failure doesn't abort the rest
+    const tryIndex = (sql) => client.query(sql).catch(e => console.warn('Index skipped:', e.message));
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_tasks_project_id     ON tasks(project_id);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_tasks_status         ON tasks(status);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_tasks_assignee       ON tasks(assignee);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_tasks_due_date       ON tasks(due_date);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_leads_status         ON leads(status);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_leads_created_at     ON leads(created_at DESC);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_projects_status      ON projects(status);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_projects_created_at  ON projects(created_at DESC);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_contacts_created_at  ON contacts(created_at DESC);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_schedule_start       ON schedule_events(start_date);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_schedule_project     ON schedule_events(project_id);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_daily_logs_project   ON daily_logs(project_id);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_daily_logs_date      ON daily_logs(date DESC);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_documents_project    ON documents(project_id);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_documents_category   ON documents(category);`);
+    await tryIndex(`CREATE INDEX IF NOT EXISTS idx_documents_uploaded   ON documents(uploaded_at DESC);`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS app_settings (
         key text PRIMARY KEY,
