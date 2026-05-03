@@ -1225,10 +1225,7 @@ const bids = [
   { id: 'b-2', vendor: 'Prime Plumbing', amount: 42000, status: 'review', scope: 'Plumbing rough-in', projectName: 'Downtown Office', projectId: 'p-2', submittedDate: '2024-03-02', validUntil: '2024-03-18', contact: 'pm@primeplumbing.com' },
 ];
 
-const inspections = [
-  { id: 'i-1', title: 'Framing Inspection', type: 'framing', status: 'scheduled', date: '2024-06-01', projectName: 'Sunrise Apartments', projectId: 'p-1', inspector: 'City Inspector' },
-  { id: 'i-2', title: 'Electrical Inspection', type: 'electrical', status: 'pending', date: '2024-06-15', projectName: 'Downtown Office', projectId: 'p-2', inspector: 'Safety First' },
-];
+const inspections = [];
 
 const equipment = [
   { id: 'e-1', name: 'Excavator', type: 'heavy', status: 'in_use', location: 'Site A', lastService: '2024-02-10', nextMaintenance: '2024-04-15', projectId: 'p-1', projectName: 'Sunrise Apartments', purchaseDate: '2023-06-01', purchasePrice: 75000 },
@@ -1509,6 +1506,7 @@ app.put('/api/projects/:id', (req, res) => {
         body.estimatedBudget !== undefined ? Number(body.estimatedBudget) || 0 : project.estimatedBudget,
       actualCost: body.actualCost !== undefined ? Number(body.actualCost) || 0 : project.actualCost,
       progress: body.progress !== undefined ? Number(body.progress) || 0 : project.progress,
+      ownerId: body.ownerId ?? project.ownerId,
       updatedAt: new Date().toISOString(),
     });
     return res.json({ project });
@@ -1534,14 +1532,15 @@ app.put('/api/projects/:id', (req, res) => {
           body.estimatedBudget !== undefined ? Number(body.estimatedBudget) || 0 : current.estimated_budget,
         actual_cost: body.actualCost !== undefined ? Number(body.actualCost) || 0 : current.actual_cost,
         progress: body.progress !== undefined ? Number(body.progress) || 0 : current.progress,
+        owner_id: body.ownerId ?? current.owner_id,
       };
 
       return pool
         .query(
           `UPDATE projects SET
             name=$1, description=$2, type=$3, status=$4, address=$5, city=$6, state=$7, zip_code=$8,
-            start_date=$9, end_date=$10, estimated_budget=$11, actual_cost=$12, progress=$13, updated_at=now()
-           WHERE id=$14 RETURNING *`,
+            start_date=$9, end_date=$10, estimated_budget=$11, actual_cost=$12, progress=$13, owner_id=$14, updated_at=now()
+           WHERE id=$15 RETURNING *`,
           [
             next.name,
             next.description,
@@ -1556,6 +1555,7 @@ app.put('/api/projects/:id', (req, res) => {
             next.estimated_budget,
             next.actual_cost,
             next.progress,
+            next.owner_id,
             req.params.id,
           ]
         )
@@ -2230,6 +2230,44 @@ app.get('/api/tasks', (req, res) => {
     .catch(() => res.json({ tasks: [] }));
 });
 
+app.get('/api/tasks/:id', (req, res) => {
+  const toTask = row => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    priority: row.priority,
+    assignee: row.assignee ? { id: row.assignee, name: row.assignee } : undefined,
+    projectId: row.project_id || row.projectId,
+    projectName: row.project_name || row.projectName,
+    dueDate: row.due_date || row.dueDate,
+    completed: !!row.completed,
+    createdAt: row.created_at || row.createdAt,
+    updatedAt: row.updated_at || row.updatedAt,
+  });
+
+  if (!pool) {
+    let task = tasks.find(t => t.id === req.params.id);
+    if (!task) {
+      for (const list of Object.values(projectTasks)) {
+        task = (list || []).find(t => t.id === req.params.id);
+        if (task) break;
+      }
+    }
+    if (!task) return res.status(404).json({ message: 'Not found' });
+    return res.json({ task: toTask(task) });
+  }
+
+  pool
+    .query('SELECT * FROM tasks WHERE id = $1', [req.params.id])
+    .then(result => {
+      const row = result.rows[0];
+      if (!row) return res.status(404).json({ message: 'Not found' });
+      res.json({ task: toTask(row) });
+    })
+    .catch(() => res.status(404).json({ message: 'Not found' }));
+});
+
 app.post('/api/tasks', async (req, res) => {
   const body = req.body || {};
   const task = {
@@ -2683,6 +2721,40 @@ app.get('/api/analytics', async (req, res) => {
       projects: { total: 0, active: 0, completed: 0, data: [] },
       efficiency: { onTime: 0, delayed: 0, avgDuration: 0 },
       costs: { data: [] },
+    });
+  }
+});
+
+app.get('/api/dashboard/stats', async (_req, res) => {
+  if (!pool) {
+    return res.json({
+      activeProjects: projects.filter(p => !['COMPLETED', 'completed', 'cancelled', 'CANCELLED'].includes(p.status)).length,
+      pendingTasks: tasks.filter(t => !t.completed && !['done', 'completed'].includes(t.status)).length,
+      completedThisWeek: tasks.filter(t => t.completed || ['done', 'completed'].includes(t.status)).length,
+      upcomingDeadlines: tasks.filter(t => t.dueDate && new Date(t.dueDate) >= new Date()).length,
+    });
+  }
+
+  try {
+    const [projectResult, pendingTaskResult, completedTaskResult, deadlineResult] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS count FROM projects WHERE COALESCE(status, '') NOT IN ('COMPLETED', 'completed', 'CANCELLED', 'cancelled')`),
+      pool.query(`SELECT COUNT(*)::int AS count FROM tasks WHERE completed IS NOT TRUE AND COALESCE(status, '') NOT IN ('done', 'completed')`),
+      pool.query(`SELECT COUNT(*)::int AS count FROM tasks WHERE completed IS TRUE OR COALESCE(status, '') IN ('done', 'completed')`),
+      pool.query(`SELECT COUNT(*)::int AS count FROM tasks WHERE due_date IS NOT NULL AND due_date >= CURRENT_DATE`),
+    ]);
+
+    res.json({
+      activeProjects: projectResult.rows[0]?.count || 0,
+      pendingTasks: pendingTaskResult.rows[0]?.count || 0,
+      completedThisWeek: completedTaskResult.rows[0]?.count || 0,
+      upcomingDeadlines: deadlineResult.rows[0]?.count || 0,
+    });
+  } catch {
+    res.json({
+      activeProjects: 0,
+      pendingTasks: 0,
+      completedThisWeek: 0,
+      upcomingDeadlines: 0,
     });
   }
 });
@@ -4608,6 +4680,75 @@ app.delete('/api/invoices/:id', (req, res) => {
       res.json({ invoice: row });
     })
     .catch(() => res.status(500).json({ message: 'Delete failed' }));
+});
+
+// Client portal
+function toClientProject(row) {
+  if (!row) return null;
+  const budget = Number(row.estimated_budget ?? row.estimatedBudget ?? row.budget ?? 0);
+  const spent = Number(row.actual_cost ?? row.actualCost ?? row.spent ?? 0);
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status || 'IN_PROGRESS',
+    progress: Number(row.progress || 0),
+    budget,
+    spent,
+    startDate: row.start_date || row.startDate || null,
+    endDate: row.end_date || row.endDate || null,
+    description: row.description || '',
+  };
+}
+
+app.get('/api/client/project', async (_req, res) => {
+  if (!pool) {
+    const project = projects[0];
+    if (!project) return res.status(404).json({ message: 'No client project found' });
+    return res.json(toClientProject(project));
+  }
+
+  try {
+    const result = await pool.query('SELECT * FROM projects ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 1');
+    const project = toClientProject(result.rows[0]);
+    if (!project) return res.status(404).json({ message: 'No client project found' });
+    res.json(project);
+  } catch {
+    const project = projects[0];
+    if (!project) return res.status(404).json({ message: 'No client project found' });
+    res.json(toClientProject(project));
+  }
+});
+
+app.get('/api/client/documents', (_req, res) => {
+  res.json(
+    documents.map(doc => ({
+      id: doc.id,
+      name: doc.name,
+      type: doc.type || doc.category || 'document',
+      uploadedAt: doc.uploadedAt || doc.createdAt || new Date().toISOString(),
+      url: doc.url || '#',
+    }))
+  );
+});
+
+app.get('/api/client/invoices', async (_req, res) => {
+  const mapInvoice = invoice => ({
+    id: invoice.id,
+    number: invoice.invoice_number || invoice.invoiceNumber || invoice.number || invoice.id,
+    amount: Number(invoice.amount || 0),
+    status: invoice.status === 'paid' ? 'paid' : invoice.status === 'overdue' ? 'overdue' : 'pending',
+    dueDate: invoice.due_date || invoice.dueDate || null,
+    issuedDate: invoice.issue_date || invoice.issueDate || invoice.created_at || invoice.createdAt || null,
+  });
+
+  if (!pool) return res.json(invoices.map(mapInvoice));
+
+  try {
+    const result = await pool.query('SELECT * FROM invoices ORDER BY created_at DESC');
+    res.json(result.rows.map(mapInvoice));
+  } catch {
+    res.json(invoices.map(mapInvoice));
+  }
 });
 
 // Conversations/messages for UI
