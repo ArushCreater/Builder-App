@@ -3606,14 +3606,14 @@ app.post('/api/projects/:id/doc-pages/:pageId/share', async (req, res) => {
   if (!pool) return res.status(503).json({ message: 'DB not available' });
   try {
     const { rows } = await pool.query(
-      'SELECT share_token FROM project_doc_pages WHERE id = $1 AND project_id = $2',
+      'SELECT share_token FROM project_doc_pages WHERE id::text = $1 AND project_id = $2',
       [req.params.pageId, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ message: 'Page not found' });
     let token = rows[0].share_token;
     if (!token) {
       token = randomUUID();
-      await pool.query('UPDATE project_doc_pages SET share_token = $1 WHERE id = $2', [token, req.params.pageId]);
+      await pool.query('UPDATE project_doc_pages SET share_token = $1 WHERE id::text = $2', [token, req.params.pageId]);
     }
     res.json({ token });
   } catch (err) {
