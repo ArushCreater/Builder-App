@@ -91,6 +91,7 @@ export function TasksPage() {
     projectName: string;
     projectId?: string;
     dueDate: string;
+    reminderEmail: string;
     createExpense: boolean;
     expenseAmount: string;
     expenseCategory: string;
@@ -104,6 +105,7 @@ export function TasksPage() {
     projectName: '',
     projectId: undefined,
     dueDate: '',
+    reminderEmail: '',
     createExpense: false,
     expenseAmount: '',
     expenseCategory: 'Labor',
@@ -180,6 +182,7 @@ export function TasksPage() {
         projectName: '',
         projectId: undefined,
         dueDate: '',
+        reminderEmail: '',
         createExpense: false,
         expenseAmount: '',
         expenseCategory: 'Labor',
@@ -240,6 +243,7 @@ export function TasksPage() {
       projectId: formData.projectId,
       projectName: formData.projectName,
       dueDate: formData.dueDate,
+      reminderEmail: formData.reminderEmail,
       completed: false,
       createExpense: formData.createExpense,
       expense: formData.createExpense
@@ -403,6 +407,22 @@ export function TasksPage() {
                       onChange={handleChange}
                     />
                   </div>
+                </div>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-2">
+                  <Label htmlFor="reminderEmail" className="flex items-center gap-1.5 text-amber-900 text-sm font-semibold">
+                    <span>⏰</span> Reminder email (optional)
+                  </Label>
+                  <Input
+                    id="reminderEmail"
+                    name="reminderEmail"
+                    type="email"
+                    value={formData.reminderEmail}
+                    onChange={handleChange}
+                    placeholder="someone@example.com"
+                    className="bg-white"
+                  />
+                  <p className="text-xs text-amber-700">A branded reminder with a gantt snapshot will be sent to this email 24 hours before the due date.</p>
                 </div>
 
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">

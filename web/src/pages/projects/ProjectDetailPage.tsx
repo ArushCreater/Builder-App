@@ -209,6 +209,9 @@ export function ProjectDetailPage() {
   const [docSearch, setDocSearch] = useState('');
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [shareEmails, setShareEmails] = useState<string[]>([]);
+  const [shareEmailInput, setShareEmailInput] = useState('');
 
   const [taskForm, setTaskForm] = useState({
     title: '',
@@ -438,6 +441,45 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
     },
     onError: () => toast({ title: 'Error', description: 'Could not reset approval', variant: 'destructive' }),
   });
+
+  const shareEmailMutation = useMutation({
+    mutationFn: (payload: { pageId: string; emails: string[] }) =>
+      apiClient.post<{ token: string; results: Array<{ to: string; ok: boolean; error?: string }> }>(
+        `/projects/${id}/doc-pages/${payload.pageId}/share-email`,
+        { emails: payload.emails }
+      ),
+    onSuccess: (data) => {
+      const failed = (data.results || []).filter(r => !r.ok);
+      if (failed.length) {
+        toast({
+          title: failed.length === data.results.length ? 'Failed to send' : 'Sent with errors',
+          description: failed.map(f => `${f.to}: ${f.error}`).join('; '),
+          variant: 'destructive',
+        });
+      } else {
+        toast({ title: 'Approval requests sent', description: `Sent to ${data.results.length} recipient${data.results.length === 1 ? '' : 's'}.` });
+        setIsShareDialogOpen(false);
+        setShareEmails([]);
+        setShareEmailInput('');
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: 'Failed to send', description: err?.message || String(err), variant: 'destructive' });
+    },
+  });
+
+  const addShareEmail = (raw: string) => {
+    const trimmed = raw.trim().replace(/,$/, '');
+    if (!trimmed) return;
+    // very basic validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      toast({ title: 'Invalid email', description: trimmed, variant: 'destructive' });
+      return;
+    }
+    if (shareEmails.includes(trimmed)) return;
+    setShareEmails([...shareEmails, trimmed]);
+    setShareEmailInput('');
+  };
 
   const filteredDocPages = useMemo(() => {
     if (!docSearch) return docPages;
@@ -1792,39 +1834,10 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                       variant="outline"
                       size="sm"
                       className="flex-shrink-0 gap-1.5 text-slate-600"
-                      onClick={async () => {
-                        let url = '';
-                        try {
-                          const data = await apiClient.post<{ token: string }>(
-                            `/projects/${id}/doc-pages/${selectedPage.id}/share`
-                          );
-                          url = `${window.location.origin}/shared/${data.token}`;
-                        } catch (err: any) {
-                          toast({ title: 'Failed to create share link', description: err?.message || String(err), variant: 'destructive' });
-                          return;
-                        }
-                        // Try modern clipboard API, fall back to execCommand
-                        let copied = false;
-                        try {
-                          await navigator.clipboard.writeText(url);
-                          copied = true;
-                        } catch {
-                          try {
-                            const ta = document.createElement('textarea');
-                            ta.value = url;
-                            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
-                            document.body.appendChild(ta);
-                            ta.focus();
-                            ta.select();
-                            copied = document.execCommand('copy');
-                            document.body.removeChild(ta);
-                          } catch {}
-                        }
-                        if (copied) {
-                          toast({ title: 'Link copied!', description: 'Anyone with this link can view the document.' });
-                        } else {
-                          toast({ title: 'Share link ready', description: url, variant: 'default' });
-                        }
+                      onClick={() => {
+                        setShareEmails([]);
+                        setShareEmailInput('');
+                        setIsShareDialogOpen(true);
                       }}
                     >
                       <Share2 className="h-3.5 w-3.5" />
@@ -2127,6 +2140,77 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Share doc via email dialog */}
+      <Dialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Send approval request</DialogTitle>
+            <DialogDescription>
+              Send a branded email asking for client approval of this document. The recipient will get a button to review and approve.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>Recipient emails</Label>
+            <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 min-h-[44px] focus-within:ring-2 focus-within:ring-indigo-200 focus-within:border-indigo-300">
+              {shareEmails.map((email) => (
+                <span key={email} className="inline-flex items-center gap-1 rounded-md bg-indigo-50 text-indigo-700 text-sm font-medium px-2 py-1 border border-indigo-100">
+                  {email}
+                  <button
+                    type="button"
+                    onClick={() => setShareEmails(shareEmails.filter(e => e !== email))}
+                    className="ml-0.5 text-indigo-400 hover:text-indigo-700"
+                    aria-label={`Remove ${email}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                type="email"
+                value={shareEmailInput}
+                onChange={(e) => setShareEmailInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',' || e.key === ' ' || e.key === 'Tab') {
+                    if (shareEmailInput.trim()) {
+                      e.preventDefault();
+                      addShareEmail(shareEmailInput);
+                    }
+                  } else if (e.key === 'Backspace' && !shareEmailInput && shareEmails.length) {
+                    setShareEmails(shareEmails.slice(0, -1));
+                  }
+                }}
+                onBlur={() => { if (shareEmailInput.trim()) addShareEmail(shareEmailInput); }}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  if (/[\s,;]/.test(pasted)) {
+                    e.preventDefault();
+                    pasted.split(/[\s,;]+/).forEach(part => addShareEmail(part));
+                  }
+                }}
+                placeholder={shareEmails.length ? '' : 'Type an email and press Enter'}
+                className="flex-1 min-w-[160px] bg-transparent outline-none text-sm py-1"
+              />
+            </div>
+            <p className="text-xs text-slate-400">Press Enter or comma to add. Paste multiple emails separated by commas or spaces.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsShareDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!shareEmails.length || shareEmailMutation.isPending || !selectedPage}
+              onClick={() => {
+                if (selectedPage) shareEmailMutation.mutate({ pageId: selectedPage.id, emails: shareEmails });
+              }}
+              className="gap-2"
+            >
+              {shareEmailMutation.isPending && (
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              )}
+              {shareEmailMutation.isPending ? 'Sending…' : `Send${shareEmails.length ? ` to ${shareEmails.length}` : ''}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

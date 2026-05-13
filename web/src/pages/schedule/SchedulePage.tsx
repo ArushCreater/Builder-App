@@ -32,6 +32,7 @@ interface ScheduleEvent {
   description: string;
   assignee: string;
   location?: string;
+  reminderEmail?: string | null;
 }
 
 interface ProjectOption {
@@ -113,6 +114,7 @@ export function SchedulePage() {
     assignee: '',
     description: '',
     location: '',
+    reminderEmail: '',
   });
 
   const { data: projectsData } = useQuery({
@@ -163,6 +165,7 @@ export function SchedulePage() {
         assignee: '',
         description: '',
         location: '',
+        reminderEmail: '',
       });
       toast({ title: 'Saved', description: 'Schedule updated' });
     },
@@ -252,6 +255,7 @@ export function SchedulePage() {
       assignee: event.assignee,
       description: event.description,
       location: event.location || '',
+      reminderEmail: event.reminderEmail || '',
     });
     setIsDialogOpen(true);
   };
@@ -576,6 +580,19 @@ export function SchedulePage() {
                         onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                         placeholder="Site or meeting location"
                     />
+                    </div>
+                    <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                    <Label className="flex items-center gap-1.5 text-amber-900">
+                        <span>⏰</span> Reminder email (optional)
+                    </Label>
+                    <Input
+                        type="email"
+                        value={formData.reminderEmail}
+                        onChange={(e) => setFormData({ ...formData, reminderEmail: e.target.value })}
+                        placeholder="someone@example.com"
+                        className="bg-white"
+                    />
+                    <p className="text-xs text-amber-700">A branded reminder with a gantt snapshot will be sent to this email 24 hours before the start date.</p>
                     </div>
                 </div>
                 <DialogFooter>

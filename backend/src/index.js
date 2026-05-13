@@ -8,6 +8,7 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const { sendDocApprovalRequest, sendScheduleReminder, isConfigured: isEmailConfigured } = require('./email');
 
 const app = express();
 const port = process.env.PORT || 8081;
@@ -423,6 +424,10 @@ async function ensureTables() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_project_doc_pages_project ON project_doc_pages(project_id);`).catch(e => console.warn('idx_project_doc_pages_project skipped:', e.message));
     await client.query(`ALTER TABLE project_doc_pages ADD COLUMN IF NOT EXISTS share_token text UNIQUE;`).catch(e => console.warn('share_token column skipped:', e.message));
     await client.query(`ALTER TABLE project_doc_pages ADD COLUMN IF NOT EXISTS client_approved_at timestamptz;`).catch(e => console.warn('client_approved_at column skipped:', e.message));
+    await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS reminder_email text;`).catch(e => console.warn('schedule_events.reminder_email skipped:', e.message));
+    await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz;`).catch(e => console.warn('schedule_events.reminder_sent_at skipped:', e.message));
+    await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_email text;`).catch(e => console.warn('tasks.reminder_email skipped:', e.message));
+    await client.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz;`).catch(e => console.warn('tasks.reminder_sent_at skipped:', e.message));
     await client.query(`ALTER TABLE schedule_events ADD COLUMN IF NOT EXISTS task_id text;`).catch(e => console.warn('task_id column skipped:', e.message));
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_events_task_id ON schedule_events(task_id);`).catch(e => console.warn('idx_schedule_events_task_id skipped:', e.message));
 
@@ -2229,6 +2234,7 @@ app.get('/api/tasks', (req, res) => {
           projectName: row.project_name,
           dueDate: row.due_date,
           completed: !!row.completed,
+          reminderEmail: row.reminder_email || null,
         })),
       })
     )
@@ -2295,6 +2301,7 @@ app.post('/api/tasks', async (req, res) => {
     projectId: body.projectId,
     dueDate: body.dueDate || '',
     completed: !!body.completed,
+    reminderEmail: (body.reminderEmail || '').trim() || null,
   };
 
   if (!pool) {
@@ -2324,8 +2331,8 @@ app.post('/api/tasks', async (req, res) => {
 
   pool
     .query(
-      `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date, completed)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date, completed, reminder_email)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         task.id,
         task.title,
@@ -2337,6 +2344,7 @@ app.post('/api/tasks', async (req, res) => {
         task.projectName,
         task.dueDate || null,
         task.completed,
+        task.reminderEmail,
       ]
     )
     .then(async result => {
@@ -2411,8 +2419,10 @@ app.patch('/api/tasks/:id', (req, res) => {
         project_id=COALESCE($7, project_id),
         project_name=COALESCE($8, project_name),
        due_date=COALESCE($9, due_date),
+       reminder_email=CASE WHEN $11::boolean THEN $10 ELSE reminder_email END,
+       reminder_sent_at=CASE WHEN $11::boolean OR $9 IS NOT NULL THEN NULL ELSE reminder_sent_at END,
        updated_at=now()
-      WHERE id=$10
+      WHERE id=$12
       RETURNING *`,
       [
         body.completed,
@@ -2424,6 +2434,8 @@ app.patch('/api/tasks/:id', (req, res) => {
         body.projectId,
         body.projectName,
         body.dueDate,
+        body.reminderEmail !== undefined ? ((body.reminderEmail || '').trim() || null) : null,
+        body.reminderEmail !== undefined,
         req.params.id,
       ]
     )
@@ -3622,6 +3634,39 @@ app.post('/api/projects/:id/doc-pages/:pageId/share', async (req, res) => {
   } catch (err) {
     console.error('share token error', err);
     res.status(500).json({ message: 'Failed to generate share link' });
+  }
+});
+
+// Share a doc page via email — generates token if needed, sends branded approval email
+app.post('/api/projects/:id/doc-pages/:pageId/share-email', async (req, res) => {
+  if (!pool) return res.status(503).json({ message: 'DB not available' });
+  if (!isEmailConfigured()) return res.status(503).json({ message: 'Email service is not configured (RESEND_API_KEY missing)' });
+  const emails = Array.isArray(req.body?.emails) ? req.body.emails.map(e => String(e).trim()).filter(Boolean) : [];
+  if (!emails.length) return res.status(400).json({ message: 'At least one recipient email is required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.title, p.share_token, pr.name AS project_name
+       FROM project_doc_pages p
+       LEFT JOIN projects pr ON pr.id::text = p.project_id
+       WHERE p.id::text = $1 AND p.project_id = $2`,
+      [req.params.pageId, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Page not found' });
+    let token = rows[0].share_token;
+    if (!token) {
+      token = randomUUID();
+      await pool.query('UPDATE project_doc_pages SET share_token = $1 WHERE id::text = $2', [token, req.params.pageId]);
+    }
+    const results = await sendDocApprovalRequest({
+      emails,
+      projectName: rows[0].project_name || '',
+      docTitle: rows[0].title || 'Document',
+      shareToken: token,
+    });
+    res.json({ token, results });
+  } catch (err) {
+    console.error('share-email error', err);
+    res.status(500).json({ message: err?.message || 'Failed to send approval email' });
   }
 });
 
@@ -5035,6 +5080,7 @@ app.get('/api/schedule/events', (req, res) => {
           description: row.description,
           location: row.location,
           taskId: row.task_id || null,
+          reminderEmail: row.reminder_email || null,
         })),
       })
     )
@@ -5057,6 +5103,7 @@ app.post('/api/schedule/events', (req, res) => {
     assignee: body.assignee || '',
     description: body.description || '',
     location: body.location || '',
+    reminderEmail: (body.reminderEmail || '').trim() || null,
   };
   if (!pool) {
     scheduleEvents.push(event);
@@ -5097,8 +5144,8 @@ app.post('/api/schedule/events', (req, res) => {
   }
   pool
     .query(
-      `INSERT INTO schedule_events (id, title, project_id, project_name, type, start_date, end_date, assignee, description, location, task_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      `INSERT INTO schedule_events (id, title, project_id, project_name, type, start_date, end_date, assignee, description, location, task_id, reminder_email)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         event.id,
         event.title,
@@ -5111,6 +5158,7 @@ app.post('/api/schedule/events', (req, res) => {
         event.description,
         event.location,
         event.type === 'task' ? event.id : null,
+        event.reminderEmail,
       ]
     )
     .then(result => {
@@ -5183,8 +5231,8 @@ app.put('/api/schedule/events/:id', (req, res) => {
       return pool
         .query(
           `UPDATE schedule_events SET
-             title=$1, project_id=$2, project_name=$3, type=$4, start_date=$5, end_date=$6, assignee=$7, description=$8, location=$9, updated_at=now()
-           WHERE id=$10
+             title=$1, project_id=$2, project_name=$3, type=$4, start_date=$5, end_date=$6, assignee=$7, description=$8, location=$9, reminder_email=$10, reminder_sent_at=$11, updated_at=now()
+           WHERE id=$12
            RETURNING *`,
           [
             body.title ?? current.title,
@@ -5196,6 +5244,11 @@ app.put('/api/schedule/events/:id', (req, res) => {
             body.assignee ?? current.assignee,
             body.description ?? current.description,
             body.location ?? current.location,
+            body.reminderEmail !== undefined ? ((body.reminderEmail || '').trim() || null) : current.reminder_email,
+            // Reset reminder_sent_at if email or date changed so a new reminder is sent
+            (body.reminderEmail !== undefined && body.reminderEmail !== current.reminder_email) ||
+              (body.startDate !== undefined && body.startDate !== current.start_date)
+              ? null : current.reminder_sent_at,
             req.params.id,
           ]
         )
@@ -5612,6 +5665,72 @@ app.use((_req, res) => {
   res.status(404).json({ message: 'Not found' });
 });
 
+// ── Reminder worker: emails 24h before scheduled events / task due dates ─────
+async function runReminderSweep() {
+  if (!pool || !isEmailConfigured()) return;
+  try {
+    // Schedule events whose start is between now and now+24h, with reminder_email set and not yet sent
+    const events = await pool.query(
+      `SELECT id, title, project_name, start_date, end_date, assignee, description, location, reminder_email
+       FROM schedule_events
+       WHERE reminder_email IS NOT NULL
+         AND reminder_sent_at IS NULL
+         AND start_date IS NOT NULL
+         AND start_date::timestamptz <= now() + interval '24 hours'
+         AND start_date::timestamptz > now() - interval '1 hour'`
+    );
+    for (const row of events.rows) {
+      try {
+        await sendScheduleReminder({
+          to: row.reminder_email,
+          title: row.title,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          projectName: row.project_name,
+          assignee: row.assignee,
+          description: row.description,
+          location: row.location,
+        });
+        await pool.query('UPDATE schedule_events SET reminder_sent_at = now() WHERE id = $1', [row.id]);
+        console.log('Sent schedule reminder to', row.reminder_email, 'for', row.title);
+      } catch (err) {
+        console.error('Reminder send failed (event)', row.id, err?.message || err);
+      }
+    }
+
+    // Tasks: same logic, but use due_date
+    const tasksRes = await pool.query(
+      `SELECT id, title, project_name, due_date, assignee, description, reminder_email
+       FROM tasks
+       WHERE reminder_email IS NOT NULL
+         AND reminder_sent_at IS NULL
+         AND due_date IS NOT NULL
+         AND due_date::timestamptz <= now() + interval '24 hours'
+         AND due_date::timestamptz > now() - interval '1 hour'`
+    );
+    for (const row of tasksRes.rows) {
+      try {
+        await sendScheduleReminder({
+          to: row.reminder_email,
+          title: row.title,
+          startDate: row.due_date,
+          endDate: row.due_date,
+          projectName: row.project_name,
+          assignee: row.assignee,
+          description: row.description,
+          location: '',
+        });
+        await pool.query('UPDATE tasks SET reminder_sent_at = now() WHERE id = $1', [row.id]);
+        console.log('Sent task reminder to', row.reminder_email, 'for', row.title);
+      } catch (err) {
+        console.error('Reminder send failed (task)', row.id, err?.message || err);
+      }
+    }
+  } catch (err) {
+    console.error('Reminder sweep failed', err?.message || err);
+  }
+}
+
 ensureTables()
   .catch(err => {
     // eslint-disable-next-line no-console
@@ -5622,4 +5741,12 @@ ensureTables()
       // eslint-disable-next-line no-console
       console.log(`API listening on port ${port}`);
     });
+    // Sweep for reminders every 5 minutes
+    if (isEmailConfigured()) {
+      setInterval(runReminderSweep, 5 * 60 * 1000);
+      setTimeout(runReminderSweep, 30_000); // also run shortly after startup
+      console.log('Reminder worker enabled (every 5 minutes)');
+    } else {
+      console.log('Reminder worker disabled — RESEND_API_KEY not set');
+    }
   });
