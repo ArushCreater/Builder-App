@@ -2195,7 +2195,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                   }
                 }}
                 placeholder={shareEmails.length ? '' : 'Type an email and press Enter'}
-                className="flex-1 min-w-[160px] bg-transparent outline-none text-sm py-1"
+                className="flex-1 min-w-[160px] bg-transparent outline-none text-sm text-slate-900 placeholder:text-slate-400 py-1"
               />
             </div>
             <p className="text-xs text-slate-400">Press Enter or comma to add. Paste multiple emails separated by commas or spaces.</p>
