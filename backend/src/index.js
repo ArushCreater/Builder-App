@@ -20,12 +20,20 @@ const FILES_BUCKET = process.env.FILES_BUCKET || process.env.FILES_BUCKET_NAME |
 
 let pool;
 if (dbUrl) {
+  // Supabase session-mode pooler caps concurrent clients at ~15. We keep pool
+  // size well below that so two backend instances (e.g. during a deploy
+  // rollover) can coexist without hitting "max clients reached".
+  // For more headroom, switch DATABASE_URL to Supabase's transaction-mode
+  // pooler (port 6543) which lifts the limit dramatically.
   pool = new Pool({
     connectionString: dbUrl,
     ssl: { rejectUnauthorized: false },
-    max: 10,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    max: Number(process.env.PG_POOL_MAX) || 5,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 8_000,
+  });
+  pool.on('error', (err) => {
+    console.error('pg pool error (idle client)', err?.message || err);
   });
 }
 
