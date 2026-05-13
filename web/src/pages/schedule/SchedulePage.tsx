@@ -13,6 +13,7 @@ import {
 } from '../../components/ui/select';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
+import { EmailAutocompleteInput } from '../../components/EmailAutocompleteInput';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
 import { Calendar as CalendarIcon, List, Plus, Clock3, MapPin, GanttChartSquare, Trash2, Edit, ChevronLeft, ChevronRight, Search, User, ZoomIn, ZoomOut, X } from 'lucide-react';
@@ -585,14 +586,13 @@ export function SchedulePage() {
                     <Label className="flex items-center gap-1.5 text-amber-900">
                         <span>⏰</span> Reminder email (optional)
                     </Label>
-                    <Input
-                        type="email"
+                    <EmailAutocompleteInput
                         value={formData.reminderEmail}
-                        onChange={(e) => setFormData({ ...formData, reminderEmail: e.target.value })}
+                        onChange={(v) => setFormData({ ...formData, reminderEmail: v })}
                         placeholder="someone@example.com"
-                        className="bg-white"
+                        inputClassName="bg-white"
                     />
-                    <p className="text-xs text-amber-700">A branded reminder with a gantt snapshot will be sent to this email 24 hours before the start date.</p>
+                    <p className="text-xs text-amber-700">Start typing — matching contacts will be suggested. A branded reminder with a gantt snapshot will be sent 24 hours before the start date.</p>
                     </div>
                 </div>
                 <DialogFooter>

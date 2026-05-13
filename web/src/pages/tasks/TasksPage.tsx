@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { EmailAutocompleteInput } from '../../components/EmailAutocompleteInput';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import {
   Dialog,
@@ -413,16 +414,15 @@ export function TasksPage() {
                   <Label htmlFor="reminderEmail" className="flex items-center gap-1.5 text-amber-900 text-sm font-semibold">
                     <span>⏰</span> Reminder email (optional)
                   </Label>
-                  <Input
+                  <EmailAutocompleteInput
                     id="reminderEmail"
                     name="reminderEmail"
-                    type="email"
                     value={formData.reminderEmail}
-                    onChange={handleChange}
+                    onChange={(v) => setFormData({ ...formData, reminderEmail: v })}
                     placeholder="someone@example.com"
-                    className="bg-white"
+                    inputClassName="bg-white"
                   />
-                  <p className="text-xs text-amber-700">A branded reminder with a gantt snapshot will be sent to this email 24 hours before the due date.</p>
+                  <p className="text-xs text-amber-700">Start typing — matching contacts will be suggested. A branded reminder with a gantt snapshot will be sent 24 hours before the due date.</p>
                 </div>
 
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">

@@ -50,6 +50,7 @@ import { formatDate, formatCurrency } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { RichDocEditor } from '../../components/RichDocEditor';
+import { useContactEmailSuggestion } from '../../hooks/useContactEmailSuggestion';
 
 interface Project {
   id: string;
@@ -468,6 +469,8 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
       toast({ title: 'Failed to send', description: err?.message || String(err), variant: 'destructive' });
     },
   });
+
+  const shareEmailSuggestion = useContactEmailSuggestion(shareEmailInput);
 
   const addShareEmail = (raw: string) => {
     const trimmed = raw.trim().replace(/,$/, '');
@@ -2172,33 +2175,54 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
                   </button>
                 </span>
               ))}
-              <input
-                type="email"
-                value={shareEmailInput}
-                onChange={(e) => setShareEmailInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ',' || e.key === ' ' || e.key === 'Tab') {
-                    if (shareEmailInput.trim()) {
+              <span className="relative flex-1 min-w-[160px]">
+                {shareEmailSuggestion && shareEmailInput && (
+                  <span className="pointer-events-none absolute inset-0 flex items-center text-sm whitespace-pre overflow-hidden py-1">
+                    <span className="invisible">{shareEmailInput}</span>
+                    <span className="text-slate-400 select-none">{shareEmailSuggestion.slice(shareEmailInput.length)}</span>
+                  </span>
+                )}
+                <input
+                  type="email"
+                  value={shareEmailInput}
+                  onChange={(e) => setShareEmailInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+                      if (shareEmailSuggestion) {
+                        e.preventDefault();
+                        addShareEmail(shareEmailSuggestion);
+                      } else if (shareEmailInput.trim()) {
+                        e.preventDefault();
+                        addShareEmail(shareEmailInput);
+                      }
+                    } else if (e.key === ' ' && shareEmailInput.trim()) {
+                      // space-to-commit; suggestion takes priority too
                       e.preventDefault();
-                      addShareEmail(shareEmailInput);
+                      addShareEmail(shareEmailSuggestion || shareEmailInput);
+                    } else if (e.key === 'ArrowRight' && shareEmailSuggestion) {
+                      const el = e.currentTarget;
+                      if (el.selectionStart === shareEmailInput.length && el.selectionEnd === shareEmailInput.length) {
+                        e.preventDefault();
+                        setShareEmailInput(shareEmailSuggestion);
+                      }
+                    } else if (e.key === 'Backspace' && !shareEmailInput && shareEmails.length) {
+                      setShareEmails(shareEmails.slice(0, -1));
                     }
-                  } else if (e.key === 'Backspace' && !shareEmailInput && shareEmails.length) {
-                    setShareEmails(shareEmails.slice(0, -1));
-                  }
-                }}
-                onBlur={() => { if (shareEmailInput.trim()) addShareEmail(shareEmailInput); }}
-                onPaste={(e) => {
-                  const pasted = e.clipboardData.getData('text');
-                  if (/[\s,;]/.test(pasted)) {
-                    e.preventDefault();
-                    pasted.split(/[\s,;]+/).forEach(part => addShareEmail(part));
-                  }
-                }}
-                placeholder={shareEmails.length ? '' : 'Type an email and press Enter'}
-                className="flex-1 min-w-[160px] bg-transparent outline-none text-sm text-slate-900 placeholder:text-slate-400 py-1"
-              />
+                  }}
+                  onBlur={() => { if (shareEmailInput.trim()) addShareEmail(shareEmailSuggestion || shareEmailInput); }}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData.getData('text');
+                    if (/[\s,;]/.test(pasted)) {
+                      e.preventDefault();
+                      pasted.split(/[\s,;]+/).forEach(part => addShareEmail(part));
+                    }
+                  }}
+                  placeholder={shareEmails.length ? '' : 'Type an email and press Enter'}
+                  className="relative block w-full bg-transparent outline-none text-sm text-slate-900 placeholder:text-slate-400 py-1"
+                />
+              </span>
             </div>
-            <p className="text-xs text-slate-400">Press Enter or comma to add. Paste multiple emails separated by commas or spaces.</p>
+            <p className="text-xs text-slate-400">Press Enter to add. When a contact matches, the email is shown in grey — press Enter or Tab to accept it.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsShareDialogOpen(false)}>Cancel</Button>
