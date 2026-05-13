@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -22,7 +23,7 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { useToast } from '../../components/ui/use-toast';
-import { Plus, Users, Cloud, Trash2 } from 'lucide-react';
+import { Plus, Users, Cloud, Trash2, ImagePlus, X } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
 interface DailyLog {
@@ -68,6 +69,9 @@ export function DailyLogsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formData, setFormData] = useState(emptyForm());
+  const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: logsData, isLoading } = useQuery({
     queryKey: ['daily-logs'],
@@ -81,12 +85,59 @@ export function DailyLogsPage() {
   });
   const projects = projectsData?.projects || [];
 
+  const uploadDailyLogPhotos = async (projectName: string, files: File[]) => {
+    if (!files.length) return { uploaded: 0, failed: 0 };
+    const { data } = await supabase.auth.getSession();
+    const authToken = data.session?.access_token;
+    const safeName = (projectName || 'Unassigned').replace(/[\\\/\:\*\?"<>\|]/g, '-').trim() || 'Unassigned';
+    const targetPath = `Images/${safeName}/Daily Logs`;
+    let uploaded = 0; let failed = 0;
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('path', targetPath);
+      try {
+        const res = await fetch('/api/onedrive/upload', {
+          method: 'POST',
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          body: fd,
+        });
+        if (res.ok) uploaded++; else failed++;
+      } catch { failed++; }
+    }
+    return { uploaded, failed };
+  };
+
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => apiClient.post('/daily-logs', data),
+    mutationFn: async (data: Record<string, unknown>) => {
+      const log = await apiClient.post('/daily-logs', data);
+      // Upload pending images to OneDrive under Images/{projectName}/Daily Logs
+      if (pendingImages.length) {
+        setUploadingPhotos(true);
+        try {
+          const result = await uploadDailyLogPhotos(String(data.projectName), pendingImages);
+          if (result.failed > 0) {
+            toast({
+              title: `Uploaded ${result.uploaded}/${pendingImages.length} photos`,
+              description: `${result.failed} failed`,
+              variant: 'destructive',
+            });
+          } else if (result.uploaded > 0) {
+            toast({ title: `Uploaded ${result.uploaded} photo${result.uploaded === 1 ? '' : 's'}` });
+          }
+        } finally {
+          setUploadingPhotos(false);
+        }
+      }
+      return log;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['daily-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['onedrive-browse'] });
+      queryClient.invalidateQueries({ queryKey: ['project-images'] });
       setIsCreateDialogOpen(false);
       setFormData(emptyForm());
+      setPendingImages([]);
       toast({ title: 'Daily log created' });
     },
     onError: (error: any) => {
@@ -135,7 +186,7 @@ export function DailyLogsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Daily Logs</h1>
           <p className="text-gray-500 mt-1">Track daily construction activities</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => { setIsCreateDialogOpen(open); if (!open) { setPendingImages([]); setFormData(emptyForm()); } }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -275,6 +326,64 @@ export function DailyLogsPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <ImagePlus className="h-4 w-4" />
+                    Photos
+                  </Label>
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        setPendingImages(prev => [...prev, ...files]);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs text-slate-500 min-w-0">
+                        {pendingImages.length
+                          ? `${pendingImages.length} photo${pendingImages.length === 1 ? '' : 's'} ready to upload`
+                          : 'Add photos — they get saved to OneDrive under this project\'s Images folder.'}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-shrink-0"
+                      >
+                        <ImagePlus className="h-4 w-4 mr-1.5" /> Add photos
+                      </Button>
+                    </div>
+                    {pendingImages.length > 0 && (
+                      <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {pendingImages.map((f, i) => {
+                          const url = URL.createObjectURL(f);
+                          return (
+                            <div key={`${f.name}-${i}`} className="relative group rounded-md overflow-hidden border border-slate-200 bg-white aspect-square">
+                              <img src={url} alt={f.name} className="w-full h-full object-cover" onLoad={() => URL.revokeObjectURL(url)} />
+                              <button
+                                type="button"
+                                onClick={() => setPendingImages(prev => prev.filter((_, idx) => idx !== i))}
+                                className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5"
+                                aria-label="Remove"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                              <div className="absolute bottom-0 left-0 right-0 px-1.5 py-0.5 bg-gradient-to-t from-black/70 to-transparent text-white text-[10px] truncate">{f.name}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="notes">Additional Notes</Label>
                   <textarea
                     id="notes"
@@ -291,8 +400,8 @@ export function DailyLogsPage() {
                 <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending || !formData.projectId}>
-                  {createMutation.isPending ? 'Creating...' : 'Create Log'}
+                <Button type="submit" disabled={createMutation.isPending || uploadingPhotos || !formData.projectId}>
+                  {uploadingPhotos ? `Uploading ${pendingImages.length} photo${pendingImages.length === 1 ? '' : 's'}...` : createMutation.isPending ? 'Creating...' : 'Create Log'}
                 </Button>
               </DialogFooter>
             </form>

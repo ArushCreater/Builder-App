@@ -44,6 +44,7 @@ import {
   Share2,
   CheckCircle2,
   RefreshCw,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../lib/utils';
 import { useToast } from '../../components/ui/use-toast';
@@ -962,6 +963,7 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
             <TabsTrigger value="daily-logs">Daily Logs ({dailyLogs.length})</TabsTrigger>
             <TabsTrigger value="inspections">Inspections ({inspections.length})</TabsTrigger>
             <TabsTrigger value="budget">Budget</TabsTrigger>
+            <TabsTrigger value="images">Images</TabsTrigger>
             <TabsTrigger value="files">Files ({documents.length})</TabsTrigger>
           </TabsList>
         </div>
@@ -1971,6 +1973,10 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
           </Card>
         </TabsContent>
 
+        <TabsContent value="images" className="space-y-4">
+          <ProjectImagesTab projectName={project?.name || ''} onGoToImages={() => navigate(`/images?path=${encodeURIComponent(project?.name || '')}`)} />
+        </TabsContent>
+
         <TabsContent value="files" className="space-y-4">
           <Card>
             <CardHeader>
@@ -2212,6 +2218,141 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ── Inline sub-component: project images grid (sourced from OneDrive) ──────
+interface OdImage {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  mimeType?: string;
+  webUrl?: string;
+  size?: number;
+}
+
+function ProjectImagesTab({ projectName, onGoToImages }: { projectName: string; onGoToImages: () => void }) {
+  const safeName = projectName.replace(/[\\\/:*?"<>|]/g, '-').trim();
+  const path = `Images/${safeName}`;
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['project-images', safeName],
+    queryFn: () => apiClient.get<{ items: OdImage[] }>(`/onedrive/browse?path=${encodeURIComponent(path)}`),
+    enabled: !!safeName,
+  });
+
+  // Recursively collect images from the project folder + immediate subfolders (one level)
+  const { data: subfolderImages } = useQuery({
+    queryKey: ['project-images-sub', safeName, (data?.items || []).filter(i => i.type === 'folder').map(f => f.name).join(',')],
+    queryFn: async () => {
+      const folders = (data?.items || []).filter(i => i.type === 'folder');
+      const all: OdImage[] = [];
+      for (const folder of folders) {
+        try {
+          const sub = await apiClient.get<{ items: OdImage[] }>(`/onedrive/browse?path=${encodeURIComponent(`${path}/${folder.name}`)}`);
+          for (const item of sub.items || []) {
+            if (item.type === 'file') all.push({ ...item, name: `${folder.name}/${item.name}` });
+          }
+        } catch { /* ignore */ }
+      }
+      return all;
+    },
+    enabled: !!data && (data.items || []).some(i => i.type === 'folder'),
+  });
+
+  const isImg = (it: OdImage) => it.type === 'file' && (it.mimeType?.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?)$/i.test(it.name));
+  const allImages = useMemo(() => {
+    const top = (data?.items || []).filter(isImg);
+    const sub = (subfolderImages || []).filter(isImg);
+    return [...top, ...sub];
+  }, [data, subfolderImages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const img of allImages) {
+        if (thumbs[img.id] || cancelled) continue;
+        try {
+          const t = await apiClient.get<{ url: string | null }>(`/onedrive/thumbnail/${img.id}`);
+          if (!cancelled && t.url) setThumbs(prev => ({ ...prev, [img.id]: t.url! }));
+        } catch { /* ignore */ }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [allImages]);
+
+  const errMsg = (error as any)?.message || '';
+  const oneDriveNotReady = errMsg.includes('OneDrive') || errMsg.includes('not configured') || errMsg.includes('not authorised');
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle>Project Images</CardTitle>
+            <p className="text-sm text-slate-500 mt-1">
+              Images uploaded for this project from the Images page or via Daily Logs.
+            </p>
+          </div>
+          <Button variant="outline" onClick={onGoToImages} className="flex-shrink-0 gap-2">
+            <ImageIcon className="h-4 w-4" />
+            Go to Images Page
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 text-slate-500">
+            <div className="h-6 w-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            <span className="ml-3 text-sm">Loading images…</span>
+          </div>
+        ) : isError && oneDriveNotReady ? (
+          <div className="text-center py-12 text-slate-500">
+            <p className="text-sm">OneDrive isn't connected yet. Go to the Images page to connect it.</p>
+            <Button variant="outline" className="mt-3" onClick={onGoToImages}>Open Images Page</Button>
+          </div>
+        ) : isError ? (
+          <div className="text-center py-12 text-slate-500">
+            <p className="text-sm">No images folder yet for this project.</p>
+            <Button variant="outline" className="mt-3" onClick={onGoToImages}>Open Images Page</Button>
+          </div>
+        ) : allImages.length === 0 ? (
+          <div className="text-center py-12 text-slate-500">
+            <p className="text-sm font-medium">No images yet</p>
+            <p className="text-xs mt-1">Upload from the Images page or add photos to a Daily Log.</p>
+            <Button variant="outline" className="mt-4" onClick={onGoToImages}>Open Images Page</Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {allImages.map((img) => {
+              const src = thumbs[img.id];
+              return (
+                <a
+                  key={img.id}
+                  href={img.webUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:border-indigo-300 hover:shadow-md transition-all"
+                  title={img.name}
+                >
+                  {src ? (
+                    <img src={src} alt={img.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                      <ImageIcon className="h-8 w-8" />
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/70 to-transparent text-white text-[10px] truncate">
+                    {img.name}
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -251,7 +251,11 @@ export function ImagesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [path, setPath] = useState('');
+  // Initial path can come from ?path= so links from other pages can deep-link into a folder
+  const initialPath = typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('path') || '')
+    : '';
+  const [path, setPath] = useState(initialPath);
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
