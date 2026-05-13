@@ -214,6 +214,7 @@ async function ensureTables() {
       );
     `);
     await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS favorite boolean DEFAULT false;`);
+    await client.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS is_client boolean DEFAULT false;`).catch(e => console.warn('contacts.is_client skipped:', e.message));
     await client.query(`
       CREATE TABLE IF NOT EXISTS proposals (
         id uuid PRIMARY KEY,
@@ -2484,7 +2485,8 @@ app.delete('/api/tasks/:id', (req, res) => {
 
 // Contacts
 app.get('/api/contacts', (req, res) => {
-  const { search } = req.query;
+  const { search, type } = req.query;
+  const isClientOnly = String(type || '').toLowerCase() === 'clients';
   if (!pool) {
     let list = [...contacts];
     if (search) {
@@ -2496,6 +2498,7 @@ app.get('/api/contacts', (req, res) => {
           (c.company || '').toLowerCase().includes(q)
       );
     }
+    if (isClientOnly) list = list.filter(c => c.isClient);
     list.sort((a, b) => (a.favorite === b.favorite ? (a.name || '').localeCompare(b.name || '') : a.favorite ? -1 : 1));
     return res.json({ contacts: list });
   }
@@ -2505,6 +2508,9 @@ app.get('/api/contacts', (req, res) => {
   if (search) {
     clauses.push(`(LOWER(name) LIKE $${clauses.length + 1} OR LOWER(email) LIKE $${clauses.length + 1} OR LOWER(company) LIKE $${clauses.length + 1})`);
     values.push(`%${String(search).toLowerCase()}%`);
+  }
+  if (isClientOnly) {
+    clauses.push(`is_client = true`);
   }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
@@ -2522,6 +2528,7 @@ app.get('/api/contacts', (req, res) => {
           address: row.address,
           designation: row.designation,
           favorite: !!row.favorite,
+          isClient: !!row.is_client,
           createdAt: row.created_at,
         })),
       })
@@ -2541,6 +2548,7 @@ app.post('/api/contacts', (req, res) => {
     address: body.address,
     designation: body.designation,
     favorite: !!body.favorite,
+    isClient: !!body.isClient,
     createdAt: new Date().toISOString(),
   };
   if (!pool) {
@@ -2549,11 +2557,14 @@ app.post('/api/contacts', (req, res) => {
   }
   pool
     .query(
-      `INSERT INTO contacts (id, name, phone, email, company, office_number, address, designation, favorite)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [contact.id, contact.name, contact.phone, contact.email, contact.company, contact.officeNumber, contact.address, contact.designation, contact.favorite]
+      `INSERT INTO contacts (id, name, phone, email, company, office_number, address, designation, favorite, is_client)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [contact.id, contact.name, contact.phone, contact.email, contact.company, contact.officeNumber, contact.address, contact.designation, contact.favorite, contact.isClient]
     )
-    .then(result => res.json({ contact: result.rows[0] }))
+    .then(result => {
+      const row = result.rows[0];
+      res.json({ contact: { ...row, isClient: !!row.is_client, officeNumber: row.office_number } });
+    })
     .catch(() => res.json({ contact }));
 });
 
@@ -2571,6 +2582,7 @@ app.put('/api/contacts/:id', (req, res) => {
       address: body.address ?? contact.address,
       designation: body.designation ?? contact.designation,
       favorite: body.favorite ?? contact.favorite,
+      isClient: body.isClient ?? contact.isClient,
     });
     return res.json({ contact });
   }
@@ -2584,14 +2596,15 @@ app.put('/api/contacts/:id', (req, res) => {
               address=COALESCE($6,address),
               designation=COALESCE($7,designation),
               favorite=COALESCE($8,favorite),
+              is_client=COALESCE($9,is_client),
               created_at=created_at
-            WHERE id=$9
+            WHERE id=$10
             RETURNING *`,
-      [body.name, body.phone, body.email, body.company, body.officeNumber, body.address, body.designation, body.favorite, req.params.id])
+      [body.name, body.phone, body.email, body.company, body.officeNumber, body.address, body.designation, body.favorite, body.isClient, req.params.id])
     .then(result => {
       const row = result.rows[0];
       if (!row) return res.status(404).json({ message: 'Not found' });
-      res.json({ contact: row });
+      res.json({ contact: { ...row, isClient: !!row.is_client, officeNumber: row.office_number } });
     })
     .catch(() => res.status(500).json({ message: 'Update failed' }));
 });

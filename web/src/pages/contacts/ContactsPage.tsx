@@ -31,6 +31,7 @@ interface Contact {
   designation?: string;
   createdAt?: string;
   favorite?: boolean;
+  isClient?: boolean;
 }
 
 export function ContactsPage() {
@@ -38,6 +39,7 @@ export function ContactsPage() {
   const { toast } = useToast();
   const [view, setView] = useState<'grid' | 'list'>('list');
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<'all' | 'clients'>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
   const [form, setForm] = useState({
@@ -49,17 +51,23 @@ export function ContactsPage() {
     address: '',
     designation: '',
     favorite: false,
+    isClient: false,
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['contacts', search],
+    queryKey: ['contacts', search, tab],
     queryFn: () => {
-      const params = search ? `?search=${encodeURIComponent(search)}` : '';
+      const qs = new URLSearchParams();
+      if (search) qs.set('search', search);
+      if (tab === 'clients') qs.set('type', 'clients');
+      const params = qs.toString() ? `?${qs.toString()}` : '';
       return apiClient.get<{ contacts: Contact[] }>(`/contacts${params}`);
     },
   });
 
   const contacts = data?.contacts || [];
+  const totalCount = contacts.length;
+  const clientCount = contacts.filter(c => c.isClient).length;
   const favorites = contacts.filter(c => c.favorite);
   const others = contacts.filter(c => !c.favorite).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -73,6 +81,7 @@ export function ContactsPage() {
       address: '',
       designation: '',
       favorite: false,
+      isClient: tab === 'clients', // pre-check when adding from the Clients tab
     });
     setEditing(null);
   };
@@ -133,6 +142,7 @@ export function ContactsPage() {
       address: contact.address || '',
       designation: contact.designation || '',
       favorite: !!contact.favorite,
+      isClient: !!contact.isClient,
     });
     setIsDialogOpen(true);
   };
@@ -368,6 +378,18 @@ export function ContactsPage() {
                     <Label>Address</Label>
                     <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                     </div>
+                    <div className="md:col-span-2">
+                    <label className="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-pointer hover:bg-slate-100 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={form.isClient}
+                        onChange={(e) => setForm({ ...form, isClient: e.target.checked })}
+                        className="h-4 w-4 accent-indigo-600"
+                      />
+                      <span className="text-sm font-medium text-slate-800">Mark as client</span>
+                      <span className="text-xs text-slate-500">— appears under the Clients tab</span>
+                    </label>
+                    </div>
                 </div>
                 <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => { resetForm(); setIsDialogOpen(false); }}>
@@ -384,18 +406,46 @@ export function ContactsPage() {
       </div>
 
       <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="border-b border-slate-100 pb-4">
-          <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+        <CardHeader className="border-b border-slate-100 pb-4 space-y-4">
+          {/* Section tabs */}
+          <div className="flex items-center gap-1 border-b border-slate-200 -mb-4 pb-0">
+            <button
+              type="button"
+              onClick={() => setTab('all')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                tab === 'all'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              All
+              {tab === 'all' && <span className="ml-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 text-[10px] font-semibold rounded-full bg-indigo-100 text-indigo-700 px-1.5">{totalCount}</span>}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('clients')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                tab === 'clients'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Clients
+              {tab === 'clients' && <span className="ml-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 text-[10px] font-semibold rounded-full bg-indigo-100 text-indigo-700 px-1.5">{clientCount}</span>}
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-center pt-2">
             <div className="relative w-full sm:w-96">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Search contacts..."
+                placeholder={tab === 'clients' ? 'Search clients...' : 'Search contacts...'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
               />
             </div>
-            
+
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
               <Button
                 variant={view === 'grid' ? 'secondary' : 'ghost'}
@@ -432,8 +482,14 @@ export function ContactsPage() {
                         <div className="bg-slate-100 p-3 rounded-full mb-3">
                             <Briefcase className="h-6 w-6 text-slate-400" />
                         </div>
-                        <p className="font-medium text-slate-900">No contacts found</p>
-                        <p className="text-sm mt-1">Add a new contact to get started.</p>
+                        <p className="font-medium text-slate-900">
+                          {tab === 'clients' ? 'No clients yet' : 'No contacts found'}
+                        </p>
+                        <p className="text-sm mt-1">
+                          {tab === 'clients'
+                            ? 'Add a contact and check "Mark as client" to see them here.'
+                            : 'Add a new contact to get started.'}
+                        </p>
                     </div>
                 </div>
               ) : (
