@@ -22,7 +22,9 @@ import {
   LogOut,
   Plus,
   Search,
+  Sparkles,
 } from 'lucide-react';
+import AIAssistant from '../components/AIAssistant';
 import { useAuth } from '../hooks/useAuth';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import {
@@ -82,6 +84,7 @@ export function DashboardLayout() {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -223,6 +226,15 @@ export function DashboardLayout() {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => setAiOpen(true)}
+                className="relative inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-indigo-600 to-cyan-500 hover:from-indigo-700 hover:to-cyan-600 text-white text-sm font-semibold px-3.5 py-2 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+                title="Ask the BuilderOS AI Assistant"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span className="hidden sm:inline">AI Assistant</span>
+                <span className="sm:hidden">AI</span>
+              </button>
               <Button variant="outline" className="hidden sm:inline-flex rounded-full border-slate-200 text-slate-900 bg-white hover:bg-slate-100" onClick={() => navigate("/projects")}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Project
@@ -302,6 +314,9 @@ export function DashboardLayout() {
           })}
         </div>
       </nav>
+
+      {/* AI Assistant sidebar (slides in from right) */}
+      <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} />
     </div>
   );
 }

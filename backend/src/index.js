@@ -9,6 +9,7 @@ const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const { sendDocApprovalRequest, sendScheduleReminder, isConfigured: isEmailConfigured } = require('./email');
+const { sendChat: sendAIChat, isConfigured: isAIConfigured } = require('./ai');
 
 const app = express();
 const port = process.env.PORT || 8081;
@@ -3227,6 +3228,23 @@ app.put('/api/settings/notifications', async (req, res) => {
   } catch (err) {
     console.error('PUT notifications settings error', err);
     res.status(500).json({ message: 'Failed to save notification settings' });
+  }
+});
+
+// ── AI assistant chat (Gemini-backed) ───────────────────────────────────────
+app.post('/api/ai/chat', async (req, res) => {
+  if (!isAIConfigured()) {
+    return res.status(503).json({ message: 'AI is not configured (GEMINI_API_KEY missing on server)' });
+  }
+  try {
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    // Trim to last 20 messages to keep prompt tokens sane
+    const trimmed = messages.slice(-20);
+    const reply = await sendAIChat(trimmed);
+    res.json({ reply });
+  } catch (err) {
+    console.error('AI chat error', err?.message || err);
+    res.status(500).json({ message: err?.message || 'AI request failed' });
   }
 });
 
