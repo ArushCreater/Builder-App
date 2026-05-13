@@ -697,11 +697,12 @@ export function TasksPage() {
                                 {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
                               </span>
                             </div>
-                            <div className="mt-2 flex items-center justify-between">
-                              <Progress value={getTaskProgress(task)} className="w-[70%]" />
+                            <div className="mt-3 flex items-center gap-3">
+                              <Progress value={getTaskProgress(task)} className="flex-1 h-2" />
                               <Button
                                 size="sm"
                                 variant="outline"
+                                className="flex-shrink-0"
                                 onClick={() => openTaskDetails(task)}
                               >
                                 View
