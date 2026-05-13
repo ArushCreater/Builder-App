@@ -537,7 +537,7 @@ export default function ExpensesPage() {
             </div>
             {segment === 'project' && (
               <Select value={projectFilter} onValueChange={setProjectFilter}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-full sm:w-[200px]">
                   <SelectValue placeholder="Project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -551,7 +551,7 @@ export default function ExpensesPage() {
               </Select>
             )}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-full sm:w-[170px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>

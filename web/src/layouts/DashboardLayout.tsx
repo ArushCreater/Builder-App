@@ -91,7 +91,7 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col overflow-x-hidden">
       <style>{`
         .dashboard-enter { animation: dashboard-fade-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
         @keyframes dashboard-fade-in {
@@ -201,7 +201,7 @@ export function DashboardLayout() {
       </aside>
 
       {/* Main content */}
-      <div className={cn('flex-1 flex flex-col transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
+      <div className={cn('flex-1 flex flex-col min-w-0 transition-[padding] duration-300', sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72')}>
         {/* Top header */}
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
           <div className="flex flex-wrap items-center justify-between gap-3 h-auto py-3 px-4 sm:px-6 lg:px-8">
@@ -276,7 +276,7 @@ export function DashboardLayout() {
         </header>
 
         {/* Page content */}
-        <main className="py-4 sm:py-6 px-3 sm:px-6 lg:px-10 pb-24 min-h-screen dashboard-enter-main">
+        <main className="py-4 sm:py-6 px-3 sm:px-6 lg:px-10 pb-24 min-h-screen min-w-0 max-w-full overflow-x-hidden dashboard-enter-main">
           <Outlet />
         </main>
       </div>

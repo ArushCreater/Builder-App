@@ -75,7 +75,7 @@ export function AnalyticsPage() {
           <p className="text-gray-500 mt-1">Business insights and performance metrics</p>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-full sm:w-[200px]">
             <SelectValue placeholder="Select time range" />
           </SelectTrigger>
           <SelectContent>

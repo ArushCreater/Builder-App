@@ -427,7 +427,7 @@ export function MaterialsPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Select value={projectFilter} onValueChange={setProjectFilter}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -438,7 +438,7 @@ export function MaterialsPage() {
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[170px]">
+                <SelectTrigger className="w-full sm:w-[170px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
