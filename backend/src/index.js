@@ -3196,6 +3196,40 @@ app.post('/api/shared/:token/approve', async (req, res) => {
   }
 });
 
+// ── Notification settings (saved recipients for schedule/task reminders) ────
+async function getNotificationRecipients() {
+  const raw = await odGetSetting('notification_recipients');
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string' && x.trim()) : [];
+  } catch { return []; }
+}
+
+app.get('/api/settings/notifications', async (_req, res) => {
+  try {
+    const recipients = await getNotificationRecipients();
+    res.json({ recipients });
+  } catch (err) {
+    console.error('GET notifications settings error', err);
+    res.status(500).json({ message: 'Failed to load notification settings' });
+  }
+});
+
+app.put('/api/settings/notifications', async (req, res) => {
+  try {
+    const incoming = Array.isArray(req.body?.recipients) ? req.body.recipients : [];
+    const recipients = [...new Set(
+      incoming.map(e => String(e).trim()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
+    )];
+    await odSetSetting('notification_recipients', JSON.stringify(recipients));
+    res.json({ recipients });
+  } catch (err) {
+    console.error('PUT notifications settings error', err);
+    res.status(500).json({ message: 'Failed to save notification settings' });
+  }
+});
+
 // Builder resets client approval so client can approve again after edits
 app.post('/api/projects/:id/doc-pages/:pageId/request-approval', async (req, res) => {
   if (!pool) return res.status(503).json({ message: 'DB not available' });
@@ -5152,59 +5186,83 @@ app.use((_req, res) => {
 async function runReminderSweep() {
   if (!pool || !isEmailConfigured()) return;
   try {
-    // Schedule events whose start is between now and now+24h, with reminder_email set and not yet sent
+    const savedRecipients = await getNotificationRecipients();
+    const hasSavedRecipients = savedRecipients.length > 0;
+    const recipientsFor = (perItemEmail) => {
+      const set = new Set();
+      if (perItemEmail) set.add(perItemEmail);
+      for (const r of savedRecipients) set.add(r);
+      return [...set];
+    };
+
+    // Schedule events starting within 24h, not yet reminded.
+    // Include rows even with no per-event email if saved recipients exist.
+    const eventsClause = hasSavedRecipients
+      ? `(reminder_email IS NOT NULL OR reminder_email IS NULL)`
+      : `reminder_email IS NOT NULL`;
     const events = await pool.query(
       `SELECT id, title, project_name, start_date, end_date, assignee, description, location, reminder_email
        FROM schedule_events
-       WHERE reminder_email IS NOT NULL
+       WHERE ${eventsClause}
          AND reminder_sent_at IS NULL
          AND start_date IS NOT NULL
          AND start_date::timestamptz <= now() + interval '24 hours'
          AND start_date::timestamptz > now() - interval '1 hour'`
     );
     for (const row of events.rows) {
+      const recipients = recipientsFor(row.reminder_email);
+      if (!recipients.length) continue;
       try {
-        await sendScheduleReminder({
-          to: row.reminder_email,
-          title: row.title,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          projectName: row.project_name,
-          assignee: row.assignee,
-          description: row.description,
-          location: row.location,
-        });
+        for (const to of recipients) {
+          await sendScheduleReminder({
+            to,
+            title: row.title,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            projectName: row.project_name,
+            assignee: row.assignee,
+            description: row.description,
+            location: row.location,
+          });
+        }
         await pool.query('UPDATE schedule_events SET reminder_sent_at = now() WHERE id = $1', [row.id]);
-        console.log('Sent schedule reminder to', row.reminder_email, 'for', row.title);
+        console.log('Sent schedule reminder for', row.title, 'to', recipients.join(', '));
       } catch (err) {
         console.error('Reminder send failed (event)', row.id, err?.message || err);
       }
     }
 
     // Tasks: same logic, but use due_date
+    const tasksClause = hasSavedRecipients
+      ? `(reminder_email IS NOT NULL OR reminder_email IS NULL)`
+      : `reminder_email IS NOT NULL`;
     const tasksRes = await pool.query(
       `SELECT id, title, project_name, due_date, assignee, description, reminder_email
        FROM tasks
-       WHERE reminder_email IS NOT NULL
+       WHERE ${tasksClause}
          AND reminder_sent_at IS NULL
          AND due_date IS NOT NULL
          AND due_date::timestamptz <= now() + interval '24 hours'
          AND due_date::timestamptz > now() - interval '1 hour'`
     );
     for (const row of tasksRes.rows) {
+      const recipients = recipientsFor(row.reminder_email);
+      if (!recipients.length) continue;
       try {
-        await sendScheduleReminder({
-          to: row.reminder_email,
-          title: row.title,
-          startDate: row.due_date,
-          endDate: row.due_date,
-          projectName: row.project_name,
-          assignee: row.assignee,
-          description: row.description,
-          location: '',
-        });
+        for (const to of recipients) {
+          await sendScheduleReminder({
+            to,
+            title: row.title,
+            startDate: row.due_date,
+            endDate: row.due_date,
+            projectName: row.project_name,
+            assignee: row.assignee,
+            description: row.description,
+            location: '',
+          });
+        }
         await pool.query('UPDATE tasks SET reminder_sent_at = now() WHERE id = $1', [row.id]);
-        console.log('Sent task reminder to', row.reminder_email, 'for', row.title);
+        console.log('Sent task reminder for', row.title, 'to', recipients.join(', '));
       } catch (err) {
         console.error('Reminder send failed (task)', row.id, err?.message || err);
       }

@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
+import { apiClient } from '../../lib/api';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Separator } from '../../components/ui/separator';
-import { Switch } from '@radix-ui/react-switch';
 import { useToast } from '../../components/ui/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { getInitials } from '../../lib/utils';
+import { Bell, Mail } from 'lucide-react';
 
 export function SettingsPage() {
   const { user, updateUser } = useAuth();
@@ -82,6 +84,42 @@ export function SettingsPage() {
 
   const handleSavePreferences = () => {
     toast({ title: 'Preferences saved', description: 'Your preferences have been updated' });
+  };
+
+  // ── Notification recipients (saved on backend) ─────────────────────────────
+  const queryClient = useQueryClient();
+  const [recipients, setRecipients] = useState<string[]>([]);
+  const [recipientInput, setRecipientInput] = useState('');
+
+  const { data: notifData, isLoading: notifLoading } = useQuery({
+    queryKey: ['settings-notifications'],
+    queryFn: () => apiClient.get<{ recipients: string[] }>('/settings/notifications'),
+  });
+
+  useEffect(() => {
+    if (notifData?.recipients) setRecipients(notifData.recipients);
+  }, [notifData]);
+
+  const saveNotificationsMutation = useMutation({
+    mutationFn: (list: string[]) => apiClient.put<{ recipients: string[] }>('/settings/notifications', { recipients: list }),
+    onSuccess: (data) => {
+      setRecipients(data.recipients);
+      queryClient.invalidateQueries({ queryKey: ['settings-notifications'] });
+      toast({ title: 'Notification recipients saved' });
+    },
+    onError: (err: any) => toast({ title: 'Error', description: err?.message || 'Could not save', variant: 'destructive' }),
+  });
+
+  const addRecipient = (raw: string) => {
+    const trimmed = raw.trim().replace(/,$/, '');
+    if (!trimmed) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      toast({ title: 'Invalid email', description: trimmed, variant: 'destructive' });
+      return;
+    }
+    if (recipients.includes(trimmed)) return;
+    setRecipients([...recipients, trimmed]);
+    setRecipientInput('');
   };
 
   return (
@@ -232,40 +270,83 @@ export function SettingsPage() {
         <TabsContent value="notifications" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>Manage how you receive notifications</CardDescription>
+              <div className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-indigo-500" />
+                <div>
+                  <CardTitle>Reminder Recipients</CardTitle>
+                  <CardDescription>
+                    Everyone listed here automatically receives the 24-hour reminder for every schedule event and task with a due date.
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Email Notifications</p>
-                  <p className="text-sm text-gray-500">Receive email updates</p>
+              <div>
+                <Label className="mb-2 flex items-center gap-1.5 text-slate-700">
+                  <Mail className="h-4 w-4" /> Email addresses
+                </Label>
+                <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 min-h-[44px] focus-within:ring-2 focus-within:ring-indigo-200 focus-within:border-indigo-300">
+                  {recipients.map((email) => (
+                    <span key={email} className="inline-flex items-center gap-1 rounded-md bg-indigo-50 text-indigo-700 text-sm font-medium px-2 py-1 border border-indigo-100">
+                      {email}
+                      <button
+                        type="button"
+                        onClick={() => setRecipients(recipients.filter(e => e !== email))}
+                        className="ml-0.5 text-indigo-400 hover:text-indigo-700"
+                        aria-label={`Remove ${email}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    type="email"
+                    value={recipientInput}
+                    onChange={(e) => setRecipientInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',' || e.key === ' ' || e.key === 'Tab') {
+                        if (recipientInput.trim()) {
+                          e.preventDefault();
+                          addRecipient(recipientInput);
+                        }
+                      } else if (e.key === 'Backspace' && !recipientInput && recipients.length) {
+                        setRecipients(recipients.slice(0, -1));
+                      }
+                    }}
+                    onBlur={() => { if (recipientInput.trim()) addRecipient(recipientInput); }}
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData.getData('text');
+                      if (/[\s,;]/.test(pasted)) {
+                        e.preventDefault();
+                        pasted.split(/[\s,;]+/).forEach(part => addRecipient(part));
+                      }
+                    }}
+                    placeholder={recipients.length ? '' : 'Type an email and press Enter'}
+                    className="flex-1 min-w-[200px] bg-transparent outline-none text-sm text-slate-900 placeholder:text-slate-400 py-1"
+                    disabled={notifLoading}
+                  />
                 </div>
-                <Switch />
+                <p className="text-xs text-slate-400 mt-2">
+                  Press Enter or comma to add. Backspace deletes the last one. These addresses receive every reminder 24 hours before the event/task starts.
+                </p>
               </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Project Updates</p>
-                  <p className="text-sm text-gray-500">Notifications about project changes</p>
-                </div>
-                <Switch />
+
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">
+                <strong>Tip:</strong> Once saved, you don't need to add a reminder email when creating a schedule event or task — the people listed here get notified automatically. You can still set an additional one-off recipient on individual events if you want.
               </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Task Assignments</p>
-                  <p className="text-sm text-gray-500">Get notified when tasks are assigned</p>
-                </div>
-                <Switch />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Messages</p>
-                  <p className="text-sm text-gray-500">Notifications for new messages</p>
-                </div>
-                <Switch />
+
+              <div className="flex items-center gap-2 pt-2">
+                <Button
+                  onClick={() => saveNotificationsMutation.mutate(recipients)}
+                  disabled={saveNotificationsMutation.isPending || notifLoading}
+                >
+                  {saveNotificationsMutation.isPending ? 'Saving…' : 'Save recipients'}
+                </Button>
+                {notifData && JSON.stringify(notifData.recipients) !== JSON.stringify(recipients) && (
+                  <Button variant="ghost" onClick={() => setRecipients(notifData.recipients || [])}>
+                    Reset
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
