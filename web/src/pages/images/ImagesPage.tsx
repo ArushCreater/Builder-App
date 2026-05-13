@@ -123,9 +123,9 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
       {hasPrev && (
         <button
           onClick={e => { e.stopPropagation(); onNavigate(allImages[idx - 1]); }}
-          className="absolute left-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white transition-all hover:scale-110"
+          className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white transition-all hover:scale-110"
         >
-          <ChevronLeft className="h-6 w-6" />
+          <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
         </button>
       )}
 
@@ -133,15 +133,15 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
       {hasNext && (
         <button
           onClick={e => { e.stopPropagation(); onNavigate(allImages[idx + 1]); }}
-          className="absolute right-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white transition-all hover:scale-110"
+          className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white transition-all hover:scale-110"
         >
-          <ChevronRight className="h-6 w-6" />
+          <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
         </button>
       )}
 
       {/* Image */}
       <div
-        className="flex items-center justify-center px-16 py-16 w-full h-full"
+        className="flex items-center justify-center px-4 py-12 sm:px-16 sm:py-16 w-full h-full"
         onClick={e => e.stopPropagation()}
       >
         {!imgLoaded && !imgError && (
@@ -163,7 +163,7 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
               'max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-opacity duration-300',
               imgLoaded ? 'opacity-100' : 'opacity-0'
             )}
-            style={{ maxHeight: 'calc(100vh - 160px)', maxWidth: 'calc(100vw - 128px)' }}
+            style={{ maxHeight: 'calc(100vh - 220px)', maxWidth: 'calc(100vw - 32px)' }}
             onLoad={() => setImgLoaded(true)}
             onError={() => { setImgLoaded(true); setImgError(true); }}
           />
@@ -172,23 +172,23 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
 
       {/* Bottom info bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 px-6 py-4 flex items-center justify-between"
+        className="absolute bottom-0 left-0 right-0 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3"
         style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%)' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-white font-semibold truncate text-sm">{item.name}</p>
-          <p className="text-white/50 text-xs mt-0.5">
+          <p className="text-white/50 text-xs mt-0.5 truncate">
             {[formatBytes(item.size), formatDate(item.createdAt)].filter(Boolean).join(' · ')}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           {item.webUrl && (
             <a
               href={item.webUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+              className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
               title="Open in OneDrive"
             >
               <ExternalLink className="h-4 w-4" />
@@ -198,7 +198,7 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
             <a
               href={item.webUrl}
               download={item.name}
-              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+              className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
               title="Download"
             >
               <Download className="h-4 w-4" />
@@ -207,7 +207,7 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
           <button
             onClick={() => onDelete(item)}
             disabled={isDeleting}
-            className="h-9 w-9 rounded-full bg-white/10 hover:bg-red-500/60 flex items-center justify-center text-white transition-colors"
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-white/10 hover:bg-red-500/60 flex items-center justify-center text-white transition-colors"
             title="Delete"
           >
             <Trash2 className="h-4 w-4" />
@@ -215,10 +215,10 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
         </div>
       </div>
 
-      {/* Filmstrip */}
+      {/* Filmstrip — scrollable on narrow screens */}
       {allImages.length > 1 && (
         <div
-          className="absolute bottom-20 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-2 rounded-xl"
+          className="absolute bottom-16 sm:bottom-20 left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 flex gap-1.5 px-3 py-2 rounded-xl overflow-x-auto no-scrollbar sm:max-w-[80vw]"
           style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
           onClick={e => e.stopPropagation()}
         >
@@ -227,7 +227,7 @@ function Lightbox({ item, src, allImages, thumbnails, onClose, onNavigate, onDel
               key={img.id}
               onClick={() => onNavigate(img)}
               className={cn(
-                'h-10 w-10 rounded-lg overflow-hidden border-2 transition-all flex-shrink-0',
+                'h-9 w-9 sm:h-10 sm:w-10 rounded-lg overflow-hidden border-2 transition-all flex-shrink-0',
                 img.id === item.id ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'
               )}
             >
@@ -473,20 +473,25 @@ AZURE_CLIENT_SECRET=<your-client-secret>`}
 
       <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Images</h1>
-            <p className="text-gray-500 mt-1">Project photo library — stored in OneDrive</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Images</h1>
+            <p className="text-gray-500 text-sm sm:text-base mt-1">Project photo library — stored in OneDrive</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-1.5" /> Refresh
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={() => refetch()} aria-label="Refresh">
+              <RefreshCw className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowNewFolder(true)}>
-              <Plus className="h-4 w-4 mr-1.5" /> New Folder
+              <Plus className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">New Folder</span>
+              <span className="sm:hidden ml-1">Folder</span>
             </Button>
             <Button size="sm" onClick={() => setUploadDialogOpen(true)}>
-              <Upload className="h-4 w-4 mr-1.5" /> Upload Image
+              <Upload className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Upload Image</span>
+              <span className="sm:hidden ml-1">Upload</span>
             </Button>
           </div>
         </div>
@@ -514,27 +519,29 @@ AZURE_CLIENT_SECRET=<your-client-secret>`}
 
         {/* New folder inline form */}
         {showNewFolder && (
-          <form onSubmit={handleCreateFolder} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <form onSubmit={handleCreateFolder} className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
             <Folder className="h-4 w-4 text-indigo-500 flex-shrink-0" />
             <Input
               autoFocus
               value={newFolderName}
               onChange={e => setNewFolderName(e.target.value)}
               placeholder="Folder name"
-              className="h-8 flex-1 max-w-xs"
+              className="h-8 flex-1 min-w-[140px] sm:max-w-xs"
             />
-            <Button type="submit" size="sm" disabled={createFolderMutation.isPending || !newFolderName.trim()}>
-              {createFolderMutation.isPending ? 'Creating…' : 'Create'}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }}>
-              Cancel
-            </Button>
+            <div className="flex gap-2 ml-auto">
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={createFolderMutation.isPending || !newFolderName.trim()}>
+                {createFolderMutation.isPending ? 'Creating…' : 'Create'}
+              </Button>
+            </div>
           </form>
         )}
 
         {/* Content */}
         {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
             {[...Array(8)].map((_, i) => (
               <div key={i} className="rounded-xl bg-slate-100 aspect-square animate-pulse" />
             ))}
@@ -562,7 +569,7 @@ AZURE_CLIENT_SECRET=<your-client-secret>`}
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
             {displayItems.map(item => {
               const img = isImage(item);
               return (
