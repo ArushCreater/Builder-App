@@ -510,392 +510,17 @@ async function syncTaskToSchedule(task) {
   } catch {}
 }
 
-async function seedDemoData(client) {
-  const ids = {
-    proj1: randomUUID(),
-    proj2: randomUUID(),
-    task1: randomUUID(),
-    task2: randomUUID(),
-    prop1: randomUUID(),
-    prop2: randomUUID(),
-    inv1: randomUUID(),
-    inv2: randomUUID(),
-    mat1: randomUUID(),
-    mat2: randomUUID(),
-    sel1: randomUUID(),
-    sel2: randomUUID(),
-    insp1: randomUUID(),
-    insp2: randomUUID(),
-  };
-
-  // Projects
-  const projCount = await client.query('SELECT count(*)::int AS c FROM projects');
-  if (projCount.rows[0].c === 0) {
-    const demoProjects = [
-      {
-        id: ids.proj1,
-        name: 'Harborview Residences',
-        description: '12-story mixed-use tower with retail podium',
-        type: 'residential',
-        status: 'IN_PROGRESS',
-        address: '1 Ocean Ave',
-        city: 'Sydney',
-        state: 'NSW',
-        zip_code: '2000',
-        start_date: '2024-06-01',
-        end_date: '2025-05-15',
-        estimated_budget: 18500000,
-        actual_cost: 6200000,
-        owner_id: 'seed-owner',
-        progress: 38,
-      },
-      {
-        id: ids.proj2,
-        name: 'Northbridge Logistics Hub',
-        description: 'Distribution center with automated racking',
-        type: 'commercial',
-        status: 'PLANNING',
-        address: '88 Industrial Rd',
-        city: 'Melbourne',
-        state: 'VIC',
-        zip_code: '3000',
-        start_date: '2024-09-01',
-        end_date: '2025-12-20',
-        estimated_budget: 9200000,
-        actual_cost: 1200000,
-        owner_id: 'seed-owner',
-        progress: 12,
-      },
-    ];
-    for (const p of demoProjects) {
-      await client.query(
-        `INSERT INTO projects (id, name, description, type, status, address, city, state, zip_code, start_date, end_date, estimated_budget, actual_cost, owner_id, progress)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-        [
-          p.id,
-          p.name,
-          p.description,
-          p.type,
-          p.status,
-          p.address,
-          p.city,
-          p.state,
-          p.zip_code,
-          p.start_date,
-          p.end_date,
-          p.estimated_budget,
-          p.actual_cost,
-          p.owner_id,
-          p.progress,
-        ]
-      );
-    }
-  }
-
-  // Tasks
-  const taskCount = await client.query('SELECT count(*)::int AS c FROM tasks');
-  if (taskCount.rows[0].c === 0) {
-    const tasksSeed = [
-      {
-        id: ids.task1,
-        title: 'Site prep & utilities',
-        description: 'Trenching and temporary power',
-        status: 'IN_PROGRESS',
-        priority: 'high',
-        assignee: 'Foreman Lee',
-        project_id: ids.proj1,
-        project_name: 'Harborview Residences',
-        due_date: '2024-12-05',
-      },
-      {
-        id: ids.task2,
-        title: 'Core & shell level 4',
-        description: 'Pour slab, set rebar cages',
-        status: 'PLANNING',
-        priority: 'medium',
-        assignee: 'Concrete Crew',
-        project_id: ids.proj1,
-        project_name: 'Harborview Residences',
-        due_date: '2025-01-15',
-      },
-    ];
-    for (const t of tasksSeed) {
-      await client.query(
-        `INSERT INTO tasks (id, title, description, status, priority, assignee, project_id, project_name, due_date)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [
-          t.id,
-          t.title,
-          t.description,
-          t.status,
-          t.priority,
-          t.assignee,
-          t.project_id,
-          t.project_name,
-          t.due_date,
-        ]
-      );
-    }
-  }
-
-  // Proposals
-  const proposalCount = await client.query('SELECT count(*)::int AS c FROM proposals');
-  if (proposalCount.rows[0].c === 0) {
-    await client.query(
-      `INSERT INTO proposals (id, title, client_name, project_id, project_name, amount, status, valid_until, file_url, file_name, file_type)
-       VALUES
-       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
-       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-      [
-        ids.prop1,
-        'Facade & glazing package',
-        'Skyline Glass',
-        ids.proj1,
-        'Harborview Residences',
-        4800000,
-        'sent',
-        '2025-02-01',
-        null,
-        null,
-        null,
-        ids.prop2,
-        'Fire systems and sprinklers',
-        'SafeFlow',
-        ids.proj2,
-        'Northbridge Logistics Hub',
-        725000,
-        'draft',
-        '2025-03-15',
-        null,
-        null,
-        null,
-      ]
-    );
-  }
-
-  // Invoices
-  const invoiceCount = await client.query('SELECT count(*)::int AS c FROM invoices');
-  if (invoiceCount.rows[0].c === 0) {
-    await client.query(
-      `INSERT INTO invoices (id, invoice_number, project_id, project_name, client_name, amount, status, due_date, issue_date, description, type)
-       VALUES
-       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
-       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-      [
-        ids.inv1,
-        'INV-001',
-        ids.proj1,
-        'Harborview Residences',
-        'Acme Developments',
-        320000,
-        'paid',
-        '2024-12-20',
-        '2024-12-01',
-        'Progress claim #3 - structure',
-        'invoice',
-        ids.inv2,
-        'INV-002',
-        ids.proj2,
-        'Northbridge Logistics Hub',
-        'Global Logistics Pty',
-        185000,
-        'unpaid',
-        '2025-01-30',
-        '2025-01-05',
-        'Deposit for racking install',
-        'invoice',
-      ]
-    );
-  }
-
-  // Materials
-  const matCount = await client.query('SELECT count(*)::int AS c FROM materials');
-  if (matCount.rows[0].c === 0) {
-    await client.query(
-      `INSERT INTO materials (id, name, description, quantity, unit, cost_per_unit, total_cost, supplier, project_name, project_id, status)
-       VALUES
-       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
-       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-      [
-        ids.mat1,
-        'Post-tension cables',
-        'PT kits for levels 3-5',
-        45,
-        'ea',
-        950,
-        42750,
-        'CableCo',
-        'Harborview Residences',
-        ids.proj1,
-        'ordered',
-        ids.mat2,
-        'HVAC air handlers',
-        'Rooftop AHUs with VFD',
-        4,
-        'units',
-        22000,
-        88000,
-        'CoolAir',
-        'Northbridge Logistics Hub',
-        ids.proj2,
-        'in-stock',
-      ]
-    );
-  }
-
-  // Selections
-  const selCount = await client.query('SELECT count(*)::int AS c FROM selections');
-  if (selCount.rows[0].c === 0) {
-    await client.query(
-      `INSERT INTO selections (id, category, item, description, choice, cost, status, project_name, project_id, client_name, due_date)
-       VALUES
-       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
-       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-      [
-        ids.sel1,
-        'Lobby finishes',
-        'Flooring',
-        'Large format porcelain tile',
-        'Matte charcoal',
-        145000,
-        'approved',
-        'Harborview Residences',
-        ids.proj1,
-        'Acme Developments',
-        '2025-01-15',
-        ids.sel2,
-        'Warehouse lighting',
-        'High-bay LEDs',
-        'General warehouse illumination',
-        'Neutral white 4000K',
-        82000,
-        'pending',
-        'Northbridge Logistics Hub',
-        ids.proj2,
-        'Global Logistics Pty',
-        '2025-02-10',
-      ]
-    );
-  }
-
-  // Inspections
-  const inspCount = await client.query('SELECT count(*)::int AS c FROM inspections');
-  if (inspCount.rows[0].c === 0) {
-    await client.query(
-      `INSERT INTO inspections (id, title, type, status, date, scheduled_date, project_name, project_id, inspector, notes, completed_date)
-       VALUES
-       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
-       ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-      [
-        ids.insp1,
-        'Framing Inspection L2',
-        'framing',
-        'scheduled',
-        '2025-01-08',
-        '2025-01-08',
-        'Harborview Residences',
-        ids.proj1,
-        'City Inspector',
-        'Check shear walls and PT cables',
-        null,
-        ids.insp2,
-        'Fire system hydro',
-        'fire',
-        'pending',
-        '2025-02-05',
-        '2025-02-05',
-        'Northbridge Logistics Hub',
-        ids.proj2,
-        'SafeFlow',
-        'Witness hydrostatic test',
-        null,
-      ]
-    );
-  }
+async function seedDemoData(_client) {
+  // Demo seeding disabled — new environments start with empty tables.
+  return;
 }
 
 // --- In-memory demo data ---
-const projects = [
-  {
-    id: 'p-1',
-    name: 'Sunrise Apartments',
-    description: '12-unit multifamily build',
-    type: 'residential',
-    status: 'IN_PROGRESS',
-    address: '12 Main St',
-    city: 'Sydney',
-    state: 'NSW',
-    zipCode: '2000',
-    startDate: '2024-01-05',
-    endDate: '2024-08-15',
-    estimatedBudget: 750000,
-    actualCost: 320000,
-    progress: 45,
-    ownerId: 'u-1',
-    createdAt: '2024-01-01',
-    updatedAt: '2024-02-01',
-  },
-  {
-    id: 'p-2',
-    name: 'Downtown Office',
-    description: '5-story steel frame',
-    type: 'commercial',
-    status: 'PLANNING',
-    address: '200 George St',
-    city: 'Sydney',
-    state: 'NSW',
-    zipCode: '2000',
-    startDate: '2024-04-01',
-    endDate: '2025-02-01',
-    estimatedBudget: 1500000,
-    actualCost: 0,
-    progress: 10,
-    ownerId: 'u-2',
-    createdAt: '2024-03-10',
-    updatedAt: '2024-03-10',
-  },
-];
+const projects = [];
 
-const leads = [
-  {
-    id: 'l-1',
-    firstName: 'John',
-    lastName: 'Smith',
-    email: 'john@example.com',
-    phone: '+61 412 345 678',
-    status: 'new',
-    source: 'Website',
-    estimatedValue: 150000,
-    createdAt: '2024-02-01',
-    notes: 'Wants timeline and budget clarity',
-  },
-  {
-    id: 'l-2',
-    firstName: 'Jane',
-    lastName: 'Doe',
-    email: 'jane@example.com',
-    phone: '+61 498 222 333',
-    status: 'contacted',
-    source: 'Referral',
-    estimatedValue: 250000,
-    createdAt: '2024-02-10',
-    notes: 'Requested design options',
-  },
-];
+const leads = [];
 
-const tasks = [
-  {
-    id: 't-1',
-    title: 'Site prep',
-    description: 'Clear and grade site',
-    status: 'todo',
-    priority: 'high',
-    assignee: 'Alex',
-    projectName: 'Sunrise Apartments',
-    dueDate: '2024-04-10',
-    completed: false,
-  },
-];
+const tasks = [];
 
 const users = [
   {
@@ -922,53 +547,9 @@ const users = [
   },
 ];
 
-const materials = [
-  { id: 'm-1', name: 'Concrete', description: 'Ready-mix 25 MPa', quantity: 30, unit: 'm3', costPerUnit: 120, totalCost: 3600, supplier: 'BuildCo', projectName: 'Sunrise Apartments', projectId: 'p-1', status: 'in-stock' },
-  { id: 'm-2', name: 'Steel Rebar', description: 'Grade 500N', quantity: 2, unit: 'ton', costPerUnit: 950, totalCost: 1900, supplier: 'SteelWorks', projectName: 'Downtown Office', projectId: 'p-2', status: 'ordered' },
-];
+const materials = [];
 
-const expenses = [
-  {
-    id: 'exp-1',
-    title: 'Site utilities setup',
-    type: 'project',
-    category: 'Site Services',
-    vendor: 'UtilityCo',
-    amount: 2400,
-    tax: 240,
-    total: 2640,
-    status: 'approved',
-    paymentMethod: 'credit_card',
-    date: '2024-12-01',
-    dueDate: '2024-12-15',
-    projectId: 'p-1',
-    projectName: 'Sunrise Apartments',
-    notes: 'Temporary power & water',
-    receiptUrl: '',
-    receiptName: '',
-    receiptType: '',
-  },
-  {
-    id: 'exp-2',
-    title: 'Office phone line',
-    type: 'non-project',
-    category: 'Operations',
-    vendor: 'Telco',
-    amount: 120,
-    tax: 12,
-    total: 132,
-    status: 'paid',
-    paymentMethod: 'ach',
-    date: '2024-11-22',
-    dueDate: '2024-11-22',
-    projectId: '',
-    projectName: '',
-    notes: 'Monthly plan',
-    receiptUrl: '',
-    receiptName: '',
-    receiptType: '',
-  },
-];
+const expenses = [];
 
 // Expenses
 app.get('/api/expenses', (req, res) => {
@@ -1190,10 +771,7 @@ app.delete('/api/expenses/:id', (req, res) => {
 app.get('/', (_req, res) => res.json({ status: 'ok' }));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-const selections = [
-  { id: 's-1', category: 'Cabinetry', item: 'Kitchen Cabinets', description: 'Shaker style', choice: 'Matte White', cost: 4500, status: 'pending', projectName: 'Sunrise Apartments', projectId: 'p-1', clientName: 'John Smith', dueDate: '2024-05-01' },
-  { id: 's-2', category: 'Flooring', item: 'Flooring', description: 'Engineered timber', choice: 'Oak', cost: 8200, status: 'approved', projectName: 'Downtown Office', projectId: 'p-2', clientName: 'Jane Doe', dueDate: '2024-04-15' },
-];
+const selections = [];
 
 const dailyLogs = [
   { id: 'd-1', projectName: 'Sunrise Apartments', date: '2024-03-01', weather: 'Sunny', temperature: '22C', workPerformed: 'Site prep complete', crewSize: 8, hoursWorked: 8, equipmentUsed: 'Excavator', materialsReceived: 'Gravel', notes: 'Good progress', photos: 0, createdBy: 'Admin' },
@@ -1204,123 +782,23 @@ const projectTasks = {};
 const projectDocuments = {};
 const projectDocPages = {};
 
-const documents = [
-  {
-    id: 'doc-1',
-    name: 'Contract.pdf',
-    type: 'pdf',
-    category: 'contract',
-    size: '2.3 MB',
-    projectName: 'Sunrise Apartments',
-    projectId: 'p-1',
-    uploadedBy: 'Admin User',
-    uploadedAt: '2024-02-01',
-    url: '#',
-  },
-  {
-    id: 'doc-2',
-    name: 'Floorplan.dwg',
-    type: 'dwg',
-    category: 'plans',
-    size: '5.1 MB',
-    projectName: 'Downtown Office',
-    projectId: 'p-2',
-    uploadedBy: 'PM User',
-    uploadedAt: '2024-02-05',
-    url: '#',
-  },
-];
+const documents = [];
 
-const bids = [
-  { id: 'b-1', vendor: 'ABC Electrical', amount: 55000, status: 'submitted', scope: 'Electrical rough-in', projectName: 'Sunrise Apartments', projectId: 'p-1', submittedDate: '2024-03-01', validUntil: '2024-03-20', contact: 'estimator@abcelectrical.com' },
-  { id: 'b-2', vendor: 'Prime Plumbing', amount: 42000, status: 'review', scope: 'Plumbing rough-in', projectName: 'Downtown Office', projectId: 'p-2', submittedDate: '2024-03-02', validUntil: '2024-03-18', contact: 'pm@primeplumbing.com' },
-];
+const bids = [];
 
 const inspections = [];
 
-const equipment = [
-  { id: 'e-1', name: 'Excavator', type: 'heavy', status: 'in_use', location: 'Site A', lastService: '2024-02-10', nextMaintenance: '2024-04-15', projectId: 'p-1', projectName: 'Sunrise Apartments', purchaseDate: '2023-06-01', purchasePrice: 75000 },
-  { id: 'e-2', name: 'Scissor Lift', type: 'lift', status: 'available', location: 'Yard', lastService: '2024-01-20', nextMaintenance: '2024-03-20', purchaseDate: '2023-01-15', purchasePrice: 32000 },
-];
+const equipment = [];
 
 const sold = [];
 
-const contacts = [
-  {
-    id: 'c-1',
-    name: 'Alex Turner',
-    phone: '+61 400 111 222',
-    email: 'alex@turnerco.com',
-    company: 'Turner Co.',
-    officeNumber: '02 8000 1234',
-    address: '12 Market St, Sydney',
-    designation: 'Owner',
-    favorite: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'c-2',
-    name: 'Priya Singh',
-    phone: '+61 412 987 654',
-    email: 'priya@designhub.com',
-    company: 'DesignHub',
-    officeNumber: '03 9600 5555',
-    address: '55 Collins St, Melbourne',
-    designation: 'Architect',
-    favorite: false,
-    createdAt: new Date().toISOString(),
-  },
-];
+const contacts = [];
 
-const messages = [
-  { id: 'msg-1', sender: 'Admin', content: 'Kickoff meeting at 9am tomorrow', timestamp: '2024-03-01T08:00:00Z' },
-  { id: 'msg-2', sender: 'PM', content: 'Materials delivery confirmed for Friday', timestamp: '2024-03-01T10:30:00Z' },
-];
+const messages = [];
 
-const proposals = [
-  {
-    id: 'pr-1',
-    title: 'Electrical Package',
-    clientName: 'Acme Corp',
-    projectName: 'Sunrise Apartments',
-    projectId: 'p-1',
-    amount: 55000,
-    status: 'sent',
-    validUntil: '2024-04-15',
-    createdAt: '2024-03-20',
-  },
-];
+const proposals = [];
 
-const invoices = [
-  {
-    id: 'inv-1',
-    invoiceNumber: 'INV-2024-001',
-    projectId: 'p-1',
-    projectName: 'Sunrise Apartments',
-    clientName: 'John Smith',
-    amount: 45000,
-    status: 'paid',
-    dueDate: '2024-01-15',
-    issueDate: '2024-01-01',
-    description: 'Foundation and framing work',
-    type: 'invoice',
-    createdAt: '2024-01-01T10:00:00Z',
-  },
-  {
-    id: 'inv-2',
-    invoiceNumber: 'INV-2024-002',
-    projectId: 'p-2',
-    projectName: 'Downtown Office',
-    clientName: 'ABC Corporation',
-    amount: 78500,
-    status: 'unpaid',
-    dueDate: '2024-02-28',
-    issueDate: '2024-02-01',
-    description: 'Electrical and plumbing installation',
-    type: 'invoice',
-    createdAt: '2024-02-01T10:00:00Z',
-  },
-];
+const invoices = [];
 
 const scheduleEvents = [
   {
@@ -1349,15 +827,7 @@ const scheduleEvents = [
   },
 ];
 
-const conversations = [
-  {
-    id: 'c-1',
-    participant: { id: 'u-2', name: 'Project Manager', avatar: '' },
-    lastMessage: 'Materials delivery confirmed for Friday',
-    timestamp: '2024-03-01T10:30:00Z',
-    unreadCount: 1,
-  },
-];
+const conversations = [];
 
 const conversationMessages = {
   'c-1': [
