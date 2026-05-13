@@ -9,7 +9,7 @@ const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const { sendDocApprovalRequest, sendScheduleReminder, isConfigured: isEmailConfigured } = require('./email');
-const { sendChat: sendAIChat, isConfigured: isAIConfigured } = require('./ai');
+const { sendChat: sendAIChat, streamChat: streamAIChat, isConfigured: isAIConfigured } = require('./ai');
 
 const app = express();
 const port = process.env.PORT || 8081;
@@ -3246,13 +3246,49 @@ app.post('/api/ai/chat', async (req, res) => {
   }
   try {
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
-    // Trim to last 20 messages to keep prompt tokens sane
     const trimmed = messages.slice(-20);
     const reply = await sendAIChat(trimmed);
     res.json({ reply });
   } catch (err) {
     console.error('AI chat error', err?.message || err);
     res.status(500).json({ message: err?.message || 'AI request failed' });
+  }
+});
+
+// Streaming chat — sends Server-Sent Events as Gemini produces text.
+// Frontend parses `data: {"text":"..."}` chunks and appends to the message.
+app.post('/api/ai/chat/stream', async (req, res) => {
+  if (!isAIConfigured()) {
+    return res.status(503).json({ message: 'AI is not configured (GEMINI_API_KEY missing on server)' });
+  }
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-20) : [];
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
+
+  try {
+    await streamAIChat(
+      messages,
+      (text) => {
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        }
+      },
+      { signal: controller.signal }
+    );
+    if (!res.writableEnded) res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+  } catch (err) {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ error: err?.message || 'AI request failed' })}\n\n`);
+    }
+    console.error('AI stream error', err?.message || err);
+  } finally {
+    if (!res.writableEnded) res.end();
   }
 });
 

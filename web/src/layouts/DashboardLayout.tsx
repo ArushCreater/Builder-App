@@ -228,12 +228,13 @@ export function DashboardLayout() {
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={() => setAiOpen(true)}
-                className="relative inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-indigo-600 to-cyan-500 hover:from-indigo-700 hover:to-cyan-600 text-white text-sm font-semibold px-3.5 py-2 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+                className="group relative h-9 w-9 rounded-full bg-gradient-to-br from-indigo-500 via-violet-500 to-cyan-400 hover:from-indigo-600 hover:via-violet-600 hover:to-cyan-500 text-white flex items-center justify-center shadow-sm hover:shadow-md hover:shadow-indigo-200/60 transition-all hover:-translate-y-0.5 ring-1 ring-white/40"
                 title="Ask the BuilderOS AI Assistant"
+                aria-label="Open AI Assistant"
               >
-                <Sparkles className="h-4 w-4" />
-                <span className="hidden sm:inline">AI Assistant</span>
-                <span className="sm:hidden">AI</span>
+                <Sparkles className="h-4 w-4 drop-shadow-sm" />
+                {/* subtle pulse */}
+                <span className="pointer-events-none absolute inset-0 rounded-full ring-2 ring-indigo-400/50 opacity-0 group-hover:opacity-100 group-hover:animate-ping" />
               </button>
               <Button variant="outline" className="hidden sm:inline-flex rounded-full border-slate-200 text-slate-900 bg-white hover:bg-slate-100" onClick={() => navigate("/projects")}>
                 <Plus className="h-4 w-4 mr-2" />

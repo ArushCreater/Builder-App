@@ -453,45 +453,39 @@ Q: "Where do I see project photos?"
 • Sometimes the user just wants confirmation ("does X exist?") — answer yes/no first, then explain.
 • If the user asks where their data is saved or whether something is private, you can describe the persistence (Postgres / OneDrive / S3) in plain English.`;
 
-async function sendChat(messages) {
-  if (!API_KEY) throw new Error('GEMINI_API_KEY is not configured on the server');
-
-  const contents = (Array.isArray(messages) ? messages : [])
+function buildContents(messages) {
+  return (Array.isArray(messages) ? messages : [])
     .filter((m) => m && typeof m.content === 'string' && m.content.trim())
     .map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: String(m.content) }],
     }));
+}
 
+const GEN_CONFIG = { temperature: 0.7, topP: 0.95, maxOutputTokens: 1024 };
+
+async function sendChat(messages) {
+  if (!API_KEY) throw new Error('GEMINI_API_KEY is not configured on the server');
+  const contents = buildContents(messages);
   if (!contents.length) throw new Error('No messages provided');
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${API_KEY}`;
-
-  const body = {
-    contents,
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    generationConfig: {
-      temperature: 0.7,
-      topP: 0.95,
-      maxOutputTokens: 1024,
-    },
-  };
-
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      contents,
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      generationConfig: GEN_CONFIG,
+    }),
   });
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
     throw new Error(`Gemini API error ${res.status}: ${errText.slice(0, 400)}`);
   }
-
   const data = await res.json();
-  const text =
-    data?.candidates?.[0]?.content?.parts?.map((p) => p?.text || '').join('') ||
-    '';
+  const text = data?.candidates?.[0]?.content?.parts?.map((p) => p?.text || '').join('') || '';
   if (!text) {
     const reason = data?.promptFeedback?.blockReason || 'No content returned';
     throw new Error(`Gemini returned no text (${reason})`);
@@ -499,4 +493,57 @@ async function sendChat(messages) {
   return text.trim();
 }
 
-module.exports = { sendChat, isConfigured };
+/**
+ * Streams text chunks from Gemini, calling onChunk(text) for each piece as
+ * it arrives. Resolves when the stream completes.
+ */
+async function streamChat(messages, onChunk, { signal } = {}) {
+  if (!API_KEY) throw new Error('GEMINI_API_KEY is not configured on the server');
+  const contents = buildContents(messages);
+  if (!contents.length) throw new Error('No messages provided');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:streamGenerateContent?alt=sse&key=${API_KEY}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents,
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      generationConfig: GEN_CONFIG,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Gemini stream error ${response.status}: ${errText.slice(0, 400)}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Gemini SSE chunks are line-delimited; events are separated by blank lines.
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(payload);
+        const text = parsed?.candidates?.[0]?.content?.parts?.map((p) => p?.text || '').join('');
+        if (text) onChunk(text);
+      } catch {
+        // ignore unparseable lines
+      }
+    }
+  }
+}
+
+module.exports = { sendChat, streamChat, isConfigured };
