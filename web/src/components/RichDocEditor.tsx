@@ -56,8 +56,9 @@ const CustomTaskItem = TaskItem.extend({
       });
 
       const wrapper = document.createElement('div');
+      wrapper.className = 'task-checkbox-wrap';
       wrapper.contentEditable = 'false';
-      wrapper.style.cssText = 'flex-shrink:0;display:flex;align-items:center;padding-top:0.28rem;padding-right:0.5rem;cursor:pointer;user-select:none;';
+      wrapper.style.cssText = 'flex:0 0 auto;display:flex;align-items:center;padding-top:0.28rem;padding-right:0.5rem;cursor:pointer;user-select:none;';
 
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -73,7 +74,8 @@ const CustomTaskItem = TaskItem.extend({
       });
 
       const content = document.createElement('div');
-      content.style.cssText = 'flex:1;min-width:0;';
+      content.className = 'task-content';
+      content.style.cssText = 'flex:1 1 0%;min-width:0;';
 
       wrapper.appendChild(checkbox);
       li.appendChild(wrapper);
@@ -165,9 +167,14 @@ const editorCss = `
     display: block;
   }
 
+  /* Checkbox wrapper — shrink to fit, no growing */
+  .ProseMirror ul[data-type="taskList"] li[data-type="taskItem"] > .task-checkbox-wrap {
+    flex: 0 0 auto;
+  }
+
   /* The contentDOM <div> — editable text area */
-  .ProseMirror ul[data-type="taskList"] li[data-type="taskItem"] > div {
-    flex: 1;
+  .ProseMirror ul[data-type="taskList"] li[data-type="taskItem"] > .task-content {
+    flex: 1 1 0%;
     min-width: 0;
   }
 
