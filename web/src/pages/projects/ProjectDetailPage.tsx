@@ -956,13 +956,14 @@ const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="tasks">Tasks ({tasks.length})</TabsTrigger>
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="plan">Plan</TabsTrigger>
+            {/* Hidden for now (logic preserved): */}
+            {/* <TabsTrigger value="plan">Plan</TabsTrigger> */}
             <TabsTrigger value="docs">Docs</TabsTrigger>
             <TabsTrigger value="invoices">Deposits ({invoices.length})</TabsTrigger>
             <TabsTrigger value="project-invoices">Invoices ({projectInvoices.length})</TabsTrigger>
             <TabsTrigger value="expenses">Expenses ({projectExpenses.length})</TabsTrigger>
-            <TabsTrigger value="materials">Materials ({materials.length})</TabsTrigger>
-            <TabsTrigger value="selections">Selections ({selections.length})</TabsTrigger>
+            {/* <TabsTrigger value="materials">Materials ({materials.length})</TabsTrigger> */}
+            {/* <TabsTrigger value="selections">Selections ({selections.length})</TabsTrigger> */}
             <TabsTrigger value="daily-logs">Daily Logs ({dailyLogs.length})</TabsTrigger>
             <TabsTrigger value="inspections">Inspections ({inspections.length})</TabsTrigger>
             <TabsTrigger value="budget">Budget</TabsTrigger>
