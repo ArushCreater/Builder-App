@@ -180,15 +180,15 @@ export function DailyLogsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Daily Logs</h1>
-          <p className="text-gray-500 mt-1">Track daily construction activities</p>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Daily Logs</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">Track daily construction activities</p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={(open) => { setIsCreateDialogOpen(open); if (!open) { setPendingImages([]); setFormData(emptyForm()); } }}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               New Log Entry
             </Button>
@@ -200,7 +200,7 @@ export function DailyLogsPage() {
                 <DialogDescription>Record today's construction activities</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="projectId">Project</Label>
                     <Select
@@ -230,7 +230,7 @@ export function DailyLogsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="weather">Weather</Label>
                     <Select
@@ -273,7 +273,7 @@ export function DailyLogsPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="crewSize">Crew Size</Label>
                     <Input
@@ -343,8 +343,8 @@ export function DailyLogsPage() {
                         if (fileInputRef.current) fileInputRef.current.value = '';
                       }}
                     />
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-xs text-slate-500 min-w-0">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 text-xs text-slate-500">
                         {pendingImages.length
                           ? `${pendingImages.length} photo${pendingImages.length === 1 ? '' : 's'} ready to upload`
                           : 'Add photos — they get saved to OneDrive under this project\'s Images folder.'}
@@ -354,7 +354,7 @@ export function DailyLogsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex-shrink-0"
+                        className="w-full flex-shrink-0 sm:w-auto"
                       >
                         <ImagePlus className="h-4 w-4 mr-1.5" /> Add photos
                       </Button>
@@ -421,18 +421,18 @@ export function DailyLogsPage() {
       ) : (
         <div className="space-y-4">
           {logs.map((log) => (
-            <Card key={log.id}>
+            <Card key={log.id} className="overflow-hidden rounded-2xl sm:rounded-lg">
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <CardTitle className="text-lg">{log.projectName}</CardTitle>
                     <p className="text-sm text-gray-500 mt-1">{formatDate(log.date)}</p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between gap-3 sm:justify-end">
                     {(log.weather || log.temperature) && (
-                      <div className="flex items-center gap-1 text-sm text-gray-500">
+                      <div className="flex min-w-0 items-center gap-1 text-sm text-gray-500">
                         <Cloud className="h-4 w-4" />
-                        {[log.weather, log.temperature].filter(Boolean).join(', ')}
+                        <span className="truncate">{[log.weather, log.temperature].filter(Boolean).join(', ')}</span>
                       </div>
                     )}
                     <Button
@@ -455,15 +455,15 @@ export function DailyLogsPage() {
                   <h4 className="font-medium text-sm mb-1">Work Performed</h4>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{log.workPerformed}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
+                <div className="grid grid-cols-2 gap-3 text-sm sm:gap-4">
+                  <div className="rounded-xl bg-slate-50 p-3 sm:bg-transparent sm:p-0">
                     <div className="flex items-center gap-1 text-gray-500 mb-1">
                       <Users className="h-4 w-4" />
                       <span>Crew</span>
                     </div>
                     <p className="font-medium">{log.crewSize} workers</p>
                   </div>
-                  <div>
+                  <div className="rounded-xl bg-slate-50 p-3 sm:bg-transparent sm:p-0">
                     <p className="text-gray-500 mb-1">Hours Worked</p>
                     <p className="font-medium">{log.hoursWorked} hrs</p>
                   </div>

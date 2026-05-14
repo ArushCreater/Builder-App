@@ -477,16 +477,16 @@ export function SchedulePage() {
   };
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
+    <div className="space-y-4 sm:space-y-6 h-full flex flex-col">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Schedule</h1>
-          <p className="text-slate-500 mt-1">Manage project timelines and resource allocation.</p>
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Schedule</h1>
+          <p className="text-sm sm:text-base text-slate-500 mt-1">Manage project timelines and resource allocation.</p>
         </div>
         <div className="flex items-center gap-2">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-                <Button className="shadow-sm">
+                <Button className="w-full shadow-sm sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Event
                 </Button>
@@ -620,21 +620,21 @@ export function SchedulePage() {
         </div>
       </div>
 
-      <Card className="flex-1 flex flex-col shadow-sm border-slate-200 overflow-hidden">
+      <Card className="flex-1 flex flex-col shadow-sm border-slate-200 overflow-hidden rounded-2xl sm:rounded-lg">
         <CardHeader className="border-b border-slate-100 pb-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">
               <div className="relative w-full sm:w-[220px]">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input 
                     placeholder="Search events..." 
-                    className="pl-8 h-9" 
+                    className="pl-9 sm:h-9"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
               <Select value={selectedProject} onValueChange={setSelectedProject}>
-                <SelectTrigger className="h-9 w-full sm:w-[180px]">
+                <SelectTrigger className="w-full sm:h-9 sm:w-[180px]">
                   <SelectValue placeholder="Project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -647,7 +647,7 @@ export function SchedulePage() {
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="h-9 w-full sm:w-[140px]">
+                <SelectTrigger className="w-full sm:h-9 sm:w-[140px]">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -672,17 +672,17 @@ export function SchedulePage() {
                     </div>
                 )}
                 
-                <Tabs value={view} onValueChange={(v) => setView(v as typeof view)} className="rounded-md bg-slate-100 p-1">
+                <Tabs value={view} onValueChange={(v) => setView(v as typeof view)} className="rounded-xl bg-slate-100 p-1 sm:rounded-md">
                 <TabsList className="grid h-auto w-full grid-cols-3 gap-1 bg-transparent sm:h-8 sm:w-auto sm:flex">
-                    <TabsTrigger value="gantt" className="h-8 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <TabsTrigger value="gantt" className="min-h-10 text-xs px-2 data-[state=active]:bg-white data-[state=active]:shadow-sm sm:h-8 sm:min-h-0 sm:px-3">
                     <GanttChartSquare className="mr-2 h-3.5 w-3.5" />
                     Gantt
                     </TabsTrigger>
-                    <TabsTrigger value="calendar" className="h-8 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <TabsTrigger value="calendar" className="min-h-10 text-xs px-2 data-[state=active]:bg-white data-[state=active]:shadow-sm sm:h-8 sm:min-h-0 sm:px-3">
                     <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                     Calendar
                     </TabsTrigger>
-                    <TabsTrigger value="list" className="h-8 text-xs px-3 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <TabsTrigger value="list" className="min-h-10 text-xs px-2 data-[state=active]:bg-white data-[state=active]:shadow-sm sm:h-8 sm:min-h-0 sm:px-3">
                     <List className="mr-2 h-3.5 w-3.5" />
                     List
                     </TabsTrigger>
@@ -701,9 +701,9 @@ export function SchedulePage() {
               </div>
             </div>
           ) : view === 'list' ? (
-            <div className="p-6 overflow-y-auto h-full space-y-3">
+            <div className="h-full overflow-y-auto bg-slate-50/70 p-3 sm:bg-transparent sm:p-6">
               {filteredEvents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-16 text-center sm:border-0 sm:bg-transparent sm:py-20">
                   <div className="bg-slate-50 p-4 rounded-full mb-4">
                     <CalendarIcon className="h-8 w-8 text-slate-400" />
                   </div>
@@ -716,66 +716,118 @@ export function SchedulePage() {
                   </Button>
                 </div>
               ) : (
-                filteredEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    className="group flex items-center gap-4 p-4 border border-slate-100 rounded-lg hover:border-indigo-100 hover:bg-indigo-50/30 transition-all bg-white shadow-sm"
-                  >
-                    <div className={cn(
-                        "h-12 w-12 rounded-lg flex items-center justify-center shrink-0",
-                        event.type === 'meeting' ? 'bg-emerald-100 text-emerald-600' :
-                        event.type === 'inspection' ? 'bg-amber-100 text-amber-600' :
-                        event.type === 'delivery' ? 'bg-purple-100 text-purple-600' :
-                        'bg-blue-100 text-blue-600'
-                    )}>
-                        {event.type === 'meeting' ? <User className="h-6 w-6" /> :
-                         event.type === 'inspection' ? <Search className="h-6 w-6" /> :
-                         event.type === 'delivery' ? <MapPin className="h-6 w-6" /> :
-                         <Clock3 className="h-6 w-6" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-slate-900 truncate">{event.title}</h3>
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-normal border-slate-200">
-                            {typeBadges[event.type].label}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-slate-500">
-                        <span className="flex items-center gap-1.5 font-medium text-slate-600">
-                           {event.projectName || 'General Task'}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock3 className="h-3 w-3" />
-                          {formatDate(event.startDate)} {event.endDate !== event.startDate && `— ${formatDate(event.endDate)}`}
-                        </span>
-                        {event.assignee && (
-                            <span className="flex items-center gap-1">
-                                <User className="h-3 w-3" />
-                                {event.assignee}
-                            </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-indigo-600" onClick={() => handleEdit(event)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <ConfirmDialog
-                        title="Delete schedule item?"
-                        description="This permanently removes the schedule item. This cannot be undone."
-                        confirmText="Delete"
-                        confirmVariant="destructive"
-                        confirmDisabled={deleteMutation.isPending}
-                        onConfirm={() => deleteMutation.mutate(event.id)}
-                        trigger={
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-red-600">
-                            <Trash2 className="h-4 w-4" />
+                <div className="space-y-3">
+                  {filteredEvents.map((event) => {
+                    const Icon =
+                      event.type === 'meeting' ? User :
+                      event.type === 'inspection' ? Search :
+                      event.type === 'delivery' ? MapPin :
+                      Clock3;
+                    const isRange = event.endDate && event.endDate !== event.startDate;
+
+                    return (
+                      <div
+                        key={event.id}
+                        className="group relative rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-indigo-100 hover:bg-indigo-50/30 sm:rounded-lg"
+                      >
+                        <div className="flex items-start gap-3 sm:gap-4">
+                          <div className={cn(
+                              "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12 sm:rounded-lg",
+                              event.type === 'meeting' ? 'bg-emerald-100 text-emerald-600' :
+                              event.type === 'inspection' ? 'bg-amber-100 text-amber-600' :
+                              event.type === 'delivery' ? 'bg-purple-100 text-purple-600' :
+                              'bg-blue-100 text-blue-600'
+                          )}>
+                            <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
+                          </div>
+
+                          <div className="min-w-0 flex-1 sm:pr-20">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="min-w-0 flex-1 text-base font-semibold leading-snug text-slate-900 sm:text-sm">
+                                {event.title}
+                              </h3>
+                              <Badge variant={typeBadges[event.type].variant} className="h-6 rounded-full px-2 text-[10px] sm:h-5">
+                                {typeBadges[event.type].label}
+                              </Badge>
+                            </div>
+
+                            <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:mt-2 sm:flex sm:flex-wrap sm:items-center sm:gap-x-4 sm:text-xs">
+                              <span className="flex min-w-0 items-center gap-2 font-medium text-slate-700">
+                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
+                                <span className="truncate">{event.projectName || 'General Task'}</span>
+                              </span>
+                              <span className="flex items-center gap-2">
+                                <Clock3 className="h-4 w-4 shrink-0 text-slate-400 sm:h-3 sm:w-3" />
+                                <span>
+                                  {formatDate(event.startDate)}
+                                  {isRange && ` - ${formatDate(event.endDate)}`}
+                                </span>
+                              </span>
+                              {event.assignee && (
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <User className="h-4 w-4 shrink-0 text-slate-400 sm:h-3 sm:w-3" />
+                                  <span className="truncate">{event.assignee}</span>
+                                </span>
+                              )}
+                              {event.location && (
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <MapPin className="h-4 w-4 shrink-0 text-slate-400 sm:h-3 sm:w-3" />
+                                  <span className="truncate">{event.location}</span>
+                                </span>
+                              )}
+                            </div>
+
+                            {event.description && (
+                              <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-slate-500 sm:hidden">
+                                {event.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3 sm:hidden">
+                          <Button size="sm" variant="outline" className="flex-1 sm:flex-none" onClick={() => handleEdit(event)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit
                           </Button>
-                        }
-                      />
-                    </div>
-                  </div>
-                ))
+                          <ConfirmDialog
+                            title="Delete schedule item?"
+                            description="This permanently removes the schedule item. This cannot be undone."
+                            confirmText="Delete"
+                            confirmVariant="destructive"
+                            confirmDisabled={deleteMutation.isPending}
+                            onConfirm={() => deleteMutation.mutate(event.id)}
+                            trigger={
+                              <Button size="sm" variant="outline" className="flex-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 sm:flex-none">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </Button>
+                            }
+                          />
+                        </div>
+
+                        <div className="hidden items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 sm:absolute sm:right-4 sm:top-4 sm:flex">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-indigo-600" onClick={() => handleEdit(event)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <ConfirmDialog
+                            title="Delete schedule item?"
+                            description="This permanently removes the schedule item. This cannot be undone."
+                            confirmText="Delete"
+                            confirmVariant="destructive"
+                            confirmDisabled={deleteMutation.isPending}
+                            onConfirm={() => deleteMutation.mutate(event.id)}
+                            trigger={
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-red-600">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            }
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           ) : view === 'gantt' ? (
@@ -1048,10 +1100,10 @@ export function SchedulePage() {
               )}
             </div>
           ) : (
-            <div className="p-6 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <h2 className="text-xl font-bold text-slate-800">
+            <div className="flex h-full flex-col p-3 sm:p-6">
+              <div className="mb-4 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center justify-between gap-3 sm:justify-start sm:gap-4">
+                  <h2 className="text-lg font-bold text-slate-800 sm:text-xl">
                     {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
                   </h2>
                   <div className="flex items-center bg-white rounded-lg border border-slate-200 p-0.5 shadow-sm">
@@ -1063,21 +1115,22 @@ export function SchedulePage() {
                     </Button>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => { setCurrentMonth(new Date()); setSelectedDate(new Date().toISOString().split('T')[0]); }}>
+                <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => { setCurrentMonth(new Date()); setSelectedDate(new Date().toISOString().split('T')[0]); }}>
                   Today
                 </Button>
               </div>
               
-              <div className="flex flex-col flex-1 gap-6">
-                <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden flex-1 shadow-sm min-h-[400px]">
+              <div className="flex flex-col flex-1 gap-4 sm:gap-6">
+                <div className="grid grid-cols-7 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 shadow-sm sm:rounded-lg">
                     {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-                    <div key={d} className="bg-slate-50 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        {d}
+                    <div key={d} className="bg-slate-50 py-2 text-center text-[11px] font-semibold uppercase text-slate-500 sm:py-3 sm:text-xs">
+                        <span className="sm:hidden">{d[0]}</span>
+                        <span className="hidden sm:inline">{d}</span>
                     </div>
                     ))}
                     
                     {daysInMonth.map((day, idx) => {
-                    if (!day) return <div key={`pad-${idx}`} className="bg-white min-h-[80px]" />;
+                    if (!day) return <div key={`pad-${idx}`} className="min-h-[56px] bg-white sm:min-h-[80px]" />;
                     const dateStr = day.toISOString().split('T')[0];
                     const dayEvents = eventsForDay(dateStr);
                     const isSelected = selectedDate === dateStr;
@@ -1088,14 +1141,14 @@ export function SchedulePage() {
                         key={dateStr}
                         onClick={() => setSelectedDate(dateStr)}
                         className={cn(
-                            "bg-white p-2 min-h-[80px] transition-colors cursor-pointer hover:bg-slate-50 flex flex-col gap-1",
-                            isSelected && "ring-2 ring-indigo-500 ring-inset z-10",
-                            isToday && "bg-indigo-50/30"
+                          "flex min-h-[56px] cursor-pointer flex-col gap-1 bg-white p-1.5 transition-colors hover:bg-slate-50 sm:min-h-[80px] sm:p-2",
+                          isSelected && "ring-2 ring-indigo-500 ring-inset z-10",
+                          isToday && "bg-indigo-50/30"
                         )}
                         >
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="mb-1 flex items-center justify-between">
                             <span className={cn(
-                                "text-sm font-medium h-7 w-7 flex items-center justify-center rounded-full",
+                                "flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium sm:h-7 sm:w-7",
                                 isToday ? "bg-indigo-600 text-white" : "text-slate-700"
                             )}>
                                 {day.getDate()}
@@ -1107,7 +1160,21 @@ export function SchedulePage() {
                             )}
                         </div>
                         
-                        <div className="space-y-1 overflow-y-auto max-h-[60px] custom-scrollbar">
+                        <div className="mt-auto flex gap-0.5 sm:hidden">
+                            {dayEvents.slice(0, 3).map((e) => (
+                                <span
+                                    key={e.id}
+                                    className={cn(
+                                        "h-1.5 w-1.5 rounded-full",
+                                        e.type === 'meeting' ? "bg-emerald-500" :
+                                        e.type === 'inspection' ? "bg-amber-500" :
+                                        e.type === 'delivery' ? "bg-purple-500" :
+                                        "bg-blue-500"
+                                    )}
+                                />
+                            ))}
+                        </div>
+                        <div className="custom-scrollbar hidden max-h-[60px] space-y-1 overflow-y-auto sm:block">
                             {dayEvents.slice(0, 3).map((e) => (
                                 <div 
                                     key={e.id} 
@@ -1130,9 +1197,9 @@ export function SchedulePage() {
                 </div>
 
                 {selectedDate && (
-                    <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 animate-in slide-in-from-top-2 duration-200">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-slate-800">
+                    <div className="animate-in rounded-2xl border border-slate-200 bg-slate-50 p-4 duration-200 slide-in-from-top-2 sm:rounded-lg">
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                            <h3 className="text-base font-semibold text-slate-800 sm:text-lg">
                                 Events on {formatDate(selectedDate)}
                             </h3>
                             <Button variant="ghost" size="sm" onClick={() => setSelectedDate(null)}>
@@ -1149,7 +1216,7 @@ export function SchedulePage() {
                                 {eventsForDay(selectedDate).map((event) => (
                                     <div 
                                         key={event.id}
-                                        className="bg-white p-3 rounded-md border border-slate-200 shadow-sm flex flex-col gap-2 hover:border-indigo-200 transition-colors"
+                                        className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-indigo-200 sm:rounded-md"
                                     >
                                         <div className="flex items-center justify-between">
                                             <span className="font-semibold text-slate-900 truncate">{event.title}</span>

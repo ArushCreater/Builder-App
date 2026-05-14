@@ -140,7 +140,12 @@ export function EquipmentPage() {
   const updateMutation = useMutation({
     mutationFn: (payload: { id: string; data: Partial<Equipment> }) =>
       apiClient.put(`/equipment/${payload.id}`, payload.data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['equipment'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      setIsDialogOpen(false);
+      setEditingId(null);
+    },
+    onError: () => toast({ title: 'Error', description: 'Failed to update equipment', variant: 'destructive' }),
   });
 
   const deleteMutation = useMutation({
@@ -190,15 +195,15 @@ export function EquipmentPage() {
   const maintenance = filtered.filter(e => e.status === 'maintenance').length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Equipment</h1>
-          <p className="text-gray-500 mt-1">Track construction equipment and tools</p>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Equipment</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">Track construction equipment and tools</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               {editingId ? 'Edit Equipment' : 'Add Equipment'}
             </Button>
@@ -209,7 +214,7 @@ export function EquipmentPage() {
                 <DialogTitle>{editingId ? 'Edit Equipment' : 'Add Equipment'}</DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Name</Label>
                     <Input
@@ -228,7 +233,7 @@ export function EquipmentPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Status</Label>
                     <Select
@@ -271,7 +276,7 @@ export function EquipmentPage() {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Location</Label>
                     <Input
@@ -289,7 +294,7 @@ export function EquipmentPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Purchase Date</Label>
                     <Input
@@ -307,7 +312,7 @@ export function EquipmentPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Last Maintenance</Label>
                     <Input
@@ -330,8 +335,14 @@ export function EquipmentPage() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Saving...' : editingId ? 'Save Changes' : 'Add Equipment'}
+                <Button type="submit" disabled={editingId ? updateMutation.isPending : createMutation.isPending}>
+                  {editingId
+                    ? updateMutation.isPending
+                      ? 'Saving...'
+                      : 'Save Changes'
+                    : createMutation.isPending
+                      ? 'Saving...'
+                      : 'Add Equipment'}
                 </Button>
               </DialogFooter>
             </form>
@@ -367,7 +378,7 @@ export function EquipmentPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden rounded-2xl sm:rounded-lg">
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="relative flex-1">
@@ -379,9 +390,9 @@ export function EquipmentPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
               <Select value={projectFilter} onValueChange={setProjectFilter}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -392,7 +403,7 @@ export function EquipmentPage() {
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -412,8 +423,92 @@ export function EquipmentPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="space-y-3 md:hidden">
+                {filtered.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+                    <Hammer className="mx-auto h-8 w-8 text-slate-400" />
+                    <p className="mt-3 text-sm font-medium text-slate-900">No equipment found</p>
+                    <p className="mt-1 text-sm text-slate-500">Try a different search or filter.</p>
+                  </div>
+                ) : (
+                  filtered.map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                          <Hammer className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="truncate text-base font-semibold text-slate-900">{item.name}</h3>
+                              <p className="mt-0.5 text-sm text-slate-500">{item.type}</p>
+                            </div>
+                            <Badge variant={statusColors[item.status as Equipment['status']]} className="shrink-0">
+                              {item.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Value</p>
+                              <p className="mt-1 font-semibold text-slate-900">{formatCurrency(item.purchasePrice)}</p>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Next service</p>
+                              <p className="mt-1 font-semibold text-slate-900">
+                                {item.nextMaintenance ? formatDate(item.nextMaintenance) : '-'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-3 space-y-1 text-sm text-slate-600">
+                            <p className="truncate"><span className="font-medium text-slate-700">Location:</span> {item.location}</p>
+                            <p className="truncate"><span className="font-medium text-slate-700">Assigned:</span> {item.assignedTo || '-'}</p>
+                            <p className="truncate"><span className="font-medium text-slate-700">Project:</span> {item.projectName || '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
+                        <Select
+                          value={item.status}
+                          onValueChange={(value) =>
+                            updateMutation.mutate({ id: item.id, data: { status: value as Equipment['status'] } })
+                          }
+                        >
+                          <SelectTrigger className="col-span-2">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="available">Available</SelectItem>
+                            <SelectItem value="in-use">In Use</SelectItem>
+                            <SelectItem value="maintenance">Maintenance</SelectItem>
+                            <SelectItem value="retired">Retired</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(item)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </Button>
+                        <ConfirmDialog
+                          title="Delete equipment?"
+                          description="This permanently removes the equipment. This cannot be undone."
+                          confirmText="Delete"
+                          confirmVariant="destructive"
+                          confirmDisabled={deleteMutation.isPending}
+                          onConfirm={() => deleteMutation.mutate(item.id)}
+                          trigger={
+                            <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </Button>
+                          }
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
 
+              <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -495,7 +590,8 @@ export function EquipmentPage() {
                 ))}
               </TableBody>
             </Table>
-</div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -504,4 +600,3 @@ export function EquipmentPage() {
 }
 
 export default EquipmentPage;
-

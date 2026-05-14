@@ -311,15 +311,15 @@ export function DocumentsPage() {
   const isBusy = isUploading || uploadMutation.isPending;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Documents</h1>
-          <p className="text-gray-500 mt-1">Organize files by project, folders, and views.</p>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Documents</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">Organize files by project, folders, and views.</p>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-gray-500">Total docs</CardTitle></CardHeader>
           <CardContent>
@@ -341,10 +341,10 @@ export function DocumentsPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden rounded-2xl sm:rounded-lg">
         <CardHeader>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col sm:flex-row gap-3 flex-1">
+            <div className="flex flex-1 flex-col gap-3 sm:flex-row">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input placeholder="Search documents..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
@@ -372,10 +372,10 @@ export function DocumentsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-auto">
-              <TabsList>
-                <TabsTrigger value="folders" className="flex items-center gap-2"><Grid className="h-4 w-4" /> Folders</TabsTrigger>
-                <TabsTrigger value="all" className="flex items-center gap-2"><List className="h-4 w-4" /> All docs</TabsTrigger>
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)} className="w-full sm:w-auto">
+              <TabsList className="grid h-auto w-full grid-cols-2 sm:h-10 sm:w-auto">
+                <TabsTrigger value="folders" className="flex min-h-10 items-center gap-2 sm:min-h-0"><Grid className="h-4 w-4" /> Folders</TabsTrigger>
+                <TabsTrigger value="all" className="flex min-h-10 items-center gap-2 sm:min-h-0"><List className="h-4 w-4" /> All docs</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -412,7 +412,7 @@ export function DocumentsPage() {
                   )}
                 </div>
                 <Separator />
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm text-gray-500">Folder</p>
                     <h3 className="text-lg font-semibold">
@@ -422,10 +422,10 @@ export function DocumentsPage() {
                     </h3>
                   </div>
                   {selectedFolder !== 'all' && (
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:flex">
                       <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
                         <DialogTrigger asChild>
-                          <Button variant="outline">New Folder</Button>
+                          <Button variant="outline" className="w-full sm:w-auto">New Folder</Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-md">
                           <DialogHeader>
@@ -445,7 +445,7 @@ export function DocumentsPage() {
 
                       <Dialog open={isUploadDialogOpen} onOpenChange={(open) => { if (!isBusy) setIsUploadDialogOpen(open); }}>
                         <DialogTrigger asChild>
-                          <Button>
+                          <Button className="w-full sm:w-auto">
                             <Upload className="mr-2 h-4 w-4" />
                             Add file
                           </Button>
@@ -632,68 +632,140 @@ function DocumentsTable({
   deletingId: string | null;
 }) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Category</TableHead>
-          <TableHead>Type</TableHead>
-          <TableHead>Size</TableHead>
-          <TableHead>Project</TableHead>
-          <TableHead>Uploaded By</TableHead>
-          <TableHead>Date</TableHead>
-          <TableHead>Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {documents?.map((doc) => (
-          <TableRow key={doc.id} className={deletingId === doc.id ? 'opacity-50' : ''}>
-            <TableCell className="font-medium">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-gray-400" />
-                {doc.name}
+    <>
+      <div className="space-y-3 md:hidden">
+        {documents.length ? (
+          documents.map((doc) => (
+            <div key={doc.id} className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${deletingId === doc.id ? 'opacity-50' : ''}`}>
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-base font-semibold text-slate-900">{doc.name}</h3>
+                      <p className="mt-0.5 truncate text-sm text-slate-500">
+                        {doc.projectName || projectMap.get(doc.projectId || '') || 'Unassigned'}
+                      </p>
+                    </div>
+                    <Badge variant={categoryColors[doc.category]} className="shrink-0">{doc.category}</Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Type</p>
+                      <p className="mt-1 font-semibold text-slate-900">{doc.type}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Size</p>
+                      <p className="mt-1 font-semibold text-slate-900">{doc.size}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-sm text-slate-600">
+                    <p><span className="font-medium text-slate-700">Uploaded by:</span> {doc.uploadedBy}</p>
+                    <p><span className="font-medium text-slate-700">Date:</span> {formatDate(doc.uploadedAt)}</p>
+                  </div>
+                </div>
               </div>
-            </TableCell>
-            <TableCell>
-              <Badge variant={categoryColors[doc.category]}>{doc.category}</Badge>
-            </TableCell>
-            <TableCell>{doc.type}</TableCell>
-            <TableCell>{doc.size}</TableCell>
-            <TableCell>{doc.projectName || projectMap.get(doc.projectId || '') || '-'}</TableCell>
-            <TableCell>{doc.uploadedBy}</TableCell>
-            <TableCell>{formatDate(doc.uploadedAt)}</TableCell>
-            <TableCell>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => onPreview(doc)}>
-                  <Eye className="h-4 w-4" />
+              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
+                <Button variant="outline" size="sm" onClick={() => onPreview(doc)}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  View
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => onDownload(doc)}>
-                  <Download className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={() => onDownload(doc)}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Save
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                   onClick={() => onDelete(doc)}
                   disabled={!!deletingId}
                 >
                   {deletingId === doc.id
-                    ? <Loader2 className="h-4 w-4 animate-spin text-red-400" />
-                    : <Trash2 className="h-4 w-4 text-red-600" />
+                    ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-red-400" />
+                    : <Trash2 className="mr-2 h-4 w-4" />
                   }
+                  Delete
                 </Button>
               </div>
-            </TableCell>
-          </TableRow>
-        ))}
-        {!documents.length && (
-          <TableRow>
-            <TableCell colSpan={8} className="text-center text-gray-500">
-              No documents found.
-            </TableCell>
-          </TableRow>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+            <FileText className="mx-auto h-8 w-8 text-slate-400" />
+            <p className="mt-3 text-sm font-medium text-slate-900">No documents found</p>
+            <p className="mt-1 text-sm text-slate-500">Upload a file or adjust your filters.</p>
+          </div>
         )}
-      </TableBody>
-    </Table>
+      </div>
+
+      <div className="hidden overflow-x-auto md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Size</TableHead>
+              <TableHead>Project</TableHead>
+              <TableHead>Uploaded By</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {documents?.map((doc) => (
+              <TableRow key={doc.id} className={deletingId === doc.id ? 'opacity-50' : ''}>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-gray-400" />
+                    {doc.name}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={categoryColors[doc.category]}>{doc.category}</Badge>
+                </TableCell>
+                <TableCell>{doc.type}</TableCell>
+                <TableCell>{doc.size}</TableCell>
+                <TableCell>{doc.projectName || projectMap.get(doc.projectId || '') || '-'}</TableCell>
+                <TableCell>{doc.uploadedBy}</TableCell>
+                <TableCell>{formatDate(doc.uploadedAt)}</TableCell>
+                <TableCell>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => onPreview(doc)}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onDownload(doc)}>
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onDelete(doc)}
+                      disabled={!!deletingId}
+                    >
+                      {deletingId === doc.id
+                        ? <Loader2 className="h-4 w-4 animate-spin text-red-400" />
+                        : <Trash2 className="h-4 w-4 text-red-600" />
+                      }
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+            {!documents.length && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-gray-500">
+                  No documents found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 }
 

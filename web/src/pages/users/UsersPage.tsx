@@ -33,7 +33,7 @@ import { Badge } from '../../components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useToast } from '../../components/ui/use-toast';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import { Mail, Phone, Plus, Search, Trash2 } from 'lucide-react';
 import { formatDate, getInitials } from '../../lib/utils';
 
 interface User {
@@ -133,15 +133,15 @@ export function UsersPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Users</h1>
-          <p className="text-gray-500 mt-1">Manage team members and access</p>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Users</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">Manage team members and access</p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               Add User
             </Button>
@@ -153,7 +153,7 @@ export function UsersPage() {
                 <DialogDescription>Create a new user account</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">First Name</Label>
                     <Input
@@ -186,7 +186,7 @@ export function UsersPage() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="role">Role</Label>
                     <Select
@@ -229,7 +229,7 @@ export function UsersPage() {
         </Dialog>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden rounded-2xl sm:rounded-lg">
         <CardHeader>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -247,8 +247,67 @@ export function UsersPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="space-y-3 md:hidden">
+                {users?.length ? (
+                  users.map((user) => (
+                    <div key={user.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-12 w-12 shrink-0">
+                          <AvatarImage src={user.avatar} />
+                          <AvatarFallback>
+                            {getInitials(`${user.firstName} ${user.lastName}`)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="truncate text-base font-semibold text-slate-900">
+                                {user.firstName} {user.lastName}
+                              </h3>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Badge variant={roleColors[user.role]}>{user.role}</Badge>
+                                <Badge variant={user.status === 'active' ? 'success' : 'secondary'}>{user.status}</Badge>
+                              </div>
+                            </div>
+                            <ConfirmDialog
+                              title="Delete user?"
+                              description="This will permanently remove the user. This cannot be undone."
+                              confirmText="Delete"
+                              confirmVariant="destructive"
+                              confirmDisabled={deleteMutation.isPending && deletingId === user.id}
+                              onConfirm={() => { setDeletingId(user.id); deleteMutation.mutate(user.id); }}
+                              trigger={
+                                <Button variant="outline" size="icon" className="shrink-0 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              }
+                            />
+                          </div>
+                          <div className="mt-4 space-y-2 text-sm text-slate-600">
+                            <p className="flex min-w-0 items-center gap-2">
+                              <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className="truncate">{user.email}</span>
+                            </p>
+                            <p className="flex min-w-0 items-center gap-2">
+                              <Phone className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className="truncate">{user.phone || '-'}</span>
+                            </p>
+                            <p><span className="font-medium text-slate-700">Created:</span> {formatDate(user.createdAt)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+                    <p className="text-sm font-medium text-slate-900">No users found</p>
+                    <p className="mt-1 text-sm text-slate-500">Try a different search.</p>
+                  </div>
+                )}
+              </div>
 
+              <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -313,7 +372,8 @@ export function UsersPage() {
                 ))}
               </TableBody>
             </Table>
-</div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

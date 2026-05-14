@@ -215,11 +215,11 @@ export function MaterialsPage() {
   const orderedCount = materials.filter(m => m.status === 'ordered').length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Materials</h1>
-          <p className="text-gray-500 mt-1">Manage construction materials and inventory</p>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Materials</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">Manage construction materials and inventory</p>
         </div>
         <Dialog
           open={isCreateDialogOpen}
@@ -242,7 +242,7 @@ export function MaterialsPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               {editingId ? 'Edit Material' : 'Add Material'}
             </Button>
@@ -274,7 +274,7 @@ export function MaterialsPage() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div className="space-y-2">
                     <Label htmlFor="quantity">Quantity</Label>
                     <Input
@@ -310,7 +310,7 @@ export function MaterialsPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="supplier">Supplier</Label>
                     <Input
@@ -413,7 +413,7 @@ export function MaterialsPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden rounded-2xl sm:rounded-lg">
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="relative flex-1">
@@ -425,7 +425,7 @@ export function MaterialsPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
               <Select value={projectFilter} onValueChange={setProjectFilter}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Project" />
@@ -458,8 +458,92 @@ export function MaterialsPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="space-y-3 md:hidden">
+                {materials.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+                    <Package className="mx-auto h-8 w-8 text-slate-400" />
+                    <p className="mt-3 text-sm font-medium text-slate-900">No materials found</p>
+                    <p className="mt-1 text-sm text-slate-500">Try a different search or filter.</p>
+                  </div>
+                ) : (
+                  materials.map((material) => (
+                    <div key={material.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                          <Package className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="truncate text-base font-semibold text-slate-900">{material.name}</h3>
+                              <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{material.description}</p>
+                            </div>
+                            <Badge variant={statusColors[material.status as Material['status']]} className="shrink-0">
+                              {material.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Quantity</p>
+                              <div className="mt-1 flex items-center gap-1 font-semibold text-slate-900">
+                                {material.status === 'low-stock' && (
+                                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                )}
+                                {material.quantity} {material.unit}
+                              </div>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Total</p>
+                              <p className="mt-1 font-semibold text-slate-900">{formatCurrency(material.totalCost)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 space-y-1 text-sm text-slate-600">
+                            <p className="truncate"><span className="font-medium text-slate-700">Supplier:</span> {material.supplier}</p>
+                            <p className="truncate"><span className="font-medium text-slate-700">Project:</span> {material.projectName || 'Unassigned'}</p>
+                            <p><span className="font-medium text-slate-700">Unit cost:</span> {formatCurrency(material.costPerUnit)}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            updateMutation.mutate({
+                              id: material.id,
+                              data: { status: material.status === 'ordered' ? 'in-stock' : 'ordered' },
+                            })
+                          }
+                        >
+                          <Truck className="mr-2 h-4 w-4" />
+                          Stock
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(material)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </Button>
+                        <ConfirmDialog
+                          title="Delete material?"
+                          description="This permanently removes the material. This cannot be undone."
+                          confirmText="Delete"
+                          confirmVariant="destructive"
+                          confirmDisabled={deleteMutation.isPending}
+                          onConfirm={() => deleteMutation.mutate(material.id)}
+                          trigger={
+                            <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </Button>
+                          }
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
 
+              <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -539,7 +623,8 @@ export function MaterialsPage() {
                 ))}
               </TableBody>
             </Table>
-</div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../lib/api';
 import { useToast } from '../../components/ui/use-toast';
 import { Input } from '../../components/ui/input';
@@ -99,6 +100,7 @@ function bucketKey(dateStr: string | null | undefined) {
 }
 
 export function DashboardHome() {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
@@ -406,7 +408,11 @@ export function DashboardHome() {
                 </form>
               </DialogContent>
             </Dialog>
-            <Button variant="outline" className="rounded-full border-white/25 text-white bg-white/10 hover:bg-white/15 flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="rounded-full border-white/25 text-white bg-white/10 hover:bg-white/15 flex items-center gap-2"
+              onClick={() => navigate('/analytics')}
+            >
               <Sparkles className="h-4 w-4" />
               Generate report
             </Button>

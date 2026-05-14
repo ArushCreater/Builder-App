@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
+  ArrowLeft,
   Users,
   FolderKanban,
   ClipboardList,
@@ -85,6 +86,20 @@ export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [showMobileBack, setShowMobileBack] = useState(false);
+
+  const mobileBackTarget = location.pathname.startsWith('/projects/')
+    ? '/projects'
+    : location.pathname.startsWith('/leads/')
+      ? '/leads'
+      : null;
+
+  useEffect(() => {
+    const handleScroll = () => setShowMobileBack(window.scrollY > 180);
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -92,7 +107,7 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col overflow-x-hidden">
+    <div className="min-h-screen bg-gray-50 flex flex-col overflow-x-clip">
       <style>{`
         .dashboard-enter { animation: dashboard-fade-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
         @keyframes dashboard-fade-in {
@@ -121,7 +136,7 @@ export function DashboardLayout() {
         className={cn(
           'fixed inset-y-0 left-0 z-50 bg-slate-900/95 backdrop-blur border-r border-slate-800 transform transition-all duration-400 ease-out lg:translate-x-0 rounded-r-3xl overflow-hidden will-change-transform',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-          sidebarCollapsed ? 'w-20' : 'w-72',
+          sidebarCollapsed ? 'w-20' : 'w-[calc(100vw-2rem)] sm:w-72',
           'shadow-2xl shadow-black/40 flex flex-col'
         )}
         style={{ transitionProperty: 'transform,width' }}
@@ -287,14 +302,27 @@ export function DashboardLayout() {
         </header>
 
         {/* Page content */}
-        <main className="py-4 sm:py-6 px-3 sm:px-6 lg:px-10 pb-24 min-h-screen min-w-0 max-w-full overflow-x-hidden dashboard-enter-main">
+        <main className="py-4 sm:py-6 px-3 sm:px-6 lg:px-10 pb-[calc(env(safe-area-inset-bottom)+6.5rem)] lg:pb-10 min-h-screen min-w-0 max-w-full overflow-x-clip dashboard-enter-main">
           <Outlet />
         </main>
       </div>
 
+      {mobileBackTarget && showMobileBack && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] left-3 z-40 h-11 rounded-full border border-slate-200 bg-white/95 px-4 text-slate-900 shadow-lg shadow-slate-900/15 backdrop-blur lg:hidden"
+          onClick={() => navigate(mobileBackTarget)}
+          aria-label="Go back"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+      )}
+
       {/* Mobile bottom nav */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 shadow-lg">
-        <div className="grid grid-cols-5">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-lg backdrop-blur">
+        <div className="grid grid-cols-5 px-1 py-1">
           {mobileNav.map(item => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
@@ -304,8 +332,8 @@ export function DashboardLayout() {
                 to={item.path}
                 onClick={() => setSidebarOpen(false)}
                 className={cn(
-                  'flex flex-col items-center justify-center py-2 text-xs font-semibold transition-colors',
-                  isActive ? 'text-indigo-600' : 'text-slate-600'
+                  'flex min-h-14 flex-col items-center justify-center rounded-2xl px-1 py-2 text-xs font-semibold transition-colors',
+                  isActive ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600'
                 )}
               >
                 <Icon className={cn('h-5 w-5 mb-1', isActive ? 'stroke-[2.2]' : 'stroke-[1.7]')} />
@@ -323,6 +351,3 @@ export function DashboardLayout() {
 }
 
 export default DashboardLayout;
-
-
-

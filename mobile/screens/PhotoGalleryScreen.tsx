@@ -50,6 +50,11 @@ export default function PhotoGalleryScreen() {
   };
 
   const handleTakePhoto = async () => {
+    if (!projectId) {
+      Alert.alert('Error', 'Project is required before uploading photos');
+      return;
+    }
+
     try {
       const photo = await cameraService.takePhoto();
       if (photo) {
@@ -72,6 +77,11 @@ export default function PhotoGalleryScreen() {
   };
 
   const handlePickPhoto = async () => {
+    if (!projectId) {
+      Alert.alert('Error', 'Project is required before uploading photos');
+      return;
+    }
+
     try {
       const photo = await cameraService.pickFromGallery();
       if (photo) {

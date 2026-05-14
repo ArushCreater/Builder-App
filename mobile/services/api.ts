@@ -87,29 +87,57 @@ class ApiService {
     }
   }
 
+  private unwrap<T>(data: unknown): T {
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const record = data as Record<string, unknown>;
+      const keys = [
+        'projects',
+        'project',
+        'tasks',
+        'task',
+        'logs',
+        'log',
+        'documents',
+        'document',
+        'photos',
+        'photo',
+        'invoices',
+        'invoice',
+        'messages',
+        'message',
+        'conversations',
+        'user',
+      ];
+      for (const key of keys) {
+        if (key in record) return record[key] as T;
+      }
+    }
+    return data as T;
+  }
+
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.get<T>(url, config);
-    return response.data;
+    return this.unwrap<T>(response.data);
   }
 
   async post<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.post<T>(url, data, config);
-    return response.data;
+    return this.unwrap<T>(response.data);
   }
 
   async put<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.put<T>(url, data, config);
-    return response.data;
+    return this.unwrap<T>(response.data);
   }
 
   async patch<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.patch<T>(url, data, config);
-    return response.data;
+    return this.unwrap<T>(response.data);
   }
 
   async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.delete<T>(url, config);
-    return response.data;
+    return this.unwrap<T>(response.data);
   }
 
   async upload<T>(url: string, formData: FormData, onProgress?: (progress: number) => void): Promise<T> {
@@ -124,7 +152,7 @@ class ApiService {
         }
       },
     });
-    return response.data;
+    return this.unwrap<T>(response.data);
   }
 }
 

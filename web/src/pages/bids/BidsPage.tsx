@@ -135,7 +135,12 @@ export function BidsPage() {
 
   const updateMutation = useMutation({
     mutationFn: (payload: { id: string; data: any }) => apiClient.put(`/bids/${payload.id}`, payload.data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bids'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bids'] });
+      setIsDialogOpen(false);
+      setEditingId(null);
+    },
+    onError: () => toast({ title: 'Error', description: 'Failed to update bid', variant: 'destructive' }),
   });
 
   const deleteMutation = useMutation({
@@ -186,15 +191,15 @@ export function BidsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Bids</h1>
-          <p className="text-gray-500 mt-1">Manage contractor bids and proposals</p>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Bids</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">Manage contractor bids and proposals</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               {editingId ? 'Edit Bid' : 'Request Bid'}
             </Button>
@@ -205,7 +210,7 @@ export function BidsPage() {
                 <DialogTitle>{editingId ? 'Edit Bid' : 'New Bid Request'}</DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Project</Label>
                     <Select
@@ -239,7 +244,7 @@ export function BidsPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Scope / Category</Label>
                     <Input
@@ -258,7 +263,7 @@ export function BidsPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Amount</Label>
                     <Input
@@ -286,7 +291,7 @@ export function BidsPage() {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Submitted Date</Label>
                     <Input
@@ -325,8 +330,14 @@ export function BidsPage() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Saving...' : editingId ? 'Save Changes' : 'Create Bid'}
+                <Button type="submit" disabled={editingId ? updateMutation.isPending : createMutation.isPending}>
+                  {editingId
+                    ? updateMutation.isPending
+                      ? 'Saving...'
+                      : 'Save Changes'
+                    : createMutation.isPending
+                      ? 'Saving...'
+                      : 'Create Bid'}
                 </Button>
               </DialogFooter>
             </form>
@@ -334,7 +345,7 @@ export function BidsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-gray-500">Total Bids</CardTitle>
@@ -369,7 +380,7 @@ export function BidsPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden rounded-2xl sm:rounded-lg">
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="relative flex-1">
@@ -381,7 +392,7 @@ export function BidsPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
               <Select value={projectFilter} onValueChange={setProjectFilter}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Project" />
@@ -414,7 +425,92 @@ export function BidsPage() {
               <div className="text-gray-500">Loading...</div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="space-y-3 md:hidden">
+                {filtered.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+                    <Building2 className="mx-auto h-8 w-8 text-slate-400" />
+                    <p className="mt-3 text-sm font-medium text-slate-900">No bids found</p>
+                    <p className="mt-1 text-sm text-slate-500">Try a different search or filter.</p>
+                  </div>
+                ) : (
+                  filtered.map((bid) => (
+                    <div key={bid.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                          <Building2 className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="truncate text-base font-semibold text-slate-900">{bid.vendor}</h3>
+                              <p className="mt-0.5 truncate text-sm text-slate-500">{bid.projectName || 'No project'}</p>
+                            </div>
+                            <Badge variant={statusColors[bid.status as Bid['status']]} className="shrink-0">
+                              {bid.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Amount</p>
+                              <p className="mt-1 font-semibold text-slate-900">{formatCurrency(bid.amount)}</p>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Valid until</p>
+                              <p className="mt-1 font-semibold text-slate-900">
+                                {bid.validUntil ? formatDate(bid.validUntil) : '-'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-3 space-y-1 text-sm text-slate-600">
+                            <p className="truncate"><span className="font-medium text-slate-700">Category:</span> {bid.category || '-'}</p>
+                            <p className="truncate"><span className="font-medium text-slate-700">Contact:</span> {bid.contact || '-'}</p>
+                            <p><span className="font-medium text-slate-700">Submitted:</span> {bid.submittedDate ? formatDate(bid.submittedDate) : '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
+                        <Select
+                          value={bid.status}
+                          onValueChange={(value) =>
+                            updateMutation.mutate({ id: bid.id, data: { status: value as Bid['status'] } })
+                          }
+                        >
+                          <SelectTrigger className="col-span-2">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="accepted">Accepted</SelectItem>
+                            <SelectItem value="rejected">Rejected</SelectItem>
+                            <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(bid)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </Button>
+                        <ConfirmDialog
+                          title="Delete bid?"
+                          description="This permanently removes the bid. This cannot be undone."
+                          confirmText="Delete"
+                          confirmVariant="destructive"
+                          confirmDisabled={deleteMutation.isPending}
+                          onConfirm={() => deleteMutation.mutate(bid.id)}
+                          trigger={
+                            <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </Button>
+                          }
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -487,7 +583,8 @@ export function BidsPage() {
                 ))}
               </TableBody>
             </Table>
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

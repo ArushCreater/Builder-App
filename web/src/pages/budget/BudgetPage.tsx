@@ -79,13 +79,13 @@ export function BudgetPage() {
   const budgetProgress = summary ? (summary.totalSpent / summary.totalBudget) * 100 : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Budget Management</h1>
-          <p className="text-gray-500 mt-1">Track project budgets and expenses</p>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Budget Management</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">Track project budgets and expenses</p>
         </div>
-        <Button onClick={() => navigate('/expenses')}>
+        <Button className="w-full sm:w-auto" onClick={() => navigate('/expenses')}>
           <Plus className="mr-2 h-4 w-4" />
           Add Expense
         </Button>
@@ -106,8 +106,8 @@ export function BudgetPage() {
       </Select>
 
       {/* Summary Cards */}
-      <div className="grid gap-6 md:grid-cols-4">
-        <Card>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 md:gap-6">
+        <Card className="overflow-hidden rounded-2xl sm:rounded-lg">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-gray-600">Total Budget</CardTitle>
           </CardHeader>
@@ -116,7 +116,7 @@ export function BudgetPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="overflow-hidden rounded-2xl sm:rounded-lg">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-gray-600">Total Spent</CardTitle>
           </CardHeader>
@@ -188,8 +188,58 @@ export function BudgetPage() {
                 <div className="text-gray-500">Loading...</div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                <div className="space-y-3 md:hidden">
+                  {items?.length ? (
+                    items.map((item) => {
+                      const isOverBudget = item.variance < 0;
 
+                      return (
+                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h3 className="truncate text-base font-semibold text-slate-900">{item.category}</h3>
+                              <p className="mt-1 text-sm text-slate-500">{Math.round(item.percentage || 0)}% of budget used</p>
+                            </div>
+                            <div className={isOverBudget ? 'text-red-600' : 'text-green-600'}>
+                              {isOverBudget ? (
+                                <TrendingDown className="h-5 w-5" />
+                              ) : (
+                                <TrendingUp className="h-5 w-5" />
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Budgeted</p>
+                              <p className="mt-1 font-semibold text-slate-900">{formatCurrency(item.budgeted)}</p>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Actual</p>
+                              <p className="mt-1 font-semibold text-slate-900">{formatCurrency(item.actual)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <div className="mb-2 flex items-center justify-between text-sm">
+                              <span className="text-slate-500">Variance</span>
+                              <span className={isOverBudget ? 'font-semibold text-red-600' : 'font-semibold text-green-600'}>
+                                {formatCurrency(Math.abs(item.variance))}
+                              </span>
+                            </div>
+                            <Progress value={Math.min(Math.max(item.percentage || 0, 0), 100)} />
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+                      <p className="text-sm font-medium text-slate-900">No budget details found</p>
+                      <p className="mt-1 text-sm text-slate-500">Choose another project or add expenses.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="hidden overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -221,7 +271,8 @@ export function BudgetPage() {
                   ))}
                 </TableBody>
               </Table>
-</div>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

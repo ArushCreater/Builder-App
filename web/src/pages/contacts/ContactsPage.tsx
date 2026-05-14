@@ -176,7 +176,7 @@ export function ContactsPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mr-6">
+              <div className="mr-6 flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                 <Button 
                   variant="ghost" 
                   size="icon" 
@@ -229,7 +229,75 @@ export function ContactsPage() {
         ))}
       </div>
     ) : (
-      <div className="overflow-x-auto">
+      <>
+        <div className="space-y-3 p-4 md:hidden">
+          {list.map((contact) => (
+            <div key={contact.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <Avatar className="h-12 w-12 shrink-0 border border-slate-200">
+                  <AvatarFallback className="bg-indigo-50 text-sm font-semibold text-indigo-600">
+                    {contact.name?.[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-base font-semibold text-slate-900">{contact.name}</h3>
+                      <p className="mt-0.5 truncate text-sm text-slate-500">{contact.designation || 'No designation'}</p>
+                    </div>
+                    <button
+                      className={`shrink-0 rounded-full p-2 transition-colors ${contact.favorite ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500'}`}
+                      onClick={() => updateMutation.mutate({ id: contact.id, data: { favorite: !contact.favorite } })}
+                      aria-label="Toggle favorite"
+                    >
+                      <Star className={`h-5 w-5 ${contact.favorite ? 'fill-amber-400' : ''}`} />
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-slate-600">
+                    <p className="flex min-w-0 items-center gap-2">
+                      <Building2 className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="truncate">{contact.company || '-'}</span>
+                    </p>
+                    <p className="flex min-w-0 items-center gap-2">
+                      <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="truncate">{contact.email || '-'}</span>
+                    </p>
+                    <p className="flex min-w-0 items-center gap-2">
+                      <Phone className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="truncate">{contact.phone || '-'}</span>
+                    </p>
+                    <p className="flex min-w-0 items-start gap-2">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="line-clamp-2">{contact.address || '-'}</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
+                <Button variant="outline" size="sm" onClick={() => startEdit(contact)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+                <ConfirmDialog
+                  title="Delete contact?"
+                  description="This permanently removes the contact. This cannot be undone."
+                  confirmText="Delete"
+                  confirmVariant="destructive"
+                  confirmDisabled={deleteMutation.isPending}
+                  onConfirm={() => deleteMutation.mutate(contact.id)}
+                  trigger={
+                    <Button variant="outline" size="sm" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700">
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </Button>
+                  }
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+      <div className="hidden overflow-x-auto md:block">
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50 hover:bg-slate-50">
@@ -325,20 +393,21 @@ export function ContactsPage() {
           </TableBody>
         </Table>
       </div>
+      </>
     )
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Contacts</h1>
-          <p className="text-gray-500 mt-1">Central rolodex for clients, partners, and vendors</p>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">Contacts</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">Central rolodex for clients, partners, and vendors</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
             <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { resetForm(); } }}>
             <DialogTrigger asChild>
-                <Button className="shadow-sm">
+                <Button className="w-full shadow-sm sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Contact
                 </Button>
@@ -405,7 +474,7 @@ export function ContactsPage() {
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm">
+      <Card className="overflow-hidden rounded-2xl border-slate-200 shadow-sm sm:rounded-lg">
         <CardHeader className="border-b border-slate-100 pb-4 space-y-4">
           {/* Section tabs */}
           <div className="flex items-center gap-1 border-b border-slate-200 -mb-4 pb-0">
@@ -446,11 +515,11 @@ export function ContactsPage() {
               />
             </div>
 
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+	            <div className="flex min-h-10 items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
               <Button
                 variant={view === 'grid' ? 'secondary' : 'ghost'}
                 size="sm"
-                className={`h-7 px-2.5 ${view === 'grid' ? 'shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`min-h-8 px-3 ${view === 'grid' ? 'shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                 onClick={() => setView('grid')}
               >
                 <LayoutGrid className="h-4 w-4" />
@@ -458,7 +527,7 @@ export function ContactsPage() {
               <Button
                 variant={view === 'list' ? 'secondary' : 'ghost'}
                 size="sm"
-                className={`h-7 px-2.5 ${view === 'list' ? 'shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`min-h-8 px-3 ${view === 'list' ? 'shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
                 onClick={() => setView('list')}
               >
                 <List className="h-4 w-4" />

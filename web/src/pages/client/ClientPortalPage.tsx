@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -46,6 +47,7 @@ interface ClientInvoice {
 }
 
 export function ClientPortalPage() {
+  const navigate = useNavigate();
   const { data: project, isLoading } = useQuery({
     queryKey: ['client-project'],
     queryFn: () => apiClient.get<ClientProject>('/client/project'),
@@ -122,7 +124,7 @@ export function ClientPortalPage() {
             <h4 className="font-medium mb-2">Budget Status</h4>
             <Progress value={budgetProgress} />
             <p className="text-sm text-gray-500 mt-1">
-              {formatCurrency(project?.budget || 0 - (project?.spent || 0))} remaining
+              {formatCurrency((project?.budget || 0) - (project?.spent || 0))} remaining
             </p>
           </div>
         </CardContent>
@@ -164,7 +166,14 @@ export function ClientPortalPage() {
                       <TableCell>{doc.type}</TableCell>
                       <TableCell>{formatDate(doc.uploadedAt)}</TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (doc.url && doc.url !== '#') window.open(doc.url, '_blank', 'noopener,noreferrer');
+                          }}
+                          disabled={!doc.url || doc.url === '#'}
+                        >
                           <Download className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -214,7 +223,7 @@ export function ClientPortalPage() {
                       <TableCell>{formatDate(invoice.issuedDate)}</TableCell>
                       <TableCell>{formatDate(invoice.dueDate)}</TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => navigate('/invoices')}>
                           Pay Now
                         </Button>
                       </TableCell>
@@ -250,7 +259,7 @@ export function ClientPortalPage() {
                   <p className="text-sm text-gray-500 mb-3">
                     Have questions? Send a message to your project team
                   </p>
-                  <Button>Send Message</Button>
+                  <Button onClick={() => navigate('/messages')}>Send Message</Button>
                 </div>
               </div>
             </CardContent>

@@ -143,6 +143,9 @@ export default function DailyLogFormScreen() {
 
       // Upload photos
       if (photos.length > 0) {
+        if (!projectId) {
+          throw new Error('Project is required before uploading photos');
+        }
         await Promise.all(
           photos.map((photoUri) =>
             cameraService.uploadPhoto(photoUri, projectId, undefined, location || undefined)

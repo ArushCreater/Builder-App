@@ -7,6 +7,7 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ButtonProps {
   title: string;
@@ -15,6 +16,7 @@ interface ButtonProps {
   size?: 'small' | 'medium' | 'large';
   disabled?: boolean;
   loading?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
   style?: ViewStyle;
   textStyle?: TextStyle;
 }
@@ -26,6 +28,7 @@ export function Button({
   size = 'medium',
   disabled = false,
   loading = false,
+  icon,
   style,
   textStyle,
 }: ButtonProps) {
@@ -50,16 +53,26 @@ export function Button({
           size="small"
         />
       ) : (
-        <Text
-          style={[
-            styles.text,
-            styles[`${variant}Text`],
-            styles[`${size}Text`],
-            textStyle,
-          ]}
-        >
-          {title}
-        </Text>
+        <>
+          {icon && (
+            <Ionicons
+              name={icon}
+              size={size === 'small' ? 16 : 20}
+              color={variant === 'outline' ? '#2563eb' : '#ffffff'}
+              style={styles.icon}
+            />
+          )}
+          <Text
+            style={[
+              styles.text,
+              styles[`${variant}Text`],
+              styles[`${size}Text`],
+              textStyle,
+            ]}
+          >
+            {title}
+          </Text>
+        </>
       )}
     </TouchableOpacity>
   );
@@ -71,6 +84,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+  },
+  icon: {
+    marginRight: 8,
   },
   // Variants
   primary: {

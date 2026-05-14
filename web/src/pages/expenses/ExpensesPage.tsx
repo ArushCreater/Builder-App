@@ -227,7 +227,7 @@ export default function ExpensesPage() {
   const renderExpenseCard = (exp: Expense) => (
     <div
       key={exp.id}
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition-all group"
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:shadow-md sm:rounded-xl group"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
@@ -292,17 +292,17 @@ export default function ExpensesPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Expenses</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Expenses</h1>
+          <p className="mt-1 text-sm text-gray-500 sm:text-base">
             Track project and non-project spending, approvals, and receipts.
           </p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => { setEditingId(null); setIsDialogOpen(true); setFormData({ ...formData, type: segment }); }}>
+            <Button className="w-full sm:w-auto" onClick={() => { setEditingId(null); setIsDialogOpen(true); setFormData({ ...formData, type: segment }); }}>
               <Plus className="mr-2 h-4 w-4" />
               Add Expense
             </Button>
@@ -517,22 +517,22 @@ export default function ExpensesPage() {
         </Card>
       </div>
 
-      <Card className="border-slate-200 shadow-sm">
+      <Card className="overflow-hidden rounded-2xl border-slate-200 shadow-sm sm:rounded-lg">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <Tabs value={segment} onValueChange={v => setSegment(v as 'project' | 'non-project')}>
-            <TabsList>
-              <TabsTrigger value="project">Project Expenses</TabsTrigger>
-              <TabsTrigger value="non-project">Non-project Expenses</TabsTrigger>
+          <Tabs value={segment} onValueChange={v => setSegment(v as 'project' | 'non-project')} className="w-full sm:w-auto">
+            <TabsList className="grid h-auto w-full grid-cols-2 sm:h-10 sm:w-auto">
+              <TabsTrigger value="project" className="min-h-10 sm:min-h-0">Project Expenses</TabsTrigger>
+              <TabsTrigger value="non-project" className="min-h-10 sm:min-h-0">Non-project Expenses</TabsTrigger>
             </TabsList>
           </Tabs>
-          <div className="flex flex-wrap gap-2">
-            <div className="relative">
+          <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+            <div className="relative w-full sm:w-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
                 placeholder="Search expenses..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="pl-9 w-48"
+                className="w-full pl-9 sm:w-48"
               />
             </div>
             {segment === 'project' && (
@@ -604,7 +604,11 @@ export default function ExpensesPage() {
               </div>
               {view === 'list' ? (
                 <div className="max-h-[650px] overflow-y-auto pr-1">
-                  <div className="overflow-x-auto">
+                  <div className="space-y-3 md:hidden">
+                    {expenses.map(renderExpenseCard)}
+                  </div>
+
+                  <div className="hidden overflow-x-auto md:block">
 
                   <Table>
                     <TableHeader>
@@ -638,7 +642,7 @@ export default function ExpensesPage() {
                       ))}
                     </TableBody>
                   </Table>
-</div>
+                  </div>
                 </div>
               ) : (
                 <div className="max-h-[650px] overflow-y-auto pr-1">
