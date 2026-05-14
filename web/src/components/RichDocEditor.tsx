@@ -112,7 +112,21 @@ interface Props {
 }
 
 const editorCss = `
-  .ProseMirror { outline: none; }
+  .ProseMirror { outline: none; color: #0f172a; }
+  /* Override common light/white inline colours that would be invisible on
+     the white editor background. */
+  .ProseMirror [style*="color: white"],
+  .ProseMirror [style*="color:white"],
+  .ProseMirror [style*="color: #fff"],
+  .ProseMirror [style*="color:#fff"],
+  .ProseMirror [style*="color: #FFF"],
+  .ProseMirror [style*="color:#FFF"],
+  .ProseMirror [style*="color: rgb(255, 255, 255)"],
+  .ProseMirror [style*="color:rgb(255,255,255)"],
+  .ProseMirror [style*="color: rgba(255, 255, 255"],
+  .ProseMirror [style*="color:rgba(255,255,255"] {
+    color: #0f172a !important;
+  }
   .ProseMirror p { margin: 0.25rem 0; line-height: 1.7; }
   .ProseMirror h1 { font-size: 2rem; font-weight: 700; margin: 1rem 0 0.5rem; }
   .ProseMirror h2 { font-size: 1.5rem; font-weight: 600; margin: 0.875rem 0 0.4rem; }

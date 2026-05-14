@@ -170,6 +170,26 @@ export function SharedDocPage() {
 
       {/* Shared doc styles */}
       <style>{`
+        /* Force a readable dark text colour for the doc content, regardless of
+           the app-wide body 'text-foreground' (which is light because the body
+           uses a dark gradient background). */
+        .shared-doc-content { color: #0f172a; }
+        .shared-doc-content * { color: inherit; }
+        /* Override common light/white inline colours the editor's colour-picker
+           may have written into the HTML — those become invisible on white. */
+        .shared-doc-content [style*="color: white"],
+        .shared-doc-content [style*="color:white"],
+        .shared-doc-content [style*="color: #fff"],
+        .shared-doc-content [style*="color:#fff"],
+        .shared-doc-content [style*="color: #FFF"],
+        .shared-doc-content [style*="color:#FFF"],
+        .shared-doc-content [style*="color: rgb(255, 255, 255)"],
+        .shared-doc-content [style*="color:rgb(255,255,255)"],
+        .shared-doc-content [style*="color: rgba(255, 255, 255"],
+        .shared-doc-content [style*="color:rgba(255,255,255"] {
+          color: #0f172a !important;
+        }
+
         .shared-doc-content p { margin: 0.25rem 0; line-height: 1.7; }
         .shared-doc-content h1 { font-size: 2rem; font-weight: 700; margin: 1rem 0 0.5rem; }
         .shared-doc-content h2 { font-size: 1.5rem; font-weight: 600; margin: 0.875rem 0 0.4rem; }
