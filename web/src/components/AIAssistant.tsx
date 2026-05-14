@@ -226,6 +226,8 @@ export function AIAssistant({ open, onClose }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const typeRafRef = useRef<number | null>(null);
+  const skipTypingRef = useRef(false);
 
   // Persist conversation
   useEffect(() => {
