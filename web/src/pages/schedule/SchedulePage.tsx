@@ -174,8 +174,19 @@ export function SchedulePage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/schedule/events/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['schedule-events'] }),
+    mutationFn: (id: string) => {
+      // Items prefixed with "task-" are synthesized from the tasks table
+      // (no real schedule_event row exists), so route the delete to /tasks.
+      if (id.startsWith('task-')) {
+        return apiClient.delete(`/tasks/${id.slice(5)}`);
+      }
+      return apiClient.delete(`/schedule/events/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedule-events'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks-for-schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
     onError: () => toast({ title: 'Error', description: 'Could not delete event', variant: 'destructive' }),
   });
 
