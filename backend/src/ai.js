@@ -214,7 +214,7 @@ File storage (PDFs, photos, anything).
 • Filters: search box, category dropdown (w-full sm:w-[200px]), project dropdown.
 • Table view: name, category, project, uploaded-by, size, uploaded-at, actions (download / delete).
 • Upload dialog: drag-and-drop OR click to browse. Choose category + project. Shows progress spinner while uploading. On success the file appears in the table.
-• Backend: prefers OneDrive when connected (uploads to Documents/<project>/<category>/), falls back to S3. Metadata is persisted to Postgres `documents` table.
+• Backend: prefers OneDrive when connected (uploads to Documents/<project>/<category>/), falls back to S3. Metadata is persisted to a Postgres "documents" table.
 • Loading and delete spinners are shown on the relevant rows so the user knows it's happening.
 
 ═══════════════════════════════════════════════════════════════════════════

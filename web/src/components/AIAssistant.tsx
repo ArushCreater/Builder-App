@@ -261,9 +261,46 @@ export function AIAssistant({ open, onClose }: Props) {
   }, [input]);
 
   const stop = useCallback(() => {
+    // Aborts an in-flight request OR skips the typing animation, revealing
+    // the full text immediately.
     abortRef.current?.abort();
     abortRef.current = null;
-    setStreaming(false);
+    skipTypingRef.current = true;
+    if (typeRafRef.current !== null) {
+      cancelAnimationFrame(typeRafRef.current);
+      typeRafRef.current = null;
+    }
+  }, []);
+
+  const typeOut = useCallback((fullText: string, assistantId: string) => {
+    return new Promise<void>((resolve) => {
+      skipTypingRef.current = false;
+      let i = 0;
+      // ~3 chars per frame ≈ 180 chars/sec at 60fps. Feels lively but readable.
+      const charsPerFrame = 3;
+      const tick = () => {
+        if (skipTypingRef.current) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, content: fullText } : m)),
+          );
+          typeRafRef.current = null;
+          resolve();
+          return;
+        }
+        i = Math.min(i + charsPerFrame, fullText.length);
+        const slice = fullText.slice(0, i);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: slice } : m)),
+        );
+        if (i >= fullText.length) {
+          typeRafRef.current = null;
+          resolve();
+          return;
+        }
+        typeRafRef.current = requestAnimationFrame(tick);
+      };
+      typeRafRef.current = requestAnimationFrame(tick);
+    });
   }, []);
 
   const send = useCallback(
@@ -285,7 +322,7 @@ export function AIAssistant({ open, onClose }: Props) {
       try {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
-        const res = await fetch('/api/ai/chat/stream', {
+        const res = await fetch('/api/ai/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -297,57 +334,28 @@ export function AIAssistant({ open, onClose }: Props) {
           signal: controller.signal,
         });
 
-        if (!res.ok || !res.body) {
-          const errText = await res.text().catch(() => '');
-          throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200) || 'request failed'}`);
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`;
+          try { const j = await res.json(); if (j?.message) msg = j.message; } catch { /* ignore */ }
+          throw new Error(msg);
         }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let accumulated = '';
-
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split('\n\n');
-          buffer = events.pop() || '';
-          for (const ev of events) {
-            const line = ev.split('\n').find((l) => l.startsWith('data:'));
-            if (!line) continue;
-            const payload = line.slice(5).trim();
-            if (!payload) continue;
-            try {
-              const parsed = JSON.parse(payload);
-              if (parsed.text) {
-                accumulated += parsed.text;
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantId ? { ...m, content: accumulated } : m)),
-                );
-              } else if (parsed.error) {
-                throw new Error(parsed.error);
-              }
-            } catch {
-              /* ignore unparseable */
-            }
-          }
-        }
-
-        if (!accumulated) {
+        const json = (await res.json()) as { reply?: string };
+        const reply = (json.reply || '').trim();
+        if (!reply) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId ? { ...m, content: '⚠️ No response received.' } : m,
             ),
           );
+        } else {
+          await typeOut(reply, assistantId);
         }
       } catch (err: any) {
         if (err?.name === 'AbortError') {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
-                ? { ...m, content: m.content + (m.content ? '\n\n_…stopped._' : '_Stopped before any response._') }
+                ? { ...m, content: m.content || '_Stopped before any response._' }
                 : m,
             ),
           );
@@ -363,9 +371,10 @@ export function AIAssistant({ open, onClose }: Props) {
       } finally {
         setStreaming(false);
         abortRef.current = null;
+        skipTypingRef.current = false;
       }
     },
-    [messages, streaming],
+    [messages, streaming, typeOut],
   );
 
   const reset = () => {
